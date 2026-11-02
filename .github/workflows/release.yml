@@ -1,0 +1,47 @@
+name: Release
+
+# 推 v* 标签发布：标签必须和 packages/extension/package.json 的 version 一致。
+# 需要仓库密钥 OVSX_PAT（Open VSX 的访问令牌）；与 publisher 同名的命名空间不存在时会先创建。
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 标签和版本号一致
+        run: |
+          version="v$(node -p "require('./packages/extension/package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "标签 $GITHUB_REF_NAME 和扩展版本 $version 不一致" >&2
+            exit 1
+          fi
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm package
+      - name: 发布到 Open VSX
+        working-directory: packages/extension
+        run: |
+          publisher="$(node -p "require('./package.json').publisher")"
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://open-vsx.org/api/$publisher")"
+          if [ "$status" = 404 ]; then
+            pnpm exec ovsx create-namespace "$publisher"
+          fi
+          pnpm exec ovsx publish dist/cursor-css-tuner.vsix
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: packages/extension/dist/cursor-css-tuner.vsix
+          generate_release_notes: true

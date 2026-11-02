@@ -1,0 +1,45 @@
+@import url('fonts.css');
+
+:root {
+  --gap: 12px;
+  --brand: #0b7285;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--brand);
+  color: white;
+}
+
+.logo {
+  font-size: 20px;
+  margin: 0;
+}
+
+.nav a {
+  color: inherit;
+  margin-left: var(--gap);
+}
+
+.content {
+  padding: 32px 24px;
+}
+
+.post {
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.post-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+}

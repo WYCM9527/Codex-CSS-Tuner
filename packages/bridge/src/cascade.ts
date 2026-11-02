@@ -1,0 +1,291 @@
+import { aliasesOf, shorthandsOf } from '@css-tuner/protocol';
+import { compareSpec, resolveNested, specificity, splitTopLevel, type Spec } from './specificity';
+
+export { aliasesOf };
+
+export interface FlatRule {
+  style: CSSStyleDeclaration;
+  rule: CSSRule;
+  sheetIndex: number;
+  topSheet: CSSStyleSheet;
+  ownerSheet: CSSStyleSheet;
+  path: number[];
+  selector: string;
+  fullSelector: string;
+  branches: string[];
+  conditions: string[];
+  layer: string | null;
+  layerRank: number;
+  order: number;
+  ordinal: number;
+  active: boolean;
+  names?: Map<string, number>;
+}
+
+export interface RuleIndex {
+  rules: FlatRule[];
+  layerOrder: Map<string, number>;
+}
+
+interface Ctx {
+  topSheet: CSSStyleSheet;
+  ownerSheet: CSSStyleSheet;
+  sheetIndex: number;
+  path: number[];
+  conditions: string[];
+  layer: string | null;
+  parent: string | null;
+  active: boolean;
+}
+
+const has = (name: string) => typeof (globalThis as Record<string, unknown>)[name] === 'function';
+
+function mediaMatches(text: string): boolean {
+  if (!text || text === 'all') return true;
+  try {
+    return matchMedia(text).matches;
+  } catch {
+    return true;
+  }
+}
+
+function supports(text: string): boolean {
+  try {
+    return CSS.supports(text);
+  } catch {
+    return true;
+  }
+}
+
+export function collectRules(skipSheet: (s: CSSStyleSheet) => boolean): RuleIndex {
+  const rules: FlatRule[] = [];
+  const layerOrder = new Map<string, number>();
+  let order = 0;
+  let anon = 0;
+  const regLayer = (name: string) => {
+    if (!layerOrder.has(name)) layerOrder.set(name, layerOrder.size);
+  };
+  const push = (style: CSSStyleDeclaration, rule: CSSRule, selector: string, fullSelector: string, path: number[], ctx: Ctx) => {
+    rules.push({
+      style,
+      rule,
+      sheetIndex: ctx.sheetIndex,
+      topSheet: ctx.topSheet,
+      ownerSheet: ctx.ownerSheet,
+      path,
+      selector,
+      fullSelector,
+      branches: splitTopLevel(fullSelector),
+      conditions: ctx.conditions,
+      layer: ctx.layer,
+      layerRank: 0,
+      order: order++,
+      ordinal: 0,
+      active: ctx.active,
+    });
+  };
+
+  const walk = (list: CSSRuleList, ctx: Ctx) => {
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      const path = [...ctx.path, i];
+      if (r instanceof CSSStyleRule) {
+        const full = resolveNested(ctx.parent, r.selectorText);
+        push(r.style, r, r.selectorText, full, path, ctx);
+        const nested = (r as CSSStyleRule & { cssRules?: CSSRuleList }).cssRules;
+        if (nested && nested.length) walk(nested, { ...ctx, path, parent: full });
+      } else if (has('CSSNestedDeclarations') && r instanceof (globalThis as any).CSSNestedDeclarations) {
+        if (ctx.parent) push((r as any).style, r, '&', ctx.parent, path, ctx);
+      } else if (r instanceof CSSMediaRule) {
+        const text = r.media.mediaText;
+        walk(r.cssRules, { ...ctx, path, conditions: [...ctx.conditions, `@media ${text}`], active: ctx.active && mediaMatches(text) });
+      } else if (r instanceof CSSSupportsRule) {
+        walk(r.cssRules, { ...ctx, path, conditions: [...ctx.conditions, `@supports ${r.conditionText}`], active: ctx.active && supports(r.conditionText) });
+      } else if (has('CSSLayerBlockRule') && r instanceof CSSLayerBlockRule) {
+        const name = r.name || `<anon-${anon++}>`;
+        const full = ctx.layer ? `${ctx.layer}.${name}` : name;
+        regLayer(full);
+        walk(r.cssRules, { ...ctx, path, conditions: [...ctx.conditions, `@layer ${r.name}`], layer: full });
+      } else if (has('CSSLayerStatementRule') && r instanceof CSSLayerStatementRule) {
+        for (const n of r.nameList) regLayer(ctx.layer ? `${ctx.layer}.${n}` : n);
+      } else if (r instanceof CSSImportRule) {
+        let sub: CSSStyleSheet | null = null;
+        try {
+          sub = r.styleSheet;
+          if (sub) void sub.cssRules;
+        } catch {
+          sub = null;
+        }
+        if (!sub) continue;
+        const media = r.media ? r.media.mediaText : '';
+        const lname = (r as CSSImportRule & { layerName?: string | null }).layerName;
+        let layer = ctx.layer;
+        if (lname != null) {
+          const n = lname || `<anon-${anon++}>`;
+          layer = ctx.layer ? `${ctx.layer}.${n}` : n;
+          regLayer(layer);
+        }
+        walk(sub.cssRules, {
+          ...ctx,
+          ownerSheet: sub,
+          path,
+          conditions: media ? [...ctx.conditions, `@import ${media}`] : ctx.conditions,
+          layer,
+          active: ctx.active && mediaMatches(media),
+        });
+      } else if (has('CSSContainerRule') && r instanceof (globalThis as any).CSSContainerRule) {
+        walk((r as CSSGroupingRule).cssRules, { ...ctx, path, conditions: [...ctx.conditions, `@container ${(r as any).conditionText}`] });
+      }
+    }
+  };
+
+  const sheets = Array.from(document.styleSheets);
+  sheets.forEach((sheet, sheetIndex) => {
+    if (sheet.disabled || skipSheet(sheet)) return;
+    let list: CSSRuleList;
+    try {
+      list = sheet.cssRules;
+    } catch {
+      return;
+    }
+    const media = sheet.media ? sheet.media.mediaText : '';
+    walk(list, { topSheet: sheet, ownerSheet: sheet, sheetIndex, path: [], conditions: [], layer: null, parent: null, active: mediaMatches(media) });
+  });
+
+  const seen = new Map<string, number>();
+  for (const r of rules) {
+    r.layerRank = r.layer == null ? Infinity : layerOrder.get(r.layer) ?? 0;
+    const key = `${r.sheetIndex}|${r.fullSelector}|${r.conditions.join('|')}`;
+    r.ordinal = seen.get(key) ?? 0;
+    seen.set(key, r.ordinal + 1);
+  }
+  return { rules, layerOrder };
+}
+
+export interface Matched {
+  fr: FlatRule;
+  spec: Spec;
+}
+
+/** 交互态伪类：点选元素时鼠标正停在上面，不能把 :hover 规则当成元素的常态样式 */
+const INTERACTIVE = /:(hover|active|focus|focus-visible|focus-within)(?![\w-])/;
+
+export function matchRules(el: Element, idx: RuleIndex): Matched[] {
+  const out: Matched[] = [];
+  for (const fr of idx.rules) {
+    if (!fr.active) continue;
+    let best: Spec | null = null;
+    for (const branch of fr.branches) {
+      if (INTERACTIVE.test(branch)) continue;
+      let ok = false;
+      try {
+        ok = el.matches(branch);
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        const s = specificity(branch);
+        if (!best || compareSpec(s, best) > 0) best = s;
+      }
+    }
+    if (best) out.push({ fr, spec: best });
+  }
+  return out;
+}
+
+function namesOf(fr: { style: CSSStyleDeclaration; names?: Map<string, number> }): Map<string, number> {
+  if (!fr.names) {
+    const m = new Map<string, number>();
+    for (let i = 0; i < fr.style.length; i++) m.set(fr.style[i], i);
+    fr.names = m;
+  }
+  return fr.names;
+}
+
+export interface DeclRead {
+  value: string;
+  important: boolean;
+  /** 在规则里的声明顺序，用于同一规则内物理/逻辑属性的先后 */
+  index: number;
+  via: string;
+  shorthand: string | null;
+}
+
+/**
+ * 读取声明的钩子：预览会临时改写规则和内联样式，快照要读改写前的原值。
+ * 返回 'absent' 表示该属性是预览加进去的、原本不存在；返回 null 表示没被预览动过，直接读。
+ */
+export type Reader = (style: CSSStyleDeclaration, prop: string) => { value: string; priority: string } | 'absent' | null;
+
+const plain = (style: CSSStyleDeclaration, prop: string) => ({ value: style.getPropertyValue(prop), priority: style.getPropertyPriority(prop) });
+const plainReader: Reader = () => null;
+
+/** 读一条规则对某个物理属性的声明（含逻辑别名和简写），没有声明返回 null */
+export function readDecl(fr: { style: CSSStyleDeclaration; names?: Map<string, number> }, prop: string, reader: Reader = plainReader): DeclRead | null {
+  const names = namesOf(fr);
+  let best: DeclRead | null = null;
+  for (const alias of aliasesOf(prop)) {
+    const idx = names.get(alias);
+    if (idx === undefined) continue;
+    const got = reader(fr.style, alias);
+    if (got === 'absent') continue;
+    const r = got ?? plain(fr.style, alias);
+    let value = r.value;
+    let shorthand: string | null = null;
+    let important = r.priority === 'important';
+    if (value === '') {
+      for (const sh of shorthandsOf(alias)) {
+        const sg = reader(fr.style, sh);
+        const s = sg === 'absent' ? { value: '', priority: '' } : sg ?? plain(fr.style, sh);
+        if (s.value) {
+          value = s.value;
+          shorthand = sh;
+          important = s.priority === 'important';
+          break;
+        }
+      }
+      if (value === '') continue;
+    }
+    const d: DeclRead = { value, important, index: idx, via: alias, shorthand };
+    if (!best || d.index > best.index) best = d;
+  }
+  return best;
+}
+
+export interface Winner {
+  decl: DeclRead;
+  fr: FlatRule | null;
+  inline: boolean;
+}
+
+/** 按层叠顺序挑出某属性的胜出声明：重要性 → 内联 → 层 → 优先级 → 出现顺序 */
+export function pickWinner(el: Element, matched: Matched[], prop: string, reader: Reader = plainReader): Winner | null {
+  let best: { w: Winner; key: number[] } | null = null;
+  const consider = (w: Winner, key: number[]) => {
+    if (!best) {
+      best = { w, key };
+      return;
+    }
+    for (let i = 0; i < key.length; i++) {
+      if (key[i] !== best.key[i]) {
+        if (key[i] > best.key[i]) best = { w, key };
+        return;
+      }
+    }
+    best = { w, key };
+  };
+
+  for (const m of matched) {
+    const d = readDecl(m.fr, prop, reader);
+    if (!d) continue;
+    const rank = d.important ? -m.fr.layerRank : m.fr.layerRank;
+    consider({ decl: d, fr: m.fr, inline: false }, [d.important ? 1 : 0, 0, rank, m.spec[0], m.spec[1], m.spec[2], m.fr.order, d.index]);
+  }
+
+  const inlineStyle = (el as HTMLElement).style;
+  if (inlineStyle && inlineStyle.length) {
+    const d = readDecl({ style: inlineStyle }, prop, reader);
+    if (d && d.value !== '') consider({ decl: d, fr: null, inline: true }, [d.important ? 1 : 0, 1, 0, 0, 0, 0, Infinity, d.index]);
+  }
+  return best ? (best as { w: Winner }).w : null;
+}

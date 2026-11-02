@@ -1,0 +1,16 @@
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+}
+
+.badge-muted {
+  background: var(--color-muted);
+}
+
+.list .badge {
+  margin-left: 6px;
+}

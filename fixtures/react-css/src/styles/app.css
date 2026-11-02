@@ -1,0 +1,61 @@
+@import './tokens.css';
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: var(--color-ink);
+  background: #f6f8fa;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.card .title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.card + .card {
+  margin-top: var(--space-4);
+}
+
+.btn {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--color-accent);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  & .row {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+@media (min-width: 768px) {
+  .card {
+    padding: 24px 28px;
+  }
+}

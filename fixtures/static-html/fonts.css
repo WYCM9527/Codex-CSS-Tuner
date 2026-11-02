@@ -1,0 +1,8 @@
+:root {
+  --font-body: 'Helvetica Neue', 'PingFang SC', sans-serif;
+}
+
+.post-body {
+  line-height: 1.7;
+  color: #495057;
+}
