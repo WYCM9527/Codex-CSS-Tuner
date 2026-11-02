@@ -76,7 +76,10 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 
 1. 改 `packages/extension/package.json` 的 `version`，在 `packages/extension/CHANGELOG.md` 里写更新内容。
 2. 推送同名标签（如 `v0.1.0`），`Release` 工作流会检查、测试、打包，发布到 Open VSX，并把 VSIX 附到 GitHub Release。
-3. 首次发布前：在 [open-vsx.org](https://open-vsx.org) 用 Eclipse 账号登录、签署发布者协议、生成访问令牌，存为仓库密钥 `OVSX_PAT`。与 `publisher` 同名的命名空间不存在时，工作流会先创建它。
+3. 首次发布前，在 [open-vsx.org](https://open-vsx.org) 用 GitHub 登录，然后：
+   - 在个人资料页关联 Eclipse 账号并签署发布者协议。
+   - 在 Namespaces 页创建与 `publisher` 同名的命名空间。
+   - 在 Access Tokens 页生成令牌（选这个命名空间、勾选 Publishing only），存为仓库密钥 `OVSX_PAT`。Publishing only 的令牌不能创建命名空间，所以命名空间要先建好。
 
 ## 许可
 

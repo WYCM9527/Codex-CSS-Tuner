@@ -1,7 +1,8 @@
 name: Release
 
 # 推 v* 标签发布：标签必须和 packages/extension/package.json 的 version 一致。
-# 需要仓库密钥 OVSX_PAT（Open VSX 的访问令牌）；与 publisher 同名的命名空间不存在时会先创建。
+# 需要仓库密钥 OVSX_PAT（Open VSX 的访问令牌，勾选 Publishing only 即可）。
+# 与 publisher 同名的命名空间要先存在：Publishing only 的令牌不能创建命名空间。
 on:
   push:
     tags: ['v*']
@@ -36,7 +37,10 @@ jobs:
           publisher="$(node -p "require('./package.json').publisher")"
           status="$(curl -s -o /dev/null -w '%{http_code}' "https://open-vsx.org/api/$publisher")"
           if [ "$status" = 404 ]; then
-            pnpm exec ovsx create-namespace "$publisher"
+            pnpm exec ovsx create-namespace "$publisher" || {
+              echo "::error::Open VSX 上没有命名空间 $publisher，当前令牌也无法创建。请在 https://open-vsx.org/user-settings/namespaces 创建后重新运行。"
+              exit 1
+            }
           fi
           pnpm exec ovsx publish dist/cursor-css-tuner.vsix
         env:
