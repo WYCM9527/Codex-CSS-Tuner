@@ -17,7 +17,7 @@
   "private": true,
   "icon": "media/icon.png",
   "galleryBanner": {
-    "color": "#15171c",
+    "color": "#141414",
     "theme": "dark"
   },
   "engines": {

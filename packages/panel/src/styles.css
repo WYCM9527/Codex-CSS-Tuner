@@ -1,33 +1,81 @@
-:root {
-  --fg: var(--vscode-foreground, #cccccc);
-  --muted: var(--vscode-descriptionForeground, #9d9d9d);
-  --bg: var(--vscode-sideBar-background, #181818);
-  --field: var(--vscode-input-background, #2a2a2a);
-  --field-fg: var(--vscode-input-foreground, #cccccc);
-  --field-border: var(--vscode-input-border, transparent);
-  --line: var(--vscode-widget-border, var(--vscode-panel-border, #2b2b2b));
-  --focus: var(--vscode-focusBorder, #0078d4);
-  --hover: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-  --btn: var(--vscode-button-background, #0078d4);
-  --btn-fg: var(--vscode-button-foreground, #ffffff);
-  --btn-hover: var(--vscode-button-hoverBackground, #026ec1);
-  --btn2: var(--vscode-button-secondaryBackground, #313131);
-  --btn2-fg: var(--vscode-button-secondaryForeground, #cccccc);
-  --btn2-hover: var(--vscode-button-secondaryHoverBackground, #3c3c3c);
-  --badge: var(--vscode-badge-background, #616161);
-  --badge-fg: var(--vscode-badge-foreground, #f8f8f8);
-  --widget: var(--vscode-editorWidget-background, #202020);
-  --widget-border: var(--vscode-editorWidget-border, #454545);
-  --link: var(--vscode-textLink-foreground, #4daafc);
-  --pending: var(--vscode-charts-yellow, #cca700);
-  --ok: var(--vscode-charts-green, #89d185);
-  --err: var(--vscode-errorForeground, #f85149);
-  --warn: var(--vscode-editorWarning-foreground, #cca700);
-  --agent: var(--vscode-charts-purple, #b180d7);
+/* 只用灰阶：底色取侧栏背景的明度、去掉色相，其余层级按比例往白（深色主题）或黑（浅色主题）里混 */
+body {
+  color-scheme: dark;
+  --sidebar: var(--vscode-sideBar-background, #181818);
+  --bg: var(--sidebar);
+  --lift: #fff;
+  --fg: #ededed;
+  --fg-2: #c4c4c4;
+  --muted: #8f8f8f;
+  --faint: #616161;
+  --field: color-mix(in srgb, var(--bg), var(--lift) 6%);
+  --field-border: transparent;
+  --btn: color-mix(in srgb, var(--bg), var(--lift) 10%);
+  --btn-hover: color-mix(in srgb, var(--bg), var(--lift) 15%);
+  --chip: color-mix(in srgb, var(--bg), var(--lift) 14%);
+  --chip-shadow: none;
+  --raised: color-mix(in srgb, var(--bg), var(--lift) 5%);
+  --line: color-mix(in srgb, var(--bg), var(--lift) 8%);
+  --line-strong: color-mix(in srgb, var(--bg), var(--lift) 18%);
+  --hover: color-mix(in srgb, var(--lift) 6%, transparent);
+  --focus: color-mix(in srgb, var(--fg) 70%, transparent);
+  --selection: color-mix(in srgb, var(--fg) 24%, transparent);
+  --ink: var(--fg);
+  --ink-fg: var(--bg);
+  --ink-hover: #fff;
+  --pop-shadow: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.32);
   --mono: var(--vscode-editor-font-family, ui-monospace, 'SF Mono', Menlo, monospace);
   --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   --r: 4px;
   --row: 24px;
+}
+
+@supports (color: oklch(from red l c h)) {
+  body {
+    --bg: oklch(from var(--sidebar) l 0 0);
+  }
+}
+
+body.vscode-light {
+  color-scheme: light;
+  --sidebar: var(--vscode-sideBar-background, #f8f8f8);
+  --lift: #000;
+  --fg: #171717;
+  --fg-2: #3d3d3d;
+  --muted: #6b6b6b;
+  --faint: #a3a3a3;
+  --raised: #fff;
+  --chip: #fff;
+  --chip-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.1);
+  --ink-hover: #000;
+  --pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
+}
+
+body.vscode-high-contrast {
+  --sidebar: var(--vscode-sideBar-background, #000);
+  --fg: #fff;
+  --fg-2: #fff;
+  --muted: #d4d4d4;
+  --faint: #9e9e9e;
+  --field: var(--bg);
+  --field-border: var(--fg);
+  --line: color-mix(in srgb, var(--bg), var(--lift) 45%);
+  --line-strong: var(--fg);
+  --chip-shadow: inset 0 0 0 1px var(--fg);
+  --focus: var(--fg);
+  --pop-shadow: none;
+}
+
+body.vscode-high-contrast-light {
+  color-scheme: light;
+  --sidebar: var(--vscode-sideBar-background, #fff);
+  --lift: #000;
+  --fg: #000;
+  --fg-2: #000;
+  --muted: #3d3d3d;
+  --faint: #6b6b6b;
+  --raised: var(--bg);
+  --ink-hover: #000;
 }
 
 * {
@@ -54,6 +102,10 @@ body.mock-host {
   border-right: 1px solid var(--line);
 }
 
+::selection {
+  background: var(--selection);
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -64,7 +116,7 @@ button {
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
@@ -76,7 +128,8 @@ button:disabled {
 input,
 select {
   font: inherit;
-  color: var(--field-fg);
+  color: var(--fg);
+  caret-color: var(--fg);
 }
 
 .muted {
@@ -87,7 +140,7 @@ select {
 .change-items,
 .sel-menu {
   scrollbar-width: thin;
-  scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4)) transparent;
+  scrollbar-color: color-mix(in srgb, var(--fg) 18%, transparent) transparent;
 }
 
 .spacer {
@@ -154,34 +207,36 @@ select {
   border-color: var(--focus);
 }
 
+/* 连接状态：空心未连接，闪烁连接中，实心带光晕已连接，菱形断开 */
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex: none;
-  background: var(--muted);
-  opacity: 0.6;
+  box-shadow: inset 0 0 0 1.5px var(--faint);
 }
 
 .dot.is-connected {
-  background: var(--ok);
-  opacity: 1;
+  background: var(--fg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg) 14%, transparent);
 }
 
 .dot.is-opening {
-  background: var(--pending);
-  opacity: 1;
+  background: var(--fg);
+  box-shadow: none;
   animation: pulse 1s ease-in-out infinite;
 }
 
 .dot.is-lost {
-  background: var(--err);
-  opacity: 1;
+  border-radius: 1px;
+  background: var(--fg);
+  box-shadow: none;
+  transform: rotate(45deg) scale(0.75);
 }
 
 @keyframes pulse {
   50% {
-    opacity: 0.35;
+    opacity: 0.3;
   }
 }
 
@@ -201,8 +256,8 @@ select {
   height: var(--row);
   padding: 0 10px;
   border-radius: var(--r);
-  background: var(--btn2);
-  color: var(--btn2-fg);
+  background: var(--btn);
+  color: var(--fg);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -210,30 +265,31 @@ select {
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--btn2-hover);
+  background: var(--btn-hover);
 }
 
 .btn.primary,
 .btn.pick {
-  background: var(--btn);
-  color: var(--btn-fg);
+  background: var(--ink);
+  color: var(--ink-fg);
+  font-weight: 500;
 }
 
 .btn.primary:hover:not(:disabled),
 .btn.pick:hover {
-  background: var(--btn-hover);
+  background: var(--ink-hover);
 }
 
 .btn.pick.on {
   background: transparent;
-  color: var(--btn);
-  box-shadow: inset 0 0 0 1px var(--btn);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--fg);
 }
 
 .btn.ghost {
   background: transparent;
-  color: var(--agent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 55%, transparent);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 .icon-btn {
@@ -253,18 +309,20 @@ select {
 
 .icon-btn.on {
   color: var(--fg);
-  background: color-mix(in srgb, var(--focus) 22%, transparent);
+  background: color-mix(in srgb, var(--fg) 13%, transparent);
 }
 
 .link-btn {
-  color: var(--link);
+  color: var(--fg-2);
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
+  text-underline-offset: 2px;
 }
 
 .link-btn:hover {
+  color: var(--fg);
   text-decoration: underline;
 }
 
@@ -277,10 +335,22 @@ select {
 .notice {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 7px;
   padding: 6px 6px 6px 10px;
   border-bottom: 1px solid var(--line);
   font-size: 11.5px;
+  background: var(--field);
+  color: var(--fg-2);
+}
+
+.notice::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 9px;
+  border-radius: 50%;
+  background: var(--muted);
 }
 
 .notice span {
@@ -288,16 +358,35 @@ select {
   padding-top: 4px;
 }
 
-.notice.is-error {
-  background: color-mix(in srgb, var(--err) 14%, transparent);
-}
-
 .notice.is-warn {
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--fg);
 }
 
-.notice.is-info {
-  background: color-mix(in srgb, var(--focus) 12%, transparent);
+.notice.is-warn::before {
+  border-radius: 1px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  transform: rotate(45deg);
+}
+
+.notice.is-error {
+  background: var(--ink);
+  color: var(--ink-fg);
+  border-bottom-color: transparent;
+}
+
+.notice.is-error::before {
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.notice.is-error .icon-btn {
+  color: inherit;
+}
+
+.notice.is-error .icon-btn:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 /* ---------- 元素头部 ---------- */
@@ -383,8 +472,8 @@ select {
   padding: 0 6px;
   line-height: 16px;
   border-radius: 8px;
-  background: var(--badge);
-  color: var(--badge-fg);
+  color: var(--fg-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 .el-source {
@@ -457,7 +546,8 @@ select {
 }
 
 .tree-row.on {
-  background: var(--btn2-hover);
+  background: var(--chip);
+  box-shadow: var(--chip-shadow);
   color: var(--fg);
   cursor: default;
 }
@@ -478,7 +568,7 @@ select {
 
 .tree-comp {
   flex: none;
-  color: var(--link);
+  color: var(--fg-2);
   font-size: 10.5px;
 }
 
@@ -486,7 +576,7 @@ select {
   flex: none;
   margin-left: auto;
   font-size: 10px;
-  opacity: 0.6;
+  color: var(--faint);
 }
 
 .tree-more {
@@ -517,6 +607,7 @@ select {
   gap: 4px;
   font-weight: 600;
   font-size: 11.5px;
+  letter-spacing: 0.02em;
   height: 100%;
 }
 
@@ -597,7 +688,7 @@ select {
 }
 
 .nf:hover {
-  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  border-color: var(--line-strong);
 }
 
 .nf:focus-within,
@@ -606,7 +697,7 @@ select {
 }
 
 .nf.is-pending {
-  box-shadow: inset 2px 0 0 var(--pending);
+  box-shadow: inset 2px 0 0 var(--fg);
 }
 
 .nf-handle {
@@ -661,17 +752,18 @@ select {
 }
 
 .nf.is-dragging .nf-token {
-  color: var(--fg);
-  background: color-mix(in srgb, var(--focus) 30%, transparent);
+  color: var(--ink-fg);
+  background: var(--ink);
 }
 
+/* 交给 Agent 的标记统一用四角星，和按钮上的图标一致 */
 .nf-agent {
   flex: none;
-  width: 6px;
-  height: 6px;
-  margin: 0 5px 0 2px;
-  border-radius: 50%;
-  background: var(--agent);
+  width: 9px;
+  height: 9px;
+  margin: 0 4px 0 1px;
+  background: var(--fg-2);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
 }
 
 .ruler {
@@ -683,19 +775,21 @@ select {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  align-items: end;
-  padding: 5px 4px 4px;
-  background: var(--widget);
-  border: 1px solid var(--widget-border);
+  align-items: start;
+  padding: 0 4px 5px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--pop-shadow);
   pointer-events: none;
   font: 9.5px var(--mono);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
 .ruler span {
   display: grid;
+  grid-template-rows: 11px auto;
   justify-items: center;
   gap: 3px;
   min-width: 0;
@@ -706,27 +800,28 @@ select {
 
 .ruler i {
   width: 1px;
-  height: 6px;
+  height: 5px;
   background: currentColor;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .ruler span.on {
   color: var(--fg);
+  font-weight: 600;
 }
 
 .ruler span.on i {
-  height: 10px;
+  height: 11px;
   width: 2px;
-  background: var(--focus);
+  background: var(--fg);
   opacity: 1;
 }
 
 .ruler.is-exact {
   display: flex;
+  align-items: baseline;
   gap: 8px;
-  padding-left: 8px;
-  opacity: 0.85;
+  padding: 4px 8px 5px;
 }
 
 .ruler.is-exact b {
@@ -754,11 +849,11 @@ select {
 }
 
 .sel-btn:hover {
-  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  border-color: var(--line-strong);
 }
 
 .sel.is-pending .sel-btn {
-  box-shadow: inset 2px 0 0 var(--pending);
+  box-shadow: inset 2px 0 0 var(--fg);
 }
 
 .sel-value {
@@ -779,10 +874,10 @@ select {
   max-height: 240px;
   overflow-y: auto;
   padding: 3px;
-  background: var(--widget);
-  border: 1px solid var(--widget-border);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--pop-shadow);
 }
 
 .sel-menu button {
@@ -801,11 +896,12 @@ select {
 }
 
 .sel-menu button:hover {
-  background: var(--vscode-list-hoverBackground, var(--hover));
+  background: var(--hover);
 }
 
 .sel-menu button.on {
-  background: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--focus) 30%, transparent));
+  background: var(--chip);
+  box-shadow: var(--chip-shadow);
 }
 
 /* ---------- 分段 ---------- */
@@ -820,7 +916,7 @@ select {
 }
 
 .seg.is-pending {
-  box-shadow: inset 2px 0 0 var(--pending);
+  box-shadow: inset 2px 0 0 var(--fg);
 }
 
 .seg button {
@@ -836,7 +932,8 @@ select {
 }
 
 .seg button.on {
-  background: var(--btn2-hover);
+  background: var(--chip);
+  box-shadow: var(--chip-shadow);
   color: var(--fg);
 }
 
@@ -853,7 +950,7 @@ select {
   transform: rotate(-90deg);
 }
 
-/* ---------- 颜色 ---------- */
+/* ---------- 颜色（色块、色相条是页面里的真实颜色，不做去色） ---------- */
 
 .cf {
   min-width: 0;
@@ -872,11 +969,11 @@ select {
 }
 
 .cf-row:hover {
-  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+  border-color: var(--line-strong);
 }
 
 .cf.is-pending .cf-row {
-  box-shadow: inset 2px 0 0 var(--pending);
+  box-shadow: inset 2px 0 0 var(--fg);
 }
 
 .swatch,
@@ -913,8 +1010,8 @@ select {
   padding: 8px;
   display: grid;
   gap: 8px;
-  background: var(--widget);
-  border: 1px solid var(--widget-border);
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r);
 }
 
@@ -1035,13 +1132,18 @@ select {
 }
 
 .slider.is-pending {
-  box-shadow: inset 2px 0 0 var(--pending);
+  box-shadow: inset 2px 0 0 var(--fg);
   padding-left: 6px;
 }
 
 .slider input {
   height: 4px;
-  background: linear-gradient(to right, var(--focus) var(--p), var(--field) var(--p));
+  background: linear-gradient(to right, var(--fg) var(--p), var(--line-strong) var(--p));
+}
+
+.slider input::-webkit-slider-thumb {
+  background: var(--fg);
+  box-shadow: 0 0 0 3px var(--bg);
 }
 
 .slider-value {
@@ -1049,6 +1151,7 @@ select {
   width: 36px;
   text-align: right;
   font: 11.5px var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 改动清单 ---------- */
@@ -1072,13 +1175,15 @@ select {
 
 .count {
   font-size: 10.5px;
+  font-weight: 600;
   line-height: 16px;
   min-width: 16px;
   padding: 0 5px;
   border-radius: 8px;
-  background: var(--pending);
-  color: #000;
+  background: var(--ink);
+  color: var(--ink-fg);
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .change-items {
@@ -1102,6 +1207,7 @@ select {
   min-width: 0;
 }
 
+/* 状态靠形状区分：空心 未应用 → 半满 待确认 → 实心 已应用；菱形 失败或冲突；四角星 交给 Agent；短横 已还原 */
 .status {
   width: 7px;
   height: 7px;
@@ -1111,30 +1217,37 @@ select {
 }
 
 .s-pending {
-  background: var(--pending);
-}
-
-.s-applied {
-  background: var(--ok);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--fg);
 }
 
 .s-unverified {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--ok);
+  background: linear-gradient(90deg, var(--fg) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1.5px var(--fg);
+}
+
+.s-applied {
+  background: var(--fg);
 }
 
 .s-failed,
 .s-conflict {
-  background: var(--err);
+  border-radius: 1px;
+  background: var(--fg);
+  transform: rotate(45deg) scale(0.8);
 }
 
 .s-handoff {
-  background: var(--agent);
+  border-radius: 0;
+  background: var(--fg);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  transform: scale(1.35);
 }
 
 .s-reverted {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--muted);
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--muted);
 }
 
 .change-prop {
@@ -1165,7 +1278,7 @@ select {
 }
 
 .arrow {
-  color: var(--muted);
+  color: var(--faint);
 }
 
 .change-sub {
@@ -1183,7 +1296,7 @@ select {
 }
 
 .change-note.is-error {
-  color: var(--err);
+  color: var(--fg);
   font-family: var(--font);
 }
 

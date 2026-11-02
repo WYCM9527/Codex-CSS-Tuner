@@ -1,19 +1,23 @@
 import { OWN_ATTR, labelOf } from './util';
 
+// 只用灰阶，而且要在任意颜色的页面上都看得见：描边和外边距斜线都是黑白两层，填充用半透明中灰
 const STYLE = `
 :host { all: initial; }
 .box { position: fixed; pointer-events: none; box-sizing: border-box; border-style: solid; border-width: 0; }
-.m { border-color: rgba(246, 178, 107, 0.45); }
-.bd { border-color: rgba(255, 229, 153, 0.5); }
-.p { border-color: rgba(147, 196, 125, 0.5); }
-.c { background: rgba(111, 168, 220, 0.35); }
-.sel-outline { outline: 1.5px solid #8b5cf6; }
-.hov-outline { outline: 1px dashed #a78bfa; }
-.peer { outline: 1px dashed rgba(139, 92, 246, 0.75); }
-.tag { position: fixed; pointer-events: none; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace; color: #fff;
-  background: #4c1d95; padding: 2px 6px; border-radius: 4px; white-space: nowrap; max-width: 70vw; overflow: hidden;
-  text-overflow: ellipsis; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
-.tag .dim { opacity: 0.72; margin-left: 6px; }
+.m { border-color: transparent;
+  background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.3) 0 1px, rgba(255, 255, 255, 0.45) 1px 2px, transparent 2px 6px) border-box;
+  mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+.bd { border-color: rgba(128, 128, 128, 0.6); }
+.p { border-color: rgba(128, 128, 128, 0.36); }
+.c { background: rgba(128, 128, 128, 0.14); }
+.sel-outline { outline: 1.5px solid #fff; box-shadow: 0 0 0 2.5px #111; }
+.hov-outline { outline: 1px dashed #fff; box-shadow: 0 0 0 1px #111; }
+.peer { outline: 1px dotted #fff; box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.55); }
+.tag { position: fixed; pointer-events: none; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace; color: #f5f5f5;
+  background: #111; padding: 2px 6px; border-radius: 4px; white-space: nowrap; max-width: 70vw; overflow: hidden;
+  text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.3); }
+.tag .dim { opacity: 0.6; margin-left: 6px; }
 .hidden { display: none; }
 `;
 
