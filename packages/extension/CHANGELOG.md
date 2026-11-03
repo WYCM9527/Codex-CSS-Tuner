@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- English and Simplified Chinese: the panel, notifications, the reasons shown when a change can't be written back, and prompts handed to the Agent follow Cursor's display language. Command names and settings descriptions are translated too.
+- English store page with a Chinese version, a demo GIF and a screenshot.
+
 ## 0.1.0 (preview)
 
 First usable release.
