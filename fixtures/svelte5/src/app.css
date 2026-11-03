@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand: #3b5bdb;
+  --color-ink: #1c1c1e;
+  --color-paper: #f8f6f1;
+  --radius-card: 14px;
+  --spacing-gutter: 18px;
+}
+
+body {
+  background: var(--color-paper);
+}

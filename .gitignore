@@ -3,6 +3,9 @@ dist/
 .next/
 .next-webpack/
 next-env.d.ts
+.nuxt/
+.output/
+.svelte-kit/
 *.tsbuildinfo
 *.vsix
 .DS_Store

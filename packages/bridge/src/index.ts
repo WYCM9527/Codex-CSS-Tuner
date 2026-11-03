@@ -7,7 +7,7 @@ import { pageInfo } from './page';
 import { pickOn, setPick } from './pick';
 import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders } from './preview';
 import { snapshot } from './snapshot';
-import { findBySource, sameSourceElements, sourceOf, warmSources } from './source';
+import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
 import { verify } from './verify';
@@ -180,14 +180,19 @@ class Bridge {
 
   private sendHello() {
     this.helloPending = false;
-    void loadSheetSources().then(() => {
-      this.send({ t: 'hello', session: this.cfg.session, page: pageInfo() });
-      warmSources(0);
-    });
+    void whenHydrated()
+      .then(() => loadSheetSources())
+      .then(() => {
+        this.send({ t: 'hello', session: this.cfg.session, page: pageInfo() });
+        warmSources(0);
+      });
   }
 
+  /** 激活之前服务端渲染的样式表还会被换掉，等激活完再报 */
   private sendPage() {
-    void loadSheetSources().then(() => this.send({ t: 'page', page: pageInfo() }));
+    void whenHydrated()
+      .then(() => loadSheetSources())
+      .then(() => this.send({ t: 'page', page: pageInfo() }));
   }
 
   private textTimer = 0;
@@ -312,6 +317,7 @@ class Bridge {
   private handlers: Handlers = {
     ping: () => 'pong',
     pageInfo: async () => {
+      await whenHydrated();
       await loadSheetSources();
       return pageInfo();
     },

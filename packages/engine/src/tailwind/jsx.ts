@@ -14,6 +14,10 @@ export interface Segment {
   fragileEnd: boolean;
   /** 来自同文件里只用了一次的常量 */
   viaConst: string | null;
+  /** 整段就是一个类名，不能删空：对象的标识符键（换成不是标识符的类名要加引号）、Svelte 的 class: 指令 */
+  single?: 'key' | 'directive';
+  /** 类名同时是变量名（{ active } 简写、class:active），改了会断掉绑定 */
+  locked?: boolean;
 }
 
 export interface ClassToken {
@@ -45,6 +49,8 @@ export interface ClassSite {
   recipe: { line: number; column: number } | null;
   /** 类名字符串字面量的路径名，如 `buttonVariants.size.default` */
   name?: string;
+  /** 没有类名属性时插入的属性名：JSX 是 className，Vue / Svelte 模板是 class */
+  insertAttr?: string;
   segments: Segment[];
   tokens: ClassToken[];
 }
@@ -233,7 +239,7 @@ export function locateLiteralSite(source: string, filename: string, line: number
   return near ?? { error: token ? msg('engine.jsx.noClassStringWith', { line, token }) : msg('engine.jsx.noClassString', { line }) };
 }
 
-function tokenize(source: string, site: ClassSite) {
+export function tokenize(source: string, site: ClassSite) {
   for (const seg of site.segments) {
     const text = source.slice(seg.start, seg.end);
     for (const m of text.matchAll(/\S+/g)) {
@@ -241,7 +247,7 @@ function tokenize(source: string, site: ClassSite) {
       const end = start + m[0].length;
       const touchesStart = seg.fragileStart && start === seg.start;
       const touchesEnd = seg.fragileEnd && end === seg.end;
-      site.tokens.push({ text: m[0], start, end, seg, editable: !touchesStart && !touchesEnd });
+      site.tokens.push({ text: m[0], start, end, seg, editable: !touchesStart && !touchesEnd && !seg.locked });
     }
   }
 }
@@ -330,103 +336,112 @@ function buildSite(source: string, el: Node, declarators: Map<string, Node[]>, r
   site.attrRange = { start: attr.start, end: attr.end };
   if (attr.value) site.passesClassName = mentionsClassName(attr.value);
 
-  const push = (start: number, end: number, conditional: boolean, fragileStart = false, fragileEnd = false, viaConst: string | null = null) => {
-    site.segments.push({ start, end, conditional, fragileStart, fragileEnd, viaConst });
-  };
-
-  const collect = (expr: Node | null | undefined, conditional: boolean, viaConst: string | null, depth = 0) => {
-    if (!expr || depth > 6) {
-      site.dynamic = true;
-      return;
-    }
-    switch (expr.type) {
-      case 'StringLiteral':
-        push(expr.start + 1, expr.end - 1, conditional, false, false, viaConst);
-        return;
-      case 'TemplateLiteral': {
-        const qs: Node[] = expr.quasis;
-        qs.forEach((q, i) => {
-          push(q.start, q.end, conditional, i > 0, i < qs.length - 1, viaConst);
-        });
-        for (const e of expr.expressions) collect(e, conditional, viaConst, depth + 1);
-        return;
-      }
-      case 'LogicalExpression':
-        if (expr.operator === '&&') {
-          collect(expr.right, true, viaConst, depth + 1);
-        } else {
-          collect(expr.left, true, viaConst, depth + 1);
-          collect(expr.right, true, viaConst, depth + 1);
-        }
-        return;
-      case 'ConditionalExpression':
-        collect(expr.consequent, true, viaConst, depth + 1);
-        collect(expr.alternate, true, viaConst, depth + 1);
-        return;
-      case 'CallExpression': {
-        const name = calleeName(expr);
-        if (name && MERGE_FNS.has(name)) site.merges = true;
-        if (!name || !CLASS_FNS.has(name)) {
-          site.dynamic = true;
-          const decls = name ? (declarators.get(name) ?? []) : [];
-          const base = decls.length === 1 ? recipeBase(decls[0].init) : null;
-          if (base && !site.recipe) {
-            site.recipe = { line: base.loc.start.line, column: base.loc.start.column + 1 };
-            if (calleeName(decls[0].init) === 'tv') site.merges = true;
-          }
-          return;
-        }
-        for (const a of expr.arguments) collect(a, conditional, viaConst, depth + 1);
-        return;
-      }
-      case 'ArrayExpression':
-        for (const a of expr.elements) collect(a, conditional, viaConst, depth + 1);
-        return;
-      case 'ObjectExpression':
-        for (const p of expr.properties) {
-          if (p.type === 'ObjectProperty' && !p.computed && p.key.type === 'StringLiteral') push(p.key.start + 1, p.key.end - 1, true, false, false, viaConst);
-          else if (p.type === 'ObjectProperty' && !p.computed && p.key.type === 'Identifier') push(p.key.start, p.key.end, true, false, false, viaConst);
-          else site.dynamic = true;
-        }
-        return;
-      case 'Identifier': {
-        const decls = declarators.get(expr.name) ?? [];
-        // 只有同文件里唯一声明、只被引用一次的常量才当作这个调用位置自己的类名
-        if (decls.length === 1 && decls[0].init && (refs.get(expr.name) ?? 0) === 1) {
-          collect(decls[0].init, conditional, expr.name, depth + 1);
-        } else {
-          site.dynamic = true;
-        }
-        return;
-      }
-      case 'TSAsExpression':
-      case 'TSSatisfiesExpression':
-      case 'TSNonNullExpression':
-      case 'ParenthesizedExpression':
-        collect(expr.expression, conditional, viaConst, depth + 1);
-        return;
-      case 'BinaryExpression':
-        if (expr.operator === '+') {
-          collect(expr.left, conditional, viaConst, depth + 1);
-          collect(expr.right, conditional, viaConst, depth + 1);
-          return;
-        }
-        site.dynamic = true;
-        return;
-      case 'NullLiteral':
-      case 'BooleanLiteral':
-        return;
-      default:
-        site.dynamic = true;
-    }
-  };
-
   const v: Node | null = attr.value;
   if (!v) return site;
-  if (v.type === 'StringLiteral') collect(v, false, null);
-  else if (v.type === 'JSXExpressionContainer') collect(v.expression, false, null);
+  if (v.type === 'StringLiteral') collectClasses(site, v, { declarators, refs });
+  else if (v.type === 'JSXExpressionContainer') collectClasses(site, v.expression, { declarators, refs });
   else site.dynamic = true;
 
   tokenize(source, site);
   return site;
+}
+
+/** 同文件里的变量声明和引用次数，用来把只用了一次的常量当作调用位置自己的类名 */
+export interface Bindings {
+  declarators: Map<string, Node[]>;
+  refs: Map<string, number>;
+}
+
+const NO_BINDINGS: Bindings = { declarators: new Map(), refs: new Map() };
+
+/** 把类名表达式里能直接改写的字面量收进 site.segments；看不懂的部分记成 dynamic */
+export function collectClasses(site: ClassSite, expr: Node | null | undefined, b: Bindings = NO_BINDINGS, conditional = false, viaConst: string | null = null, depth = 0) {
+  const push = (start: number, end: number, cond: boolean, fragileStart = false, fragileEnd = false, extra: Pick<Segment, 'single' | 'locked'> = {}) => {
+    site.segments.push({ start, end, conditional: cond, fragileStart, fragileEnd, viaConst, ...extra });
+  };
+  const collect = (e: Node | null | undefined, cond: boolean) => collectClasses(site, e, b, cond, viaConst, depth + 1);
+  if (!expr || depth > 6) {
+    site.dynamic = true;
+    return;
+  }
+  switch (expr.type) {
+    case 'StringLiteral':
+      push(expr.start + 1, expr.end - 1, conditional);
+      return;
+    case 'TemplateLiteral': {
+      const qs: Node[] = expr.quasis;
+      qs.forEach((q, i) => {
+        push(q.start, q.end, conditional, i > 0, i < qs.length - 1);
+      });
+      for (const e of expr.expressions) collect(e, conditional);
+      return;
+    }
+    case 'LogicalExpression':
+      if (expr.operator === '&&') {
+        collect(expr.right, true);
+      } else {
+        collect(expr.left, true);
+        collect(expr.right, true);
+      }
+      return;
+    case 'ConditionalExpression':
+      collect(expr.consequent, true);
+      collect(expr.alternate, true);
+      return;
+    case 'CallExpression': {
+      const name = calleeName(expr);
+      if (name && MERGE_FNS.has(name)) site.merges = true;
+      if (!name || !CLASS_FNS.has(name)) {
+        site.dynamic = true;
+        const decls = name ? (b.declarators.get(name) ?? []) : [];
+        const base = decls.length === 1 ? recipeBase(decls[0].init) : null;
+        if (base && !site.recipe) {
+          site.recipe = { line: base.loc.start.line, column: base.loc.start.column + 1 };
+          if (calleeName(decls[0].init) === 'tv') site.merges = true;
+        }
+        return;
+      }
+      for (const a of expr.arguments) collect(a, conditional);
+      return;
+    }
+    case 'ArrayExpression':
+      for (const a of expr.elements) collect(a, conditional);
+      return;
+    case 'ObjectExpression':
+      for (const p of expr.properties) {
+        if (p.type === 'ObjectProperty' && !p.computed && p.key.type === 'StringLiteral') push(p.key.start + 1, p.key.end - 1, true);
+        else if (p.type === 'ObjectProperty' && !p.computed && p.key.type === 'Identifier') push(p.key.start, p.key.end, true, false, false, { single: 'key', locked: !!p.shorthand });
+        else site.dynamic = true;
+      }
+      return;
+    case 'Identifier': {
+      const decls = b.declarators.get(expr.name) ?? [];
+      // 只有同文件里唯一声明、只被引用一次的常量才当作这个调用位置自己的类名
+      if (decls.length === 1 && decls[0].init && (b.refs.get(expr.name) ?? 0) === 1) {
+        collectClasses(site, decls[0].init, b, conditional, expr.name, depth + 1);
+      } else {
+        site.dynamic = true;
+      }
+      return;
+    }
+    case 'TSAsExpression':
+    case 'TSSatisfiesExpression':
+    case 'TSNonNullExpression':
+    case 'ParenthesizedExpression':
+      collect(expr.expression, conditional);
+      return;
+    case 'BinaryExpression':
+      if (expr.operator === '+') {
+        collect(expr.left, conditional);
+        collect(expr.right, conditional);
+        return;
+      }
+      site.dynamic = true;
+      return;
+    case 'NullLiteral':
+    case 'BooleanLiteral':
+      return;
+    default:
+      site.dynamic = true;
+  }
 }

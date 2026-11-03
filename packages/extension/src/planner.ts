@@ -138,7 +138,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
   const pageUrl = page.url;
   const w = el.winners[prop];
   const srcFile = el.source ? project.fileFor(pageUrl, el.source.path, el.source.file) : null;
-  const srcLabel = srcFile && el.source ? `${project.label(srcFile)}:${el.source.line} className` : '';
+  const srcLabel = srcFile && el.source ? `${project.label(srcFile)}:${el.source.line} ${classAttr(srcFile)}` : '';
   const inline: PreviewTarget = { kind: 'inline', uid: el.uid, sourceKey: sourceKeyOf(el) };
   const instanceAffects = el.source ? el.sameSource : 1;
   const twPage = page.sheets.some((s) => s.tailwind);
@@ -168,7 +168,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
       column: x.c.source.column,
       affects: x.c.same,
       depth: x.depth,
-      label: `${project.label(x.file)}:${x.c.source.line} <${x.c.component ?? t('plan.component')}> className${override ? t('plan.override') : ''}`,
+      label: `${project.label(x.file)}:${x.c.source.line} <${x.c.component ?? t('plan.component')}> ${classAttr(x.file)}${override ? t('plan.override') : ''}`,
       literal: false,
       override,
     });
@@ -373,6 +373,7 @@ export function planText(el: ElementSnapshot, segment: number, ctx: TextContext)
     };
   }
   if (!el.source) return agent(t('plan.noJsxSource'));
+  if (isSfc(el.source.path)) return agent(t('plan.sfc.cssOnly'));
 
   /** 这一层位置写着的文字：字面量直接改，t() 调用改多语言文件；动态的记下原因，接着往外层找 */
   const reasons: string[] = [];
@@ -461,6 +462,12 @@ export interface OrderPlan {
 
 const locOf = (s: SourceLoc) => `${s.path}:${s.line}:${s.column}`;
 
+/** Vue / Svelte 组件：目前只写回样式（类名和样式块），文字、换序和属性交给 Agent */
+const isSfc = (path: string) => /\.(?:vue|svelte)(?:[?#]|$)/i.test(path);
+
+/** 标签上显示的类名属性名 */
+const classAttr = (file: string) => (isSfc(file) ? 'class' : 'className');
+
 /**
  * 选中元素所在兄弟组的换序写到哪：纯 HTML 改 HTML 文件，.map() 渲染的列表改数组字面量，
  * 写死的兄弟改 JSX；都不行就交给 Agent，并说明原因
@@ -503,6 +510,7 @@ export function planOrder(el: ElementSnapshot, ctx: OrderContext): OrderPlan | n
   }
 
   const fallbackKey = `order|agent|${units.map((u) => (u.source ? locOf(u.source) : u.uids[0])).join(',')}`;
+  if (el.source && isSfc(el.source.path)) return agent(t('plan.sfc.cssOnly'), fallbackKey);
   if (info.mapped) {
     const src = units[0].source;
     const file = src ? project.fileFor(page.url, src.path, src.file) : null;

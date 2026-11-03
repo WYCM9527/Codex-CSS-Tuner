@@ -1,5 +1,5 @@
 import type { PreviewTarget, SourceLoc, TextInfo, TextSegment } from '@css-tuner/protocol';
-import { fiberOf, propsChain, sameSourceElements, type DebugNode } from './source';
+import { fiberOf, isPlainHtml, propsChain, sameSourceElements, type DebugNode } from './source';
 import { elOf, isOwnNode } from './util';
 
 /** 双击编辑时临时包住文本节点的那层 span */
@@ -259,7 +259,7 @@ export async function textInfo(el: Element, source: SourceLoc | null): Promise<T
     const value = baseOf(node);
     return { value, child: host && !source?.viaOwner ? childIndex(node, host) : null, props: matching(chain, value) };
   });
-  return { segments, htmlPath: host ? null : htmlPathOf(el), lang: document.documentElement.lang || null };
+  return { segments, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null, lang: document.documentElement.lang || null };
 }
 
 /** 不刷新页面，重新取一次页面 HTML，按路径读出那段文字（纯 HTML 写回后校验用） */

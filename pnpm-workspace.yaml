@@ -4,6 +4,10 @@ packages:
   - fixtures/tw3-react
   - fixtures/react-css
   - fixtures/next16
+  - fixtures/vue3
+  - fixtures/svelte5
+  - fixtures/nuxt
+  - fixtures/sveltekit
   - fixtures/demo
 
 allowBuilds:
@@ -25,3 +29,10 @@ minimumReleaseAgeExclude:
   - '@next/swc-win32-arm64-msvc@16.4.4'
   - '@next/swc-win32-x64-msvc@16.4.4'
   - next@16.4.4
+  - '@nuxt/kit@4.6.4'
+  - '@nuxt/nitro-server@4.6.4'
+  - '@nuxt/schema@4.6.4'
+  - '@nuxt/vite-builder@4.6.4'
+  - '@nuxt/vite-server@4.6.4'
+  - nuxt@4.6.4
+  - unrouting@0.3.2

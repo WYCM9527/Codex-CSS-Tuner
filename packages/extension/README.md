@@ -10,15 +10,15 @@ It does one job: **adjust styles, text, order and props inside Cursor, see the r
 
 ## Features
 
-- **Pick elements**: hover to highlight, click to select. The panel shows a breadcrumb and the component tree, and marks every instance rendered by the same JSX.
+- **Pick elements**: hover to highlight, click to select. The panel shows a breadcrumb and the component tree, and marks every instance rendered by the same line of JSX or template.
 - **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, radius, effects and CSS variables. Drag or scrub numbers, pick colors, and snap to your theme scale and CSS variables; hold Alt for exact values.
 - **Edit text**: the Content section lists the selected element's text, split into runs around inline tags such as `<b>`. Edit a run there, or double-click text inside the selected element on the page and type in place. Enter adds the change to the list; Esc undoes it.
 - **Reorder siblings**: drag the handle next to the selected element's tag on the page, drag its row in the Structure tree, or use the move buttons in the header. The page previews the new order with CSS `order` (flex and grid) or transforms instead of moving DOM nodes, so the change is marked as a simulated preview until you apply it.
 - **Edit component props**: the Props section lists the props that the component rendering the selected element receives at its call site. Strings, numbers and booleans can be edited. Variants of a `cva` / `tailwind-variants` recipe and string literal union types (from TypeScript) are offered as options, including variants the call site doesn't set. The page shows the new value right away through React's DevTools hook, and every instance created by the same call site changes together. Server components are read-only on the page and change once you apply.
 - **Live preview**: changes only touch the page until you apply them.
 - **Deterministic write-back**: clicking Apply writes each change to where the style comes from:
-  - Tailwind classes (Tailwind 4, or Tailwind 3 with the theme from `tailwind.config`): string and template literals in JSX, `clsx` / `cn` / `twMerge` arguments, `cva` base classes and variants, class-name constants, and the `className` passed in at a component's call site. Only the responsive variant that is currently active is changed (for example `md:px-5` at desktop width). Off-scale values become arbitrary-value classes, or go to the Agent if you prefer.
-  - Plain CSS: the declaration in the matching rule. Shorthands are edited by position (`padding: 16px 20px` → `24px 20px 16px`). Nesting with `&`, `@import`ed files and CSS Modules are supported; hashed class names map back to the class in your source. When no rule sets the property, it is added to the element's own rule.
+  - Tailwind classes (Tailwind 4, or Tailwind 3 with the theme from `tailwind.config`): string and template literals in JSX, `clsx` / `cn` / `twMerge` arguments, `cva` base classes and variants, class-name constants, and the `className` passed in at a component's call site. In Vue and Svelte components: the `class` attribute, `:class` strings, arrays and object literals, `class:` directives, and the `class` written where the component is used. Only the responsive variant that is currently active is changed (for example `md:px-5` at desktop width). Off-scale values become arbitrary-value classes, or go to the Agent if you prefer.
+  - Plain CSS: the declaration in the matching rule. Shorthands are edited by position (`padding: 16px 20px` → `24px 20px 16px`). Nesting with `&`, `@import`ed files and CSS Modules are supported; hashed class names map back to the class in your source. Vue `<style scoped>` and Svelte `<style>` blocks are edited in the component file; selectors with `:deep()`, `:global()` and similar are matched as written. When no rule sets the property, it is added to the element's own rule.
   - CSS variables: the definition (`:root`, Tailwind's `@theme`), so everything that uses the variable changes together. Built-in Tailwind variables such as `--spacing` are written into `@theme`.
   - Text: the text in the JSX. When a component renders text it receives as a prop, the string at the call site is changed instead (`<Card title="…">` or its children), so only that use changes. Messages from `t('key')` (react-i18next, next-intl) are edited in the JSON file of the language shown on the page, picked from the route (`/zh/…`) and then `<html lang>`. In plain HTML, the text in the HTML file, with characters such as `&` and `<` escaped again.
   - Order: siblings written out in JSX are moved within the parent's JSX children; a comment on its own line above an item moves with it. For a list rendered with `.map()` over a constant array literal (in the same file, or imported through relative paths), the array items are reordered instead. In plain HTML, the child elements in the HTML file; `<script>`, `<style>` and similar elements stay where they are.
@@ -41,9 +41,11 @@ It does one job: **adjust styles, text, order and props inside Cursor, see the r
 | Next.js 16 App Router, `next dev` (Turbopack) and `next dev --webpack`, server and client components | Tested |
 | react-i18next, next-intl with JSON message files | Text editing, tested |
 | Component props | Client components in React 18 / 19 and Next.js, tested; server components are written back but not previewed |
+| Vue 3 + Vite, Nuxt 4 (`nuxt dev`) | Styles only (classes and `<style>` blocks), tested |
+| Svelte 5 + Vite, SvelteKit 3 (`vite dev`) | Styles only (classes and `<style>` blocks), tested |
 | Plain HTML + CSS (opened with the built-in static server) | CSS rules, text and order |
 
-The page must run in development mode: locating an element's source relies on React's development build and the dev server's source maps.
+The page must run in development mode: locating an element's source relies on React's development build, the location data Vue and Svelte attach to elements in development, and the dev server's source maps.
 
 ## Install
 
@@ -90,6 +92,7 @@ For plain HTML projects, right-click an HTML file or folder in the Explorer and 
 - **The order preview is simulated**: flex and grid use `order`; other layouts shift elements with transforms, so with floats, absolute positioning or wrapping inline content the preview can differ slightly from the result.
 - **Text is edited as plain text on one line**: line breaks become spaces, and inline tags such as `<b>` stay where they are, so each run around them is edited on its own. Only the message file of the current language changes; other languages are left as they are. Text produced by code (expressions, template strings, custom translation helpers, `t.rich`) and messages with placeholders go to the Agent.
 - **Props**: only props written at the call site are listed, plus `cva` / `tailwind-variants` variants that the component passes to its own recipe (under the same name, as the whole props object, or through a spread). Objects, functions and elements are shown read-only. The preview hooks into React as the page loads, so a page that was already open before the tuner connected needs one reload; the panel offers a button for it. Options from TypeScript come from the TypeScript language service, which can take a few seconds to start in a large project.
+- **Vue and Svelte: styles only**: text, reordering and props go to the Agent. Templates must be HTML (Pug isn't supported), and only plain-CSS `<style>` blocks are edited; changes to `lang="scss"`, `less` or `stylus` blocks go to the Agent. Elements rendered by components from `node_modules`, or by Vue components without a template (render functions, JSX), map to the tag where your code uses the component. In Vue only the component's root element maps, since that is where `class` falls through (not with `inheritAttrs: false`); in Svelte a class written there takes effect only if the component applies its `class` prop. Only Vite dev servers are supported; Nuxt and SvelteKit use one.
 - **Next.js source locations** come from `/__nextjs_original-stack-frames`, an internal dev server endpoint used by the error overlay, which is not a public API either. Both Turbopack (`next dev`) and webpack (`next dev --webpack`) dev modes are tested. Hot reload of server components can take a few seconds, and verification waits for it. In webpack mode, editing a CSS Module can make Next.js reload the whole page.
 - **Hot reload edge cases**: an element rendered before a hot reload and selected for the first time after it may point to an old line number. If a location looks wrong, reload the page.
 - **CSS Modules** class names are matched by the longest source class name contained in the hashed name, so projects with a custom `generateScopedName` may not map correctly.
@@ -108,7 +111,7 @@ For plain HTML projects, right-click an HTML file or folder in the Explorer and 
 - Logs are in the **CSS Tuner** channel of the Output panel.
 - Run "CSS Tuner: Self-Check" to see the result of each check.
 - If the page's CSP blocks the WebSocket, the extension switches to an `executeJavaScript` channel automatically. Everything still works, just a little slower.
-- If the panel shows "No JSX source location found" for a selected element, make sure the page runs in development mode with React's development build.
+- If the panel shows "No source location found" for a selected element, make sure the page is served by the dev server in development mode (for React, with React's development build).
 
 ## License
 

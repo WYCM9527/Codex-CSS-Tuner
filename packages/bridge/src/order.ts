@@ -1,6 +1,7 @@
 import type { OrderInfo, OrderUnit, PreviewTarget, SourceLoc } from '@css-tuner/protocol';
+import { flowOffsets } from './drop';
 import { coarse, hasRun, sameOrder, textSig } from './sig';
-import { fiberOf, fiberSource, locKey, nameOf, ownerOf, sameSourceElements, type DebugNode } from './source';
+import { fiberOf, fiberSource, isPlainHtml, locKey, nameOf, ownerOf, sameSourceElements, type DebugNode } from './source';
 import { baseOf, elementAtPath, htmlPathOf } from './text';
 import { elOf, isOwnNode, labelOf, uidOf } from './util';
 
@@ -216,7 +217,7 @@ export async function orderInfo(el: Element): Promise<OrderInfo | undefined> {
     name: u.name,
     sig: u.els.map(sigOf).join(' + '),
   }));
-  return { units: out, index, ...layoutOf(p, units), mapped, htmlPath: react ? null : htmlPathOf(el) };
+  return { units: out, index, ...layoutOf(p, units), mapped, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null };
 }
 
 export const unitSig = (u: Unit) => u.els.map(sigOf).join(' + ');
@@ -272,7 +273,7 @@ const styled = (e: Element): e is HTMLElement => e instanceof HTMLElement || e i
 
 /**
  * 一组兄弟按新顺序摆出来要写的内联样式：flex / grid 给所有子元素编 order，
- * 其余按各项大小和原来的间距重新排一遍，算出每项要挪的距离（行内元素用相对定位，transform 对它不起作用）
+ * 其余按量到的位置算出每项要挪的距离（行内元素用相对定位，transform 对它不起作用）
  */
 function layOut(p: Element, units: Unit[], order: number[], out: Decls) {
   const { layout, axis } = layoutOf(p, units);
@@ -299,28 +300,19 @@ function layOut(p: Element, units: Unit[], order: number[], out: Decls) {
   }
   const boxes = units.map(boxOf);
   if (boxes.some((b) => !b)) return;
-  const bx = boxes as DOMRect[];
-  const lead = (b: DOMRect) => (axis === 'y' ? b.top : b.left);
-  const size = (b: DOMRect) => (axis === 'y' ? b.height : b.width);
-  let pos = lead(bx[0]);
-  for (let k = 0; k < units.length; k++) {
-    const i = order[k];
-    const d = pos - lead(bx[i]);
-    for (const e of units[i].els) if (styled(e) && d) out.set(e, shift(e, axis, d));
-    pos += size(bx[i]);
-    if (k + 1 < units.length) pos += lead(bx[k + 1]) - (lead(bx[k]) + size(bx[k]));
-  }
+  flowOffsets(boxes as DOMRect[], order, axis).forEach(([dx, dy], i) => {
+    for (const e of units[i].els) if (styled(e) && (dx || dy)) out.set(e, shift(e, dx, dy));
+  });
 }
 
-function shift(e: HTMLElement, axis: 'x' | 'y', d: number): Record<string, string> {
+function shift(e: HTMLElement, dx: number, dy: number): Record<string, string> {
   const cs = getComputedStyle(e);
   if (cs.display === 'inline') {
     if (cs.position !== 'static' && cs.position !== 'relative') return {};
-    const side = axis === 'y' ? 'top' : 'left';
-    const base = cs.position === 'relative' ? parseFloat(cs.getPropertyValue(side)) || 0 : 0;
-    return { position: 'relative', [side]: `${base + d}px` };
+    const base = (side: 'top' | 'left') => (cs.position === 'relative' ? parseFloat(cs.getPropertyValue(side)) || 0 : 0);
+    return { position: 'relative', ...(dy ? { top: `${base('top') + dy}px` } : {}), ...(dx ? { left: `${base('left') + dx}px` } : {}) };
   }
-  const move = axis === 'y' ? `translate(0px, ${d}px)` : `translate(${d}px, 0px)`;
+  const move = `translate(${dx}px, ${dy}px)`;
   return { transform: cs.transform && cs.transform !== 'none' ? `${move} ${cs.transform}` : move };
 }
 

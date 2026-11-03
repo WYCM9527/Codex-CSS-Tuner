@@ -1,8 +1,9 @@
 import postcss, { type AtRule, type ChildNode, type Container, type Declaration, type Rule } from 'postcss';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { aliasesOf, normalizeCondition, normalizeSelector, resolveNested, shorthandsOf, splitTopLevel, t } from '@css-tuner/protocol';
 import type { EditResult, TextEdit } from '../types';
 import { physical, physicalSet } from '../physical';
+import { sfcKind, styleSource, unscopePage, unscopeSource } from '../sfc';
 import { isCssModule, localClasses, localizeSelector } from './modules';
 
 export interface CssRuleSpec {
@@ -64,9 +65,23 @@ function collect(entry: string, read: (f: string) => string | null): { rules: Fo
       errors.push(t('engine.readFailed', { file }));
       return;
     }
+    const sfc = !!sfcKind(file);
+    let css = source;
+    if (sfc) {
+      // 只解析 <style> 块，其余换成空格：规则的偏移和行列仍是整个文件里的
+      try {
+        const s = styleSource(source, file);
+        for (const lang of s.skipped) errors.push(t('engine.sfc.styleLang', { file: basename(file), lang }));
+        if (!s.css) return;
+        css = s.css;
+      } catch (e) {
+        errors.push((e as Error).message);
+        return;
+      }
+    }
     let root: postcss.Root;
     try {
-      root = postcss.parse(source, { from: file });
+      root = postcss.parse(css, { from: file });
     } catch (e) {
       errors.push(t('engine.parseFailed', { file, error: (e as Error).message }));
       return;
@@ -77,7 +92,7 @@ function collect(entry: string, read: (f: string) => string | null): { rules: Fo
         if (node.type === 'rule') {
           const sel = node.selector;
           const full = parentSel ? splitTopLevel(sel).map((s) => resolveNested(parentSel, s.trim())).join(', ') : sel;
-          const norm = normalizeSelector(full);
+          const norm = normalizeSelector(sfc ? unscopePage(unscopeSource(full)) : full);
           rules.push({ rule: node, file, source, fullSelector: full, key: `${norm}|${condKey(conds)}`, flatKey: `${norm}|${condKey(conds.filter((c) => !c.startsWith('@layer')))}` });
           walk(node, full, conds);
         } else if (node.type === 'atrule') {
@@ -122,7 +137,7 @@ function localized(rules: FoundRule[], fullSelector: string): string | null {
 
 function pick(rules: FoundRule[], errors: string[], spec: RuleKey): FoundRule | { error: string } {
   if (!rules.length && errors.length) return { error: errors[0] };
-  const keyOf = (sel: string) => `${normalizeSelector(sel)}|${condKey(spec.conditions)}`;
+  const keyOf = (sel: string) => `${normalizeSelector(unscopePage(sel))}|${condKey(spec.conditions)}`;
   let same = rules.filter((r) => r.key === keyOf(spec.fullSelector));
   if (!same.length) {
     const local = localized(rules, spec.fullSelector);
@@ -157,6 +172,7 @@ export function lookupCssRule(index: CssRuleIndex, spec: RuleKey): { file: strin
 
 /** 摘要和标签里显示的选择器：嵌套规则显示展开后的写法，CSS Modules 显示本地类名 */
 function sourceSelector(found: FoundRule, pageSelector: string): string {
+  if (sfcKind(found.file)) return found.fullSelector;
   if (!pageSelector.includes('&') && !isCssModule(found.file)) return pageSelector;
   return found.fullSelector.replace(/:is\(([^(),]+)\)/g, '$1');
 }

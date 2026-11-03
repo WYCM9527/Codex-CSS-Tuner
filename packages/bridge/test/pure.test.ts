@@ -3,7 +3,7 @@ import { maxSpecificity, resolveNested, specificity, splitTopLevel, staticSelect
 import { clientModuleUrl, distDirOf, isWebpackModule, joinPath, projectRootOf, serverModuleUrl, webpackCssSources } from '../src/next';
 import { decodeMappings, extractMapUrl, filePathOf, jsxLineShift, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
 import { unescapeIdent } from '../src/util';
-import { dropSlot, slotLine } from '../src/drop';
+import { dropSlot, flowOffsets, slotLine } from '../src/drop';
 import { hasRun, sameOrder, textSig } from '../src/sig';
 
 const box = (x: number, y: number, w: number, h: number) => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h }) as DOMRect;
@@ -24,6 +24,28 @@ describe('拖动换序的落点', () => {
     expect(dropSlot(cols, 55, 10, 'x')).toBe(1);
     expect(slotLine(cols, 1, 'x')).toMatchObject({ x: 44, w: 2, y: 0, h: 20 });
     expect(slotLine(rows, 3, 'y')).toMatchObject({ x: 0, w: 100, y: 81 });
+  });
+});
+
+describe('换序预览的位移', () => {
+  it('排成一列：按各项高度和原来的间距重新排', () => {
+    const rows = [box(0, 0, 100, 20), box(0, 30, 100, 40), box(0, 80, 100, 20)];
+    expect(flowOffsets(rows, [1, 0, 2], 'y')).toEqual([[0, 50], [0, -30], [0, 0]]);
+  });
+
+  it('排成一行：按各项宽度和原来的间距重新排', () => {
+    const cols = [box(0, 0, 40, 20), box(50, 0, 60, 20)];
+    expect(flowOffsets(cols, [1, 0], 'x')).toEqual([[70, 0], [-50, 0]]);
+  });
+
+  it('标题下面并排两个按钮：两个按钮左右互换，不是在竖直方向上挪 0', () => {
+    const card = [box(0, 0, 100, 20), box(0, 30, 100, 40), box(0, 80, 40, 20), box(50, 80, 40, 20)];
+    expect(flowOffsets(card, [0, 1, 3, 2], 'y')).toEqual([[0, 0], [0, 0], [50, 0], [-50, 0]]);
+  });
+
+  it('一行排满折到下一行：每项挪到新位置上原来那一项的地方', () => {
+    const tags = [box(0, 0, 40, 20), box(50, 0, 40, 20), box(0, 30, 40, 20)];
+    expect(flowOffsets(tags, [2, 0, 1], 'x')).toEqual([[50, 0], [-50, 30], [0, -30]]);
   });
 });
 

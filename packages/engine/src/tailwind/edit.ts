@@ -2,7 +2,8 @@ import { t as msg } from '@css-tuner/protocol';
 import { minimizeEdit, type EditResult, type TextEdit } from '../types';
 import { intersects, isSubset, physicalSet, sameSet } from '../physical';
 import type { TwDesign } from './design';
-import { allClassSites, classLiteralSites, locateClassSite, locateLiteralSite, type ClassSite, type ClassToken, type Segment } from './jsx';
+import type { ClassSite, ClassToken, Segment } from './jsx';
+import { allClassSites, classLiteralSites, locateClassSite, locateLiteralSite } from './sites';
 
 export interface TailwindEditInput {
   file: string;
@@ -275,7 +276,7 @@ function segmentEdits(source: string, site: ClassSite, ops: Op[], inserts: Inser
       const op = segOps.find((o) => o.token === t);
       const sep = i === 0 ? ' ' : source.slice(toks[i - 1].end, t.start);
       if (!op) emit(sep, t.text);
-      else if (op.kind === 'replace') emit(sep, op.text!);
+      else if (op.kind === 'replace') emit(sep, seg.single === 'key' && !/^[A-Za-z_$][\w$]*$/.test(op.text!) ? `'${op.text}'` : op.text!);
       for (const ins of segIns) if (ins.after === t) emit(' ', ins.text);
     });
     for (const ins of segIns) if (ins.after === null) emit(' ', ins.text);
@@ -350,15 +351,16 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   }
   if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
 
+  const addAttr = (cls: string): EditResult => ({
+    ok: true,
+    file: input.file,
+    edits: [{ start: site.nameEnd, end: site.nameEnd, text: ` ${site.insertAttr ?? 'className'}="${cls}"` }],
+    summary: `+ ${cls}`,
+    classes: { removed: [], added: [cls], attrAdded: true },
+  });
   if (!site.hasClassName) {
     if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
-    return {
-      ok: true,
-      file: input.file,
-      edits: [{ start: site.nameEnd, end: site.nameEnd, text: ` className="${next}"` }],
-      summary: `+ ${next}`,
-      classes: { removed: [], added: [next], attrAdded: true },
-    };
+    return addAttr(next);
   }
 
   const ops: Op[] = [];
@@ -400,6 +402,8 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
           break;
         }
       }
+      // Vue 的 :class 和 Svelte 的 class: 指令旁边可以再写一个静态 class，两者会合并
+      if (!inserted && site.insertAttr && !site.attrRange) return addAttr(next);
       if (!inserted) return { ok: false, reason: msg('engine.tw.noStaticToAppend') };
     }
     inserts.push(inserted);
@@ -444,6 +448,9 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
     }
   }
 
+  const single = ops.find((o) => o.kind === 'remove' && o.token.seg.single);
+  if (single) return { ok: false, reason: msg('engine.tw.singleClass', { cls: single.token.text }) };
+
   const edits = finish(input.source, segmentEdits(input.source, site, ops, inserts));
   const summary = removedTexts.length ? `${removedTexts.join(' ')} → ${summaryNext}` : `+ ${summaryNext}`;
   return { ok: true, file: input.file, edits, summary, classes: { removed: removedTexts, added, attrAdded: false } };
@@ -483,9 +490,11 @@ export function revertTailwind(input: TailwindRevertInput): EditResult {
   if (!site) return { ok: false, reason: msg('engine.tw.addedNotFound', { classes: input.added.join(' ') }) };
 
   const summary = `${input.added.join(' ') || '∅'} → ${input.removed.join(' ') || '∅'}`;
-  if (input.attrAdded && site.attrRange && site.tokens.map((t) => t.text).join(' ') === input.added.join(' ')) {
-    const start = input.source[site.attrRange.start - 1] === ' ' ? site.attrRange.start - 1 : site.attrRange.start;
-    return { ok: true, file: input.file, edits: [{ start, end: site.attrRange.end, text: '' }], summary };
+  const range = site.attrRange;
+  const inAttr = range ? site.tokens.filter((t) => t.start >= range.start && t.end <= range.end) : [];
+  if (input.attrAdded && range && inAttr.map((t) => t.text).join(' ') === input.added.join(' ')) {
+    const start = input.source[range.start - 1] === ' ' ? range.start - 1 : range.start;
+    return { ok: true, file: input.file, edits: [{ start, end: range.end, text: '' }], summary };
   }
 
   const ops: Op[] = [];

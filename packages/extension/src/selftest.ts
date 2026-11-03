@@ -77,8 +77,11 @@ defineStep('hover', async (c, s) => {
 // WebSocket 先连上、hello 后到时，openPage 会在页面信息到达前返回
 defineStep('open', async (c, s) => {
   const ok = await c.openPage(String(s.url));
-  const deadline = Date.now() + 3000;
-  while (ok && !c.state.page && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  // 同一个窗口里换到别的项目时，state.page 还是上一个页面的；服务端渲染的页面要等激活完页面脚本才报页面信息
+  const origin = /^https?:/.test(String(s.url)) ? new URL(String(s.url)).origin : null;
+  const arrived = () => !!c.state.page && (!origin || new URL(c.state.page.url).origin === origin);
+  const deadline = Date.now() + 8000;
+  while (ok && !arrived() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
   return { ok, connection: c.state.connection, mode: c.session?.mode, page: c.state.page, notice: c.state.notice };
 });
 
