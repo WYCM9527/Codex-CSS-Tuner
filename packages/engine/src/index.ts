@@ -6,3 +6,7 @@ export { allClassSites, classLiteralSites, locateClassSite, locateLiteralSite, t
 export { editTailwind, hasArbitraryValue, previewCompanions, revertTailwind, splitCandidate, type TailwindEditInput, type TailwindRevertInput } from './tailwind/edit';
 export { editCssRule, indexCssRules, lookupCssRule, type CssEditInput, type CssRuleIndex, type CssRuleSpec, type FoundRule } from './css/edit';
 export { editThemeVar, type ThemeVarInput } from './css/theme';
+export { editJsxAttr, editJsxText, jsxAttrSite, jsxChildSite, type JsxAttrEditInput, type JsxTextEditInput, type TextSite } from './structure/text';
+export type { MessageRef } from './structure/jsx';
+export { editMessage, matchMessage, messageKeyPaths, readMessage, type MessageEditInput, type MessageMatch } from './structure/messages';
+export { editHtmlText, type HtmlTextEditInput } from './structure/html';

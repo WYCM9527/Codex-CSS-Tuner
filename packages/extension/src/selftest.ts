@@ -165,6 +165,79 @@ defineStep('dragLatency', async (c, s) => {
   return { count: n, p50: pct(0.5), p95: pct(0.95), max: pct(1), changes: c.state.changes.length };
 });
 
+const textLines = (sel: SelectionView | null) =>
+  (sel?.texts ?? []).map((x) => `${x.segment} ${x.origin} ${x.target.kind}:${x.target.label}${x.target.reason ? ` (${x.target.reason})` : ''} “${x.value}”${x.pending ? ' pending' : ''}`);
+
+/** 页面上一组元素的文字（看同源实例有没有一起预览） */
+const pageTexts = (c: Controller, selector: unknown) =>
+  typeof selector === 'string'
+    ? c.browser.exec<string[]>(c.session!.browserId, `[...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => e.textContent.replace(/\\s+/g, ' ').trim())`)
+    : Promise.resolve(undefined);
+
+/** 选中元素每段文字的写回目标 */
+defineStep('texts', async (c) => ({ texts: textLines(c.state.selection), segments: c.state.selection?.el.text ?? null }));
+
+/** 在面板上改选中元素的第 segment 段文字 */
+defineStep('editText', async (c, s) => {
+  await c.editText(Number(s.segment) || 0, String(s.value), (s.phase as 'live' | 'commit') ?? 'commit');
+  return { texts: textLines(c.state.selection), page: await pageTexts(c, s.read), changes: changeLines(c) };
+});
+
+/**
+ * 模拟在页面上双击文字编辑：双击 selector 的第一段文字，选中整段输入 value，再按 key（Enter 提交、Escape 取消）。
+ * 选中的元素要包含它
+ */
+defineStep('pageEdit', async (c, s) => {
+  const id = c.session!.browserId;
+  const sel = JSON.stringify(String(s.selector));
+  const before = c.state.changes.length;
+  const target = `document.querySelectorAll(${sel})[${Number(s.index) || 0}]`;
+  // 页面可能开着平滑滚动：先立即滚到位，等布局稳定了再量坐标
+  await c.browser.exec(id, `${target}?.scrollIntoView({ block: 'center', behavior: 'instant' })`);
+  await new Promise((r) => setTimeout(r, 300));
+  const hit = await c.browser.exec(
+    id,
+    `(() => {
+      const el = ${target};
+      const node = el && [...el.childNodes].find((n) => n.nodeType === 3 && n.data.trim());
+      if (!node) return null;
+      const r = document.createRange();
+      r.selectNodeContents(node);
+      const b = r.getClientRects()[0];
+      const x = b.left + Math.min(6, b.width / 2), y = b.top + b.height / 2;
+      const top = document.elementFromPoint(x, y);
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window }));
+      return { x: Math.round(x), y: Math.round(y), top: top === el ? 'self' : top ? top.tagName.toLowerCase() + (top.className && typeof top.className === 'string' ? '.' + top.className.split(' ')[0] : '') : null };
+    })()`,
+  );
+  await new Promise((r) => setTimeout(r, 400));
+  const typed = await c.browser.exec(
+    id,
+    `(() => {
+      const wrap = document.querySelector('[data-css-tuner-editing]');
+      if (!wrap) return null;
+      const node = [...wrap.childNodes].find((n) => n.nodeType === 3);
+      const r = document.createRange();
+      r.selectNodeContents(node ?? wrap);
+      getSelection().removeAllRanges();
+      getSelection().addRange(r);
+      document.execCommand('insertText', false, ${JSON.stringify(String(s.value))});
+      return wrap.textContent;
+    })()`,
+  );
+  await new Promise((r) => setTimeout(r, 400));
+  const live = await pageTexts(c, s.read);
+  await c.browser.exec(
+    id,
+    `document.querySelector('[data-css-tuner-editing]')?.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(String(s.key ?? 'Enter'))}, bubbles: true, cancelable: true }))`,
+  );
+  const deadline = Date.now() + 3000;
+  while (s.key !== 'Escape' && c.state.changes.length === before && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  await new Promise((r) => setTimeout(r, 300));
+  const left = await c.browser.exec(id, `document.querySelectorAll('[data-css-tuner-editing]').length`);
+  return { hit, typed, live, after: await pageTexts(c, s.read), editorsLeft: left, texts: textLines(c.state.selection), changes: changeLines(c) };
+});
+
 defineStep('discard', async (c, s) => {
   const ch = c.state.changes[Number(s.index) || 0];
   if (!ch) return 'no change';
@@ -173,8 +246,16 @@ defineStep('discard', async (c, s) => {
 });
 
 /** 拒绝所有 WebSocket 后刷新页面，验证自动退回 executeJavaScript 通道，再恢复 */
+/** keep: true 时停在 exec 模式，让后面的步骤在这个模式下跑；之后用 end: true 恢复 WebSocket */
 defineStep('execFallback', async (c, s) => {
   const session = c.session!;
+  if (s.end) {
+    c.server.refuseAll = false;
+    const back = c.nextSelection(15000, true);
+    await c.browser.reload(session.browserId);
+    await back;
+    return { modeAfter: session.mode, connection: c.state.connection };
+  }
   c.server.refuseAll = true;
   const sel = c.nextSelection(15000, true);
   await c.browser.reload(session.browserId);
@@ -183,6 +264,7 @@ defineStep('execFallback', async (c, s) => {
   const t0 = Date.now();
   const snap = await session.call('snapshot', {});
   const rtt = Date.now() - t0;
+  if (s.keep) return { modeWhileRefused: mode, restored: summarize(restored, (s.props as string[]) ?? []), snapshotOk: !!snap, execRttMs: rtt };
   c.server.refuseAll = false;
   const back = c.nextSelection(15000, true);
   await c.browser.reload(session.browserId);

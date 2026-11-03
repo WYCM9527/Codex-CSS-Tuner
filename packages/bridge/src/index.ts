@@ -1,10 +1,12 @@
 import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
+import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
 import { setHover, setSelected } from './overlay';
 import { pageInfo } from './page';
 import { pickOn, setPick } from './pick';
 import { clearAll, clearPreview, preview, prune } from './preview';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources } from './source';
+import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
 import { verify } from './verify';
 
@@ -52,6 +54,7 @@ class Bridge {
     }
     this.watch();
     this.connect();
+    window.addEventListener('dblclick', this.onDblClick, true);
     this.urlTimer = window.setInterval(() => {
       if (location.href !== this.lastHref) {
         this.lastHref = location.href;
@@ -66,7 +69,10 @@ class Bridge {
     clearTimeout(this.timer);
     clearTimeout(this.refreshTimer);
     clearInterval(this.urlTimer);
+    clearTimeout(this.textTimer);
     this.observer?.disconnect();
+    window.removeEventListener('dblclick', this.onDblClick, true);
+    finishEdit(false);
     setPick(false);
     clearAll();
     setSelected(null);
@@ -156,14 +162,18 @@ class Bridge {
     return fn(p ?? {});
   }
 
+  private drainedAt = 0;
+
   drain(): BridgeEvent[] {
+    this.drainedAt = Date.now();
     const q = this.queue;
     this.queue = [];
     return q;
   }
 
+  /** WebSocket 连着，或者扩展正在用 executeJavaScript 轮询（每 200ms 取一次事件） */
   connected(): boolean {
-    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    return (!!this.ws && this.ws.readyState === WebSocket.OPEN) || Date.now() - this.drainedAt < 2000;
   }
 
   private sendHello() {
@@ -178,11 +188,14 @@ class Bridge {
     void loadSheetSources().then(() => this.send({ t: 'page', page: pageInfo() }));
   }
 
+  private textTimer = 0;
+
   private watch() {
     this.observer = new MutationObserver((records) => {
       let css = false;
       let lost = false;
       let added = false;
+      let nodes = false;
       for (const r of records) {
         const t = r.target;
         if (isOwnNode(t)) continue;
@@ -191,9 +204,14 @@ class Bridge {
         if (this.selected && !this.selected.isConnected) lost = true;
         if (r.type === 'attributes' && r.target === this.selected) css = true;
         if (r.type === 'childList' && r.addedNodes.length) added = true;
+        if (r.type === 'childList') nodes = true;
       }
       if (css || lost) this.scheduleRefresh(css);
       if (added && this.connected()) warmSources();
+      if (nodes && hasTextPreviews()) {
+        clearTimeout(this.textTimer);
+        this.textTimer = window.setTimeout(reapplyTexts, 30);
+      }
     });
     // 观察 document 而不是 documentElement：启动时 <html> 可能还没建出来
     this.observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
@@ -244,6 +262,23 @@ class Bridge {
     return this.emitSelection();
   }
 
+  /** 选中元素里面的文字双击就地编辑；文字不在选中元素自己身上时先改选文字所在的元素 */
+  private onDblClick = (e: MouseEvent) => {
+    if (pickOn() || isEditingText() || !this.selected || !this.connected()) return;
+    const hit = textAt(e.clientX, e.clientY, this.selected);
+    const el = hit?.node.parentElement;
+    if (!hit || !el || isOwnNode(el) || el.isContentEditable || el.closest('input, textarea, select')) return;
+    const segment = textNodesOf(el).indexOf(hit.node);
+    if (segment < 0) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void (async () => {
+      if (el !== this.selected) await this.select(el);
+      const uid = uidOf(el);
+      beginEdit(hit.node, hit.offset, (value, phase) => this.send({ t: 'editText', uid, segment, value, phase }));
+    })();
+  };
+
   private handlers: Handlers = {
     ping: () => 'pong',
     pageInfo: async () => {
@@ -265,8 +300,8 @@ class Bridge {
       return el ? uidOf(el) : null;
     },
     snapshot: async () => (this.selected && this.selected.isConnected ? snapshot(this.selected) : null),
-    preview: async ({ id, target, decls = {} }) => {
-      const count = await preview(id, target, decls);
+    preview: async ({ id, target, decls = {}, text }) => {
+      const count = await preview(id, target, decls, text);
       const el = elOf(target.uid);
       const computed: Record<string, string> = {};
       if (el) {

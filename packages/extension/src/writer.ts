@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
 import { t } from '@css-tuner/protocol';
-import { editCssRule, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
+import { editCssRule, editHtmlText, editJsxAttr, editJsxText, editMessage, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
 import type { ChangeRecord } from './journal';
 import type { TailwindService } from './tailwind';
 
@@ -53,6 +53,17 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
       props: rec.props,
       value: rec.value,
     });
+  }
+  if (w.kind === 'jsxText' || w.kind === 'jsxAttr' || w.kind === 'message' || w.kind === 'htmlText') {
+    const source = read(w.file);
+    if (source === null) return { ok: false, reason: t('engine.readFailed', { file: w.file }) };
+    // 页面上的文字带着源码里的首尾空白（JSX 里 {" "} 隔开的那种），新文字原样套进去
+    const from = rec.original.text ?? rec.from;
+    const full = /^\s*/.exec(from)![0] + rec.value + /\s*$/.exec(from)![0];
+    if (w.kind === 'jsxText') return editJsxText({ file: w.file, source, line: w.line, column: w.column, segment: w.segment, from, value: full });
+    if (w.kind === 'jsxAttr') return editJsxAttr({ file: w.file, source, line: w.line, column: w.column, name: w.name, from, value: full });
+    if (w.kind === 'message') return editMessage({ file: w.file, source, keyPath: w.keyPath, from, value: rec.value });
+    return editHtmlText({ file: w.file, source, path: w.path, tag: w.tag, segment: w.segment, from, value: rec.value });
   }
   return { ok: false, reason: t('ext.write.unsupported') };
 }

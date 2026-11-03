@@ -1,4 +1,5 @@
-import { t, type ElementSnapshot, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type Target } from '@css-tuner/protocol';
+import { t, type ElementSnapshot, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
+import type { MessageRef, TextSite } from '@css-tuner/engine';
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
 
@@ -40,8 +41,8 @@ export type WriteSpec =
   | { kind: 'message'; file: string; keyPath: string[] }
   /** 换序：jsxOrder 的 (line, column) 是父元素，arrayOrder 的是 .map() 用的数组字面量 */
   | { kind: 'jsxOrder' | 'arrayOrder'; file: string; line: number; column: number; from: number; to: number }
-  /** 纯 HTML：path 是元素从 <html> 起逐层的子元素下标 */
-  | { kind: 'htmlText'; file: string; path: number[]; segment: number }
+  /** 纯 HTML：path 是元素从 <html> 起逐层的子元素下标，tag 用来确认文件和页面对得上 */
+  | { kind: 'htmlText'; file: string; path: number[]; tag: string; segment: number }
   | { kind: 'htmlOrder'; file: string; path: number[]; from: number; to: number }
   | { kind: 'agent'; reason: string };
 
@@ -298,6 +299,135 @@ export function planVar(el: ElementSnapshot, name: string, ctx: PlanContext): Pl
     write: { kind: 'css', file, selector: w.rule.selector, fullSelector: w.rule.fullSelector, conditions: w.rule.conditions, ordinal: w.rule.ordinal, mode: 'edit', via: null },
   };
 }
+
+export interface TextPlan extends Plan {
+  origin: TextOrigin;
+  /** 文字来自翻译调用、但没找到对应的多语言文件时，交给 Agent 附上那段调用 */
+  code?: string;
+}
+
+export interface TextContext {
+  page: PageInfo;
+  project: ProjectResolver;
+  /** (line, column) 处 JSX 元素的第 index 个子节点；文件读不到时为 null */
+  textChild: (file: string, line: number, column: number, index: number) => TextSite | { error: string } | null;
+  textAttr: (file: string, line: number, column: number, name: string) => TextSite | { error: string } | null;
+  /** 在 near 所属的项目里找消息对应的多语言文件和键；langs 是页面语言的线索，靠前的优先 */
+  message: (near: string, ref: MessageRef, text: string, langs: ReadonlyArray<string | null>) => { file: string; keyPath: string[] } | { reason: string };
+}
+
+/** 地址第一段像语言代码（/zh/、/en-US/）时返回它：按语言分路由的站点里，<html lang> 可能写死在根布局里 */
+export function routeLocale(url: string): string | null {
+  let seg: string;
+  try {
+    seg = new URL(url).pathname.split('/')[1] ?? '';
+  } catch {
+    return null;
+  }
+  if (!/^[a-z]{2,3}([-_][a-z0-9]{2,8})*$/i.test(seg)) return null;
+  try {
+    return Intl.getCanonicalLocales(seg.replace(/_/g, '-'))[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 元素第 segment 段文字写在哪：纯 HTML 文件、元素自己 JSX 里的字面量或 t() 调用、
+ * 外层组件调用处传进来的 prop（children 或属性）；都不是就交给 Agent，并说明文字来自哪段代码
+ */
+export function planText(el: ElementSnapshot, segment: number, ctx: TextContext): TextPlan {
+  const { page, project } = ctx;
+  const info = el.text;
+  const seg = info?.segments[segment];
+  const text = seg?.value.trim() ?? '';
+  const preview: PreviewTarget = { kind: 'text', uid: el.uid, sourceKey: sourceKeyOf(el), segment };
+  const agent = (reason: string): TextPlan => ({
+    origin: 'dynamic',
+    view: { kind: 'agent', label: t('plan.agent'), affects: el.source ? el.sameSource : 1, reason },
+    preview,
+    write: { kind: 'agent', reason },
+  });
+  if (!info || !seg) return agent(t('plan.text.none'));
+
+  if (!el.source && info.htmlPath) {
+    const file = project.htmlFileFor(page.url);
+    if (!file) return agent(t('plan.text.noHtmlFile'));
+    return {
+      origin: 'html',
+      view: { kind: 'source', label: `${project.label(file)} <${el.tag}>`, file, affects: 1 },
+      preview: { kind: 'text', uid: el.uid, sourceKey: null, segment, htmlPath: info.htmlPath },
+      write: { kind: 'htmlText', file, path: info.htmlPath, tag: el.tag, segment },
+    };
+  }
+  if (!el.source) return agent(t('plan.noJsxSource'));
+
+  /** 这一层位置写着的文字：字面量直接改，t() 调用改多语言文件；动态的记下原因，接着往外层找 */
+  const reasons: string[] = [];
+  let code: string | undefined;
+  const at = (site: TextSite | { error: string } | null, file: string, loc: SourceLoc, depth: number, affects: number, write: WriteSpec, label: string): TextPlan | null => {
+    if (!site || 'error' in site) return null;
+    const p: PreviewTarget = depth ? { ...preview, depth } : preview;
+    if (site.kind === 'literal') {
+      if (site.value.trim() === text) {
+        return { origin: depth || el.source!.viaOwner ? 'prop' : 'jsx', view: { kind: 'source', label, file, line: loc.line, column: loc.column, affects }, preview: p, write };
+      }
+      reasons.push(t('engine.text.changed', { now: site.value.trim().slice(0, 40) }));
+      return null;
+    }
+    if (site.kind === 'message') {
+      const m = ctx.message(file, site.ref, text, [routeLocale(page.url), info.lang]);
+      if ('reason' in m) {
+        if (!reasons.length) code = site.code;
+        reasons.push(m.reason);
+        return null;
+      }
+      return {
+        origin: 'message',
+        view: { kind: 'source', label: `${project.label(m.file)} ${m.keyPath.join('.')}`, file: m.file, affects },
+        preview: p,
+        write: { kind: 'message', file: m.file, keyPath: m.keyPath },
+      };
+    }
+    reasons.push(t('plan.text.dynamic', { code: site.code }));
+    return null;
+  };
+
+  const own = project.fileFor(page.url, el.source.path, el.source.file);
+  if (own && seg.child !== null) {
+    const { line, column } = el.source;
+    const found = at(ctx.textChild(own, line, column, seg.child), own, el.source, 0, el.sameSource, { kind: 'jsxText', file: own, line, column, segment: seg.child }, `${project.label(own)}:${line}`);
+    if (found) return found;
+  }
+  for (const p of seg.props) {
+    const caller = p.depth ? el.callers[p.depth - 1] : null;
+    const loc = caller ? caller.source : el.source;
+    const file = project.fileFor(page.url, loc.path, loc.file);
+    if (!file) continue;
+    const affects = caller ? caller.same : el.sameSource;
+    const where = `${project.label(file)}:${loc.line} <${caller?.component ?? el.source.component ?? t('plan.component')}>`;
+    const found =
+      p.name === 'children'
+        ? at(ctx.textChild(file, loc.line, loc.column, p.child ?? 0), file, loc, p.depth, affects, { kind: 'jsxText', file, line: loc.line, column: loc.column, segment: p.child ?? 0 }, `${where} children`)
+        : at(ctx.textAttr(file, loc.line, loc.column, p.name), file, loc, p.depth, affects, { kind: 'jsxAttr', file, line: loc.line, column: loc.column, name: p.name }, `${where} ${p.name}`);
+    if (found) return found;
+  }
+  const fallback = agent(reasons[0] ?? t('plan.text.unknown'));
+  return code ? { ...fallback, code } : fallback;
+}
+
+/** 文字改动的标识：同一处源码（同一个字面量、同一条消息）上的改动合并成一条 */
+export function textKey(p: Plan, el: ElementSnapshot, segment: number): string {
+  const w = p.write;
+  if (w.kind === 'jsxText') return `text|jsx|${w.file}|${w.line}|${w.column}|${w.segment}`;
+  if (w.kind === 'jsxAttr') return `text|attr|${w.file}|${w.line}|${w.column}|${w.name}`;
+  if (w.kind === 'message') return `text|msg|${w.file}|${w.keyPath.join('.')}`;
+  if (w.kind === 'htmlText') return `text|html|${w.file}|${w.path.join('.')}|${w.segment}`;
+  return `text|agent|${sourceKeyOf(el) ?? el.uid}|${segment}`;
+}
+
+/** 文字折成一行：面板和改动清单里都按一行显示和比较 */
+export const oneLine = (s: string) => s.replace(/\s*[\r\n]+\s*/g, ' ').trim();
 
 /** 加声明用的规则：优先级最高、且最后一段选择器写着元素自己的类名或 id 的作者规则 */
 function ownRule(el: ElementSnapshot, page: PageInfo, writable: (r: RuleRef) => boolean): RuleRef | null {

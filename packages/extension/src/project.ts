@@ -159,6 +159,17 @@ export class ProjectResolver {
     return null;
   }
 
+  /** 页面对应的 HTML 文件：地址以 / 结尾时是目录下的 index.html */
+  htmlFileFor(pageUrl: string): string | null {
+    try {
+      const path = new URL(pageUrl).pathname;
+      const f = this.fileFor(pageUrl, path.endsWith('/') ? `${path}index.html` : path);
+      return f && /\.html?$/i.test(f) ? f : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** 样式表 → 本地文件：Vite 注入的 <style data-vite-dev-id> 是绝对路径，<link> 用 href */
   sheetFile(pageUrl: string, sheet: { devId: string | null; href: string | null }): string | null {
     if (sheet.devId) {

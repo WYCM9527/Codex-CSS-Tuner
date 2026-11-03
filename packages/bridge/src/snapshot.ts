@@ -4,6 +4,7 @@ import { kindOf } from './page';
 import { originalReader } from './preview';
 import { callersOf, ownerName, sameSourceElements, sourceOf } from './source';
 import { staticSelector } from './specificity';
+import { textInfo } from './text';
 import { isOwnNode, isOwnSheet, isTailwindSheet, labelOf, sheetDevId, uidOf, unescapeIdent } from './util';
 
 export function crumb(el: Element): Crumb {
@@ -171,5 +172,6 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
     inline,
     fontSizePx: parseFloat(cs.fontSize) || 16,
     rootFontSizePx: parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+    text: await textInfo(el, source),
   };
 }

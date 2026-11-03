@@ -1,4 +1,5 @@
 import { Counter } from '@/components/Counter';
+import { IntlNote } from '@/components/IntlNote';
 import { Panel } from '@/components/Panel';
 
 export default function Home() {
@@ -15,6 +16,7 @@ export default function Home() {
       </p>
       <Panel title="CSS Modules 面板" />
       <Counter />
+      <IntlNote />
     </main>
   );
 }

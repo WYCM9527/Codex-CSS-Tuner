@@ -1,6 +1,6 @@
 # Cursor CSS Tuner
 
-A Cursor extension: pick elements in the built-in browser, tune their CSS visually with live preview, write the changes back to your source code deterministically, and revert any single change.
+A Cursor extension: pick elements in the built-in browser, tune their CSS and edit their text with live preview, write the changes back to your source code deterministically, and revert any single change.
 
 ![Select a card, drag its padding and corner radius, then apply both changes to the source](docs/media/hero.gif)
 
@@ -8,7 +8,7 @@ User guide: [English](packages/extension/README.md) · [简体中文](packages/e
 
 ---
 
-Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、实时预览，确定性写回源码并可逐条还原。
+Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、改文字、实时预览，确定性写回源码并可逐条还原。
 
 使用说明、支持范围和限制见 [packages/extension/README.zh-CN.md](packages/extension/README.zh-CN.md)（英文版 [README.md](packages/extension/README.md) 是商店页）；这份文档讲开发。
 
@@ -17,15 +17,15 @@ Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、实时预
 | 目录 | 内容 |
 | --- | --- |
 | `packages/protocol` | 扩展、页面脚本、面板之间的消息类型和数值工具（颜色、单位换算、刻度） |
-| `packages/engine` | 写回引擎：Tailwind 类名改写、CSS 规则改写、CSS 变量、CSS Modules 类名映射；纯函数，单元测试最多 |
-| `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、预览、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口） |
+| `packages/engine` | 写回引擎：Tailwind 类名改写、CSS 规则改写、CSS 变量、CSS Modules 类名映射；`structure/` 里是文字写回：JSX 文字和字符串 prop、翻译 JSON（jsonc-parser）、HTML 文字（parse5）。纯函数，单元测试最多 |
+| `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、文字分段、预览（样式和文字）、双击编辑、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口） |
 | `packages/panel` | 侧栏 webview 面板（React） |
-| `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划、改动清单、应用与还原、交给 Agent、自检 |
-| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
+| `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划（样式和文字：元素自己的 JSX、调用处的 prop、`t()` 对应的翻译文件、HTML）、改动清单、应用与还原、交给 Agent、自检 |
+| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4，带 react-i18next）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router，带 next-intl）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
 | `docs/media/` | 商店页和 README 用的动图、截图（README 里用 raw.githubusercontent 的绝对地址引用） |
 | `spike/` | Phase 0 的可行性验证脚本（不参与构建） |
 
-一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照和源码位置 → 扩展为每个属性规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / 交给 Agent）→ 拖动时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新并核对计算样式 → 还原时按快照或语义回退。
+一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照、文字分段和源码位置 → 扩展为每个属性和每段文字规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / JSX 文字 / 调用处的 prop / 翻译 JSON / HTML / 交给 Agent）→ 拖动和输入时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新（改翻译文件时 Vite 会整页刷新，刷新后再核对）并核对计算样式和文字 → 还原时按快照或语义回退。
 
 ## 开发
 
@@ -70,7 +70,9 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 }
 ```
 
-常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`planWrites`、`apply`、`revert`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`（`scale` 设像素密度）、`exec`（在页面里执行脚本）、`config`（只改工作区级设置，不碰用户设置）、`locale`（切换扩展这一侧的界面语言）、`dumpState`（导出面板状态）、`screenshot`、`command`（执行编辑器命令）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
+常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`texts`（列出选中元素的文字分段和写回目标）、`editText`（在面板里改一段文字）、`pageEdit`（在页面上双击文字输入，`key` 是 `Enter` 或 `Escape`）、`planWrites`、`apply`、`revert`、`discard`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`（`scale` 设像素密度）、`exec`（在页面里执行脚本）、`execFallback`（模拟 CSP 拦住 WebSocket：`keep: true` 停在 exec 模式，`end: true` 恢复）、`config`（只改工作区级设置，不碰用户设置）、`locale`（切换扩展这一侧的界面语言）、`dumpState`（导出面板状态）、`screenshot`、`command`（执行编辑器命令）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
+
+自测窗口里的内置浏览器标签不在前台时，`requestAnimationFrame` 可能一帧都不跑：靠它驱动的入场动画（比如 GSAP 的滚动入场）会停在 `opacity: 0`，元素看不见、也不能双击编辑。在真实项目上测双击前，先用 `exec` 把要测的元素设成可见。
 
 在别人的项目上跑之前先 `backup` 所有可能被写的文件，结尾用 `compareFiles` 确认字节级一致。
 

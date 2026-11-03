@@ -28,6 +28,7 @@ export function App({ host }: { host: Host }) {
     [host],
   );
   const edit = useCallback((props: string[], e: Edit) => host.send({ t: 'edit', edit: { ...e, props } }), [host]);
+  const editText = useCallback((segment: number, value: string, phase: 'live' | 'commit') => host.send({ t: 'editText', segment, value, phase }), [host]);
 
   if (!state) return <div className="boot">{t('panel.boot')}</div>;
   const sel = state.selection;
@@ -62,7 +63,7 @@ export function App({ host }: { host: Host }) {
               onlyComponents={prefs.split.includes('tree-components')}
               setOnlyComponents={(on) => setPrefs({ ...prefs, split: on ? [...prefs.split, 'tree-components'] : prefs.split.filter((x) => x !== 'tree-components') })}
             />
-            <Inspector state={state} sel={sel} prefs={prefs} setPrefs={setPrefs} edit={edit} />
+            <Inspector state={state} sel={sel} prefs={prefs} setPrefs={setPrefs} edit={edit} editText={editText} />
           </>
         )}
       </main>

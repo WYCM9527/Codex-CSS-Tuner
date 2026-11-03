@@ -3,6 +3,7 @@ import { MARGIN, PADDING, RADIUS, t, type PanelState, type ScaleStep, type Selec
 import { currentValue, declaredVar, isPending } from '../lib/format';
 import { ctxOf, scaleKeyOf, type Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
+import { Content } from './Content';
 import { IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
 import { Icon } from './icons';
 import { NumberField } from './NumberField';
@@ -20,12 +21,13 @@ interface Props {
   prefs: UiPrefs;
   setPrefs: (p: UiPrefs) => void;
   edit: (props: string[], e: Edit) => void;
+  editText: (segment: number, value: string, phase: 'live' | 'commit') => void;
 }
 
 const [PT, PR, PB, PL] = PADDING;
 const [MT, MR, MB, ML] = MARGIN;
 
-export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
+export function Inspector({ state, sel, prefs, setPrefs, edit, editText }: Props) {
   const ctx = useMemo<Ctx>(() => ctxOf(sel.el), [sel.el]);
   const scales = state.scales;
   const steps = (prop: string): ScaleStep[] | null => {
@@ -71,6 +73,8 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
 
   return (
     <div className="inspector">
+      <Content sel={sel} open={open('content')} onToggle={toggle} editText={editText} />
+
       <Section id="layout" title={t('insp.layout')} open={open('layout')} onToggle={toggle}>
         <Row label={t('insp.display')}>
           <Segmented

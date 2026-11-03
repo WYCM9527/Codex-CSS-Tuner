@@ -491,6 +491,65 @@ select {
   text-overflow: ellipsis;
 }
 
+/* ---------- 内容（文字） ---------- */
+
+.tx {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tx-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.tx-origin {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  font: 10px/15px var(--mono);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.tx-target {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+}
+
+.tx-input {
+  display: block;
+  width: 100%;
+  min-height: var(--row);
+  resize: none;
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--r);
+  background: var(--field);
+  font: 12px/1.45 var(--font);
+}
+
+.tx-input:hover {
+  border-color: var(--line-strong);
+}
+
+.tx-input:focus {
+  outline: none;
+  border-color: var(--focus);
+}
+
+.tx.is-pending .tx-input {
+  box-shadow: inset 2px 0 0 var(--fg);
+}
+
 /* ---------- 变量 ---------- */
 
 .sec-note {

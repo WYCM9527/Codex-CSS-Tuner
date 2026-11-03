@@ -1,6 +1,7 @@
 import type { PreviewTarget, RuleRef } from '@css-tuner/protocol';
 import { collectRules, type Reader } from './cascade';
 import { sameSourceElements } from './source';
+import { clearAllTexts, clearTextPreview, hasTextPreview, previewText } from './text';
 import { elOf, isOwnSheet, sheetDevId } from './util';
 
 type Holder = { kind: 'inline'; el: HTMLElement } | { kind: 'rule'; style: CSSStyleDeclaration };
@@ -149,8 +150,8 @@ function reapply(k: HTMLElement | CSSStyleDeclaration) {
 let chain: Promise<unknown> = Promise.resolve();
 
 /** 拖动时预览请求很密，串行处理，避免同一 id 并发建出两条记录 */
-export function preview(id: string, target: PreviewTarget, decls: Record<string, string>): Promise<number> {
-  const run = chain.then(() => doPreview(id, target, decls));
+export function preview(id: string, target: PreviewTarget, decls: Record<string, string>, text = ''): Promise<number> {
+  const run = chain.then(() => (target.kind === 'text' ? previewText(id, target, text) : doPreview(id, target, decls)));
   chain = run.catch(() => undefined);
   return run;
 }
@@ -179,6 +180,7 @@ function sameTarget(a: PreviewTarget, b: PreviewTarget): boolean {
 }
 
 export function clearPreview(id: string): boolean {
+  if (clearTextPreview(id)) return true;
   const e = entries.get(id);
   if (!e) return false;
   entries.delete(id);
@@ -196,11 +198,11 @@ export function clearPreview(id: string): boolean {
 export function clearAll(): number {
   const n = entries.size;
   for (const id of Array.from(entries.keys())) clearPreview(id);
-  return n;
+  return n + clearAllTexts();
 }
 
 export function hasPreview(id: string): boolean {
-  return entries.has(id);
+  return entries.has(id) || hasTextPreview(id);
 }
 
 /** 热更新替换 <style> 后，旧 CSSOM 规则就脱离了文档 */

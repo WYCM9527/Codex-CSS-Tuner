@@ -4,9 +4,15 @@ import { decodeDataUrl, extractMapUrl, filePathOf, originalPosition, type Source
 import { stripQuery } from './util';
 
 /** fiber，或服务端组件的调试信息（React Server Components 渲染的元素，owner 不是 fiber） */
-interface DebugNode {
+export interface DebugNode {
   type?: unknown;
   name?: unknown;
+  /** fiber 的 props；服务端组件的调试信息里叫 props */
+  memoizedProps?: unknown;
+  props?: unknown;
+  index?: number;
+  return?: DebugNode | null;
+  alternate?: DebugNode | null;
   _debugStack?: { stack?: string } | null;
   debugStack?: { stack?: string } | null;
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number } | null;
@@ -38,7 +44,8 @@ interface Picked {
 
 let fiberKey: string | null = null;
 
-function fiberOf(el: Element): DebugNode | null {
+/** 元素或文本节点的 React fiber（React 把创建它的 fiber 挂在节点上） */
+export function fiberOf(el: Node): DebugNode | null {
   if (fiberKey && fiberKey in el) return (el as unknown as Record<string, DebugNode>)[fiberKey];
   for (const k in el) {
     if (k.startsWith('__reactFiber$')) {
@@ -300,17 +307,35 @@ export function locKey(s: SourceLoc): string {
   return `${s.path}:${s.line}:${s.column}`;
 }
 
-/** [元素自己的 JSX 位置, 渲染它的组件被调用的位置, 再外一层…]，callee 是这一层调用的组件 */
-async function frameChain(el: Element, depth: number): Promise<Array<{ loc: SourceLoc; callee: string | null }>> {
+/**
+ * [元素自己的 JSX 位置, 渲染它的组件被调用的位置, 再外一层…]，callee 是这一层调用的组件；
+ * node 是这一层在这个位置创建的节点，它的 props 就写在 loc 处
+ */
+async function frameChain(el: Element, depth: number): Promise<Array<{ loc: SourceLoc; callee: string | null; node: DebugNode }>> {
   const first = await pick(el);
   if (!first) return [];
-  const out = [{ loc: toLoc(first), callee: null as string | null }];
+  const out = [{ loc: toLoc(first), callee: null as string | null, node: first.node }];
   let n = ownerOf(first.node);
   for (let guard = 0; n && out.length <= depth && guard < 16; guard++) {
     const p = await ownFrame(n, 0);
-    if (p) out.push({ loc: toLoc(p), callee: nameOf(n) });
+    if (p) out.push({ loc: toLoc(p), callee: nameOf(n), node: n });
     n = ownerOf(n);
   }
+  return out;
+}
+
+/**
+ * 调用链上每一层传进来的 props，depth 和 callersOf 的层级一致（1 起）；
+ * 元素由库组件渲染时，0 层是库组件在业务代码里被调用时收到的 props
+ */
+export async function propsChain(el: Element, depth = 3): Promise<Array<{ depth: number; props: Record<string, unknown> }>> {
+  const chain = await frameChain(el, depth);
+  const out: Array<{ depth: number; props: Record<string, unknown> }> = [];
+  chain.forEach((c, i) => {
+    if (i === 0 && !c.loc.viaOwner) return;
+    const props = c.node.memoizedProps ?? c.node.props;
+    if (props && typeof props === 'object') out.push({ depth: i, props: props as Record<string, unknown> });
+  });
   return out;
 }
 

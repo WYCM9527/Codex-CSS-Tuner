@@ -6,6 +6,9 @@ packages:
   - fixtures/demo
 
 allowBuilds:
+  # next-intl 带进来的，平台二进制走 optionalDependencies，用不着安装脚本
+  '@parcel/watcher': false
+  '@swc/core': false
   '@vscode/vsce-sign': false
   esbuild: true
 

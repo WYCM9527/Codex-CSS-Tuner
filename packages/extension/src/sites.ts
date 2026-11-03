@@ -1,5 +1,15 @@
 import { readFileSync, statSync } from 'node:fs';
-import { classLiteralSites, indexCssRules, locateClassSite, lookupCssRule, type CssRuleIndex, type CssRuleSpec } from '@css-tuner/engine';
+import {
+  classLiteralSites,
+  indexCssRules,
+  jsxAttrSite,
+  jsxChildSite,
+  locateClassSite,
+  lookupCssRule,
+  type CssRuleIndex,
+  type CssRuleSpec,
+  type TextSite,
+} from '@css-tuner/engine';
 
 /** JSX 位置上 className 的静态信息 */
 export interface SiteInfo {
@@ -29,11 +39,12 @@ interface FileEntry {
   source: string;
   sites: Map<string, SiteInfo | null>;
   literals?: LiteralInfo[] | null;
+  texts?: Map<string, TextSite | { error: string }>;
 }
 
 const MAX_FILES = 64;
 
-/** 读源码里的 className 位置和类名字符串（按文件 mtime 缓存），规划写回位置时用 */
+/** 读源码里的 className 位置、类名字符串和文字写在哪（按文件 mtime 缓存），规划写回位置时用 */
 export class ClassSiteReader {
   private files = new Map<string, FileEntry>();
 
@@ -84,6 +95,28 @@ export class ClassSiteReader {
       f.literals = 'error' in all ? null : all.map((s) => ({ line: s.line, column: s.column, tokens: s.tokens.map((t) => t.text), name: s.name ?? '' }));
     }
     return f.literals;
+  }
+
+  /** (line, column) 处 JSX 元素的第 index 个子节点是什么文字 */
+  textChild(file: string, line: number, column: number, index: number): TextSite | { error: string } | null {
+    return this.text(file, `c${line}:${column}:${index}`, (source) => jsxChildSite(source, file, line, column, index));
+  }
+
+  /** (line, column) 处 JSX 元素上 name 属性的值是什么文字 */
+  textAttr(file: string, line: number, column: number, name: string): TextSite | { error: string } | null {
+    return this.text(file, `a${line}:${column}:${name}`, (source) => jsxAttrSite(source, file, line, column, name));
+  }
+
+  private text(file: string, key: string, read: (source: string) => TextSite | { error: string }): TextSite | { error: string } | null {
+    const f = this.entry(file);
+    if (!f) return null;
+    f.texts ??= new Map();
+    let s = f.texts.get(key);
+    if (!s) {
+      s = read(f.source);
+      f.texts.set(key, s);
+    }
+    return s;
   }
 }
 

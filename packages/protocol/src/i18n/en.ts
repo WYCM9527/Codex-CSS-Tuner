@@ -27,6 +27,19 @@ export const en = {
   'engine.jsx.parseFailed': 'Failed to parse the source: {error}',
   'engine.jsx.noClassString': 'No class string near line {line}',
   'engine.jsx.noClassStringWith': 'No class string containing {token} near line {line}',
+  'engine.text.noChild': "The element on line {line} doesn't have this text among its children",
+  'engine.text.notLiteral': 'The text comes from code rather than a literal: {code}',
+  'engine.text.changed': 'The text in the source has changed (it now reads {now})',
+  'engine.text.verifyFailed': "Reading the file back after the edit didn't give the expected text, so nothing was written",
+  'engine.text.summary': 'Text: “{from}” → “{to}”',
+  'engine.attr.missing': 'The element on line {line} has no {name} attribute',
+  'engine.attr.summary': '{name}: “{from}” → “{to}”',
+  'engine.message.notFound': 'No JSON file has the message {key} with the text shown on the page',
+  'engine.message.ambiguous': "{n} JSON files have the message {key} with this text; can't tell which one is the current language",
+  'engine.message.parseFailed': 'Failed to parse {file}',
+  'engine.message.summary': '{key}: “{from}” → “{to}”',
+  'engine.html.noElement': "The page doesn't match the HTML file (no <{tag}> at that position); a script may have changed it",
+  'engine.html.noText': 'This text is not in the HTML file',
 
   // —— 通用标点和短语 ——
   'common.comma': ', ',
@@ -112,6 +125,10 @@ export const en = {
   'plan.varToAgent': 'The settings hand CSS variables to the Agent',
   'plan.varNoFile': "Can't find the stylesheet that defines this variable",
   'plan.varInPreset': "The variable is defined in Tailwind's preset styles",
+  'plan.text.none': 'This element has no text to edit',
+  'plan.text.noHtmlFile': "Can't find the HTML file for this page",
+  'plan.text.dynamic': 'The text is produced by code ({code}), not written as a literal',
+  'plan.text.unknown': "Can't find where this text is written in the source",
 
   // —— 扩展：应用、还原、对比 ——
   'apply.snapshotGone': '(the content from before the write-back no longer exists)',
@@ -254,6 +271,13 @@ export const en = {
   'color.palette': 'Palette',
 
   // —— 面板：检查器各分区 ——
+  'insp.content': 'Content',
+  'insp.text.origin.jsx': 'JSX',
+  'insp.text.origin.prop': 'prop',
+  'insp.text.origin.message': 'i18n',
+  'insp.text.origin.html': 'HTML',
+  'insp.text.origin.dynamic': 'dynamic',
+  'insp.text.hint': 'Press Enter to add it to the change list, Esc to undo. You can also double-click text inside the selected element on the page.',
   'insp.layout': 'Layout',
   'insp.display': 'Display',
   'insp.display.block': 'Block',

@@ -29,6 +29,19 @@ export const zhCN: Record<keyof typeof en, string> = {
   'engine.jsx.parseFailed': '解析源码失败：{error}',
   'engine.jsx.noClassString': '源码第 {line} 行附近找不到类名字符串',
   'engine.jsx.noClassStringWith': '源码第 {line} 行附近找不到包含 {token} 的类名字符串',
+  'engine.text.noChild': '第 {line} 行的元素的子内容里没有这段文字',
+  'engine.text.notLiteral': '这段文字来自代码，不是写死的字面量：{code}',
+  'engine.text.changed': '源码里的文字已经变了（现在是 {now}）',
+  'engine.text.verifyFailed': '改完重新读出来的文字和预期不一致，没有写入',
+  'engine.text.summary': '文字：“{from}” → “{to}”',
+  'engine.attr.missing': '第 {line} 行的元素上没有 {name} 属性',
+  'engine.attr.summary': '{name}：“{from}” → “{to}”',
+  'engine.message.notFound': '没有哪个 JSON 文件里的消息 {key} 和页面上的文字一致',
+  'engine.message.ambiguous': '有 {n} 个 JSON 文件里的 {key} 都是这段文字，分不出哪个是当前语言',
+  'engine.message.parseFailed': '解析 {file} 失败',
+  'engine.message.summary': '{key}：“{from}” → “{to}”',
+  'engine.html.noElement': '页面和 HTML 文件对不上（那个位置不是 <{tag}>），可能被脚本改过',
+  'engine.html.noText': 'HTML 文件里没有这段文字',
 
   // —— 通用标点和短语 ——
   'common.comma': '，',
@@ -114,6 +127,10 @@ export const zhCN: Record<keyof typeof en, string> = {
   'plan.varToAgent': '设置为 CSS 变量交给 Agent 处理',
   'plan.varNoFile': '找不到定义这个变量的样式表文件',
   'plan.varInPreset': '变量定义在 Tailwind 的预设样式里',
+  'plan.text.none': '这个元素没有可以改的文字',
+  'plan.text.noHtmlFile': '找不到这个页面对应的 HTML 文件',
+  'plan.text.dynamic': '文字由代码 {code} 生成，不是写死的字面量',
+  'plan.text.unknown': '找不到这段文字写在源码的哪里',
 
   // —— 扩展：应用、还原、对比 ——
   'apply.snapshotGone': '（写回前的内容已不存在）',
@@ -256,6 +273,13 @@ export const zhCN: Record<keyof typeof en, string> = {
   'color.palette': '调色板',
 
   // —— 面板：检查器各分区 ——
+  'insp.content': '内容',
+  'insp.text.origin.jsx': 'JSX',
+  'insp.text.origin.prop': '属性',
+  'insp.text.origin.message': '多语言',
+  'insp.text.origin.html': 'HTML',
+  'insp.text.origin.dynamic': '动态',
+  'insp.text.hint': '回车记进改动清单，Esc 撤销。也可以在页面上双击选中元素里的文字直接改。',
   'insp.layout': '布局',
   'insp.display': '排列',
   'insp.display.block': '块',

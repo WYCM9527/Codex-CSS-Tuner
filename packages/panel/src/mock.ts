@@ -173,6 +173,7 @@ const TITLE = el({
   children: [],
   source: { url: 'http://localhost:5173/src/App.tsx', path: '/src/App.tsx', file: '/proj/src/App.tsx', line: 15, column: 9, component: 'App', viaOwner: false },
   fontSizePx: 24,
+  text: { segments: [{ value: 'css-tuner fixture', child: 0, props: [] }], htmlPath: null, lang: 'zh-CN' },
 });
 TITLE.computed = { ...TITLE.computed, display: 'block', 'font-size': '24px', 'font-weight': '700', 'line-height': '32px', 'letter-spacing': '-0.6px', 'background-color': 'rgba(0, 0, 0, 0)', 'padding-top': '0px', 'padding-right': '0px', 'padding-bottom': '0px', 'padding-left': '0px', width: '220px', height: '32px' };
 
@@ -193,9 +194,18 @@ export function createMockHost(): Host {
     locale: getLocale(),
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
+  const textByEl: Record<string, Record<number, string>> = {};
   const select = (uid: string) => {
     const e = els[uid] ?? els.e1;
+    const edited = (textByEl[e.uid] ??= {});
     state.selection = {
+      texts: e.text?.segments.map((s, i) => ({
+        segment: i,
+        value: edited[i] ?? s.value.trim(),
+        pending: i in edited,
+        origin: 'jsx',
+        target: { kind: 'source', label: `src/App.tsx:${e.source?.line}`, file: '/proj/src/App.tsx', line: e.source?.line, column: e.source?.column, affects: 1 },
+      })),
       el: e,
       file: '/proj/src/App.tsx',
       targets: Object.fromEntries(
@@ -284,6 +294,34 @@ export function createMockHost(): Host {
         }
         break;
       }
+      case 'editText': {
+        const sel = state.selection!;
+        const view = sel.texts?.find((x) => x.segment === m.segment);
+        const original = sel.el.text?.segments[m.segment]?.value.trim() ?? '';
+        if (!view || m.phase !== 'commit') break;
+        const edited = (textByEl[sel.el.uid] ??= {});
+        const id = `${sel.el.uid}|text|${m.segment}`;
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === id));
+        if (!m.value || m.value === original) delete edited[m.segment];
+        else {
+          edited[m.segment] = m.value;
+          state.changes.unshift({
+            id,
+            kind: 'text',
+            status: 'pending',
+            element: sel.el.label,
+            props: [],
+            propLabel: t('panel.change.text'),
+            from: original,
+            to: m.value,
+            target: view.target,
+            pageUrl: state.page!.url,
+            createdAt: Date.now(),
+          } satisfies ChangeView);
+        }
+        select(sel.el.uid);
+        break;
+      }
       case 'apply': {
         state.busy = true;
         emit();
@@ -308,6 +346,11 @@ export function createMockHost(): Host {
         const c = state.changes.find((x) => x.id === m.id);
         state.changes = state.changes.filter((x) => x.id !== m.id);
         if (c && state.selection) for (const p of c.props) delete state.selection.pending[p];
+        if (c?.kind === 'text') {
+          const [uid, , segment] = c.id.split('|');
+          delete textByEl[uid]?.[+segment];
+          if (state.selection?.el.uid === uid) select(uid);
+        }
         break;
       }
       case 'clearDone':

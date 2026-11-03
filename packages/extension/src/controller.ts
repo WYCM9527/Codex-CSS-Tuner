@@ -21,13 +21,15 @@ import {
   type Scope,
   type SelectionView,
   type Target,
+  type TextView,
 } from '@css-tuner/protocol';
 import { hasArbitraryValue, previewCompanions, tailwindScales, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
 import { BrowserAdapter } from './browser';
 import { prefill, type PrefillResult } from './handoff';
 import { Journal, type ChangeRecord } from './journal';
-import { plan, planVar, sourceKeyOf, tailwindEntry, type Plan, type WriteSpec } from './planner';
+import { MessageFiles } from './messages';
+import { oneLine, plan, planText, planVar, sourceKeyOf, tailwindEntry, textKey, type Plan, type TextContext, type TextPlan, type WriteSpec } from './planner';
 import { ProjectResolver } from './project';
 import { buildPrompt } from './prompt';
 import { cssScales } from './scales';
@@ -69,6 +71,11 @@ export function targetKey(p: Plan, el: ElementSnapshot): string {
   return `agent|${sourceKeyOf(el) ?? el.uid}`;
 }
 
+/** 纯 HTML 元素的选择器（刷新后按路径找回元素）；扩展自己的节点都加在末尾，不影响前面的序号 */
+function htmlSelector(path: number[]): string {
+  return `:root${path.map((i) => ` > :nth-child(${i + 1})`).join('')}`;
+}
+
 export class Controller implements vscode.Disposable {
   readonly browser = new BrowserAdapter();
   readonly server = new BridgeServer();
@@ -76,6 +83,7 @@ export class Controller implements vscode.Disposable {
   readonly staticServer = new StaticServer();
   readonly classSites = new ClassSiteReader();
   readonly cssRules = new CssRuleLocator();
+  readonly messages = new MessageFiles();
   readonly tailwind: TailwindService;
   readonly journal: Journal;
   readonly applier: Applier;
@@ -92,6 +100,8 @@ export class Controller implements vscode.Disposable {
   private lastSelection: { path: string; line: number; column: number; index: number } | null = null;
   private selectionWaiters: Array<(s: SelectionView | null) => void> = [];
   private plans = new Map<string, Plan>();
+  /** 选中元素每段文字的写回规划，键是段序号 */
+  private textPlans = new Map<number, TextPlan>();
   /** 当前页面 Tailwind 入口的设计系统，不是 Tailwind 页面时为 null */
   private design: TwDesign | null = null;
   private editChain: Promise<unknown> = Promise.resolve();
@@ -250,6 +260,9 @@ export class Controller implements vscode.Disposable {
         return;
       case 'handoff':
         await this.handoff(msg.ids);
+        return;
+      case 'editText':
+        await this.editText(msg.segment, msg.value, msg.phase);
         return;
     }
   }
@@ -455,6 +468,11 @@ export class Controller implements vscode.Disposable {
       case 'select':
         await this.onSelect(ev.el);
         return;
+      case 'editText':
+        // 页面上双击改的是选中元素（双击前页面会先改选文字所在的元素）
+        if (this.state.selection?.el.uid !== ev.uid) await this.refreshSelection();
+        if (this.state.selection?.el.uid === ev.uid) await this.editText(ev.segment, ev.value, ev.phase);
+        return;
       case 'log':
         return;
     }
@@ -503,9 +521,13 @@ export class Controller implements vscode.Disposable {
     for (const rec of this.journal.pending()) {
       if (!this.samePage(rec.pageUrl, this.page.url)) continue;
       const src = rec.element.source;
-      const uid = src
-        ? await session.call('resolve', { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex }, waitMs: 3000 }, 6000).catch(() => null)
-        : null;
+      const htmlPath = rec.preview.kind === 'text' ? rec.preview.htmlPath : undefined;
+      const query = src
+        ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
+        : htmlPath
+          ? { selector: htmlSelector(htmlPath) }
+          : null;
+      const uid = query ? await session.call('resolve', { ...query, waitMs: 3000 }, 6000).catch(() => null) : null;
       // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
       if (!uid && rec.preview.kind !== 'rule') continue;
       const target = { ...rec.preview, uid: uid ?? rec.preview.uid } as PreviewTarget;
@@ -572,7 +594,34 @@ export class Controller implements vscode.Disposable {
         targets[v.name] = p.view;
       }
     }
-    return { el, file, targets, pending: this.pendingFor(el) };
+    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el) };
+  }
+
+  private textContext(page: PageInfo): TextContext {
+    return {
+      page,
+      project: this.project,
+      textChild: (f, line, column, index) => this.classSites.textChild(f, line, column, index),
+      textAttr: (f, line, column, name) => this.classSites.textAttr(f, line, column, name),
+      message: (near, ref, text, lang) => {
+        const root = this.project.packageRoot(near);
+        return root ? this.messages.find(root, ref, text, lang) : { reason: t('engine.message.notFound', { key: ref.key }) };
+      },
+    };
+  }
+
+  /** 每段文字写在哪；有未应用的改动时显示改动后的文字 */
+  private textsFor(el: ElementSnapshot): TextView[] | undefined {
+    this.textPlans.clear();
+    const segs = el.text?.segments;
+    if (!this.page || !segs?.length) return undefined;
+    const ctx = this.textContext(this.page);
+    return segs.map((seg, i) => {
+      const p = planText(el, i, ctx);
+      this.textPlans.set(i, p);
+      const rec = this.journal.findPending(textKey(p, el, i));
+      return { segment: i, value: rec ? rec.value : oneLine(seg.value), pending: !!rec, origin: p.origin, target: p.view };
+    });
   }
 
   /** 选中元素上仍未应用的改动值（同一写回目标、同一属性） */
@@ -682,6 +731,67 @@ export class Controller implements vscode.Disposable {
           write,
         });
       }
+    }
+    this.push();
+  }
+
+  /** 改选中元素的第 segment 段文字：live 只预览，commit 记进改动清单；改回原文或清空就撤掉这条改动 */
+  editText(segment: number, value: string, phase: 'live' | 'commit'): Promise<void> {
+    const run = this.editChain.then(() => this.doEditText(segment, value, phase));
+    this.editChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async doEditText(segment: number, raw: string, phase: 'live' | 'commit') {
+    const sel = this.state.selection;
+    const session = this.session;
+    const seg = sel?.el.text?.segments[segment];
+    const p = this.textPlans.get(segment);
+    if (!sel || !session || !this.page || !seg || !p) return;
+    const el = sel.el;
+    const key = textKey(p, el, segment);
+    const existing = this.journal.findPending(key);
+    const previewId = existing?.previewId ?? key;
+    const original = existing?.original.text ?? seg.value;
+    const value = oneLine(raw);
+    const back = !value || value === oneLine(original);
+    const view = sel.texts?.find((x) => x.segment === segment);
+    if (back) await session.call('clearPreview', { id: previewId });
+    else await session.call('preview', { id: previewId, target: p.preview, text: value });
+    if (view) view.value = back ? oneLine(original) : value;
+    if (phase === 'commit') {
+      if (back) {
+        if (existing) this.journal.remove(existing.id);
+      } else if (existing) {
+        this.journal.update(existing.id, { value, to: value, expected: { text: value }, view: p.view, write: p.write });
+      } else {
+        this.journal.add({
+          kind: 'text',
+          key,
+          pageUrl: this.page.url,
+          element: {
+            label: el.label,
+            source: el.source,
+            sourceIndex: el.sourceIndex,
+            sameSource: el.sameSource,
+            path: el.breadcrumb.map((b) => b.label).join(' > '),
+          },
+          props: [],
+          propLabel: t('panel.change.text'),
+          from: oneLine(original),
+          to: value,
+          value,
+          token: null,
+          original: { text: original },
+          expected: { text: value },
+          view: p.view,
+          preview: p.preview,
+          previewId,
+          write: p.write,
+          ...(p.code ? { detail: { origin: p.code } } : {}),
+        });
+      }
+      if (view) view.pending = !back;
     }
     this.push();
   }

@@ -1,7 +1,7 @@
 {
   "name": "cursor-css-tuner",
   "displayName": "Cursor CSS Tuner",
-  "description": "Pick elements in Cursor's built-in browser, tune their CSS visually with live preview, and write the changes back to your source code, with one-click revert for each change.",
+  "description": "Pick elements in Cursor's built-in browser, tune their CSS and edit their text with live preview, and write the changes back to your source code, with one-click revert for each change.",
   "version": "0.2.0",
   "publisher": "WYCM9527",
   "license": "MIT",
@@ -37,6 +37,7 @@
     "react",
     "nextjs",
     "css modules",
+    "i18n",
     "design"
   ],
   "main": "./dist/extension.js",

@@ -21,5 +21,5 @@
   "config.vars.strategy.editDefinition": "直接改变量的定义处（Tailwind 改 @theme），用到它的地方一起变",
   "config.vars.strategy.agent": "不直接写回，交给 Agent",
   "config.snap": "数值吸附到主题刻度和 CSS 变量（按住 Alt 写精确值）。",
-  "config.verifyTimeoutMs": "应用后等待热更新并校验计算样式的超时时间（毫秒）。超时的改动会在后台再等一轮，热更新晚到时自动改成已生效。"
+  "config.verifyTimeoutMs": "应用后等待热更新、核对页面和预览是否一致（计算样式和文字）的超时时间（毫秒）。超时的改动会在后台再等一轮，热更新晚到时自动改成已生效。"
 }

@@ -116,12 +116,15 @@ export interface ElementSnapshot {
 
 /** 元素的一段直接子文本 */
 export interface TextSegment {
-  /** 页面上现在的文字（文本节点原样，含首尾空白） */
+  /** 文本节点原样（含首尾空白）；正在预览时是预览前的值 */
   value: string;
   /** React：文本在元素 JSX children 里的下标（和运行时 children 数组一致）；不是元素自己的 JSX 直接写的为 null */
   child: number | null;
-  /** 沿组件调用链找到的、值和这段文字相等的字符串 prop；depth 对应 callers 的层级（1 起） */
-  props: Array<{ depth: number; name: string }>;
+  /**
+   * 沿组件调用链找到的、值和这段文字相等的 prop：depth 对应 callers 的层级（1 起），
+   * 0 表示元素由库组件渲染、prop 写在元素自己的源码位置上；name 是 children 时 child 是它在 children 数组里的下标
+   */
+  props: Array<{ depth: number; name: string; child?: number }>;
 }
 
 export interface TextInfo {
@@ -129,6 +132,8 @@ export interface TextInfo {
   segments: TextSegment[];
   /** 纯 HTML 页面：元素从 <html> 起逐层的子元素下标 */
   htmlPath: number[] | null;
+  /** <html lang>，挑多语言文件时用 */
+  lang: string | null;
 }
 
 export interface OrderInfo {
@@ -193,6 +198,8 @@ export type BridgeEvent =
   | { t: 'page'; page: PageInfo }
   | { t: 'select'; el: ElementSnapshot | null }
   | { t: 'pick'; on: boolean }
+  /** 在页面上双击改文字：live 是输入过程中，commit 是回车或失焦；按 Esc 时把开始编辑时的文字作为 commit 发回来 */
+  | { t: 'editText'; uid: string; segment: number; value: string; phase: 'live' | 'commit' }
   | { t: 'log'; level: 'info' | 'warn' | 'error'; msg: string };
 
 export type PreviewTarget =
@@ -202,8 +209,8 @@ export type PreviewTarget =
    */
   | { kind: 'inline'; uid: string; sourceKey: string | null; depth?: number; withClass?: string }
   | { kind: 'rule'; rule: RuleRef; uid: string }
-  /** 元素第 segment 段直接子文本；sourceKey、depth 的含义同 inline，同源实例一起改 */
-  | { kind: 'text'; uid: string; sourceKey: string | null; segment: number; depth?: number }
+  /** 元素第 segment 段直接子文本；sourceKey、depth 的含义同 inline，同源实例一起改；纯 HTML 页面带 htmlPath，写回后重新取页面 HTML 校验 */
+  | { kind: 'text'; uid: string; sourceKey: string | null; segment: number; depth?: number; htmlPath?: number[] }
   /** 把元素挪到兄弟组里第 to 个：不动真实 DOM，用 order 或 transform 模拟 */
   | { kind: 'order'; uid: string; to: number }
   /** 用 React 开发构建的 overrideProps 改渲染这个元素的组件的一个 prop */
@@ -276,7 +283,8 @@ export interface EditRequest {
   phase: 'live' | 'commit';
 }
 
-export type TargetKind = 'tailwind' | 'css' | 'agent';
+/** source：写进 JSX、HTML 或多语言文件（文字、换序、props） */
+export type TargetKind = 'tailwind' | 'css' | 'source' | 'agent';
 
 export interface Target {
   kind: TargetKind;
@@ -294,6 +302,20 @@ export interface SelectionView {
   file: string | null;
   targets: Record<string, Target>;
   pending: Record<string, string>;
+  /** 元素的每段文字和它的写回目标 */
+  texts?: TextView[];
+}
+
+export type TextOrigin = 'jsx' | 'prop' | 'message' | 'html' | 'dynamic';
+
+export interface TextView {
+  segment: number;
+  /** 去掉首尾空白的文字：有未应用的改动时是改动后的值 */
+  value: string;
+  pending: boolean;
+  /** 文字写在哪：JSX 字面量、调用处的属性、多语言文件、HTML 文件，或动态内容（交给 Agent） */
+  origin: TextOrigin;
+  target: Target;
 }
 
 export interface ScaleStep {

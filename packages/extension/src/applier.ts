@@ -272,6 +272,8 @@ export class Applier {
    */
   private async verifyLate(ids: string[]) {
     const c = this.c;
+    // 写的文件让开发服务器整页刷新了（如 Vite 里被普通模块引入的多语言 JSON）：等页面重新连上再核对
+    if (c.session && !c.session.connected) await c.session.waitConnected(verifyMs());
     await Promise.all(
       ids.map(async (id) => {
         const rec = c.journal.get(id);

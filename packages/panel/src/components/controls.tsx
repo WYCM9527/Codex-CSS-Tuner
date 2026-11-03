@@ -54,7 +54,7 @@ export function Segmented(props: { value: string; options: SegOption[]; pending?
   );
 }
 
-function targetHint(target: Target | undefined): string | undefined {
+export function targetHint(target: Target | undefined): string | undefined {
   if (!target) return undefined;
   const to = t('field.writeTo', { label: target.label });
   return target.affects > 1 ? `${to}\n${t('field.affects', { n: target.affects })}` : to;

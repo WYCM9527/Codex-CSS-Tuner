@@ -1,10 +1,12 @@
 import { build, context } from 'esbuild';
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes('--watch');
+const fromEngine = createRequire(join(here, '../engine/package.json'));
 
 function copyAssets() {
   const media = join(here, 'media');
@@ -27,6 +29,9 @@ const options = {
   target: 'node20',
   sourcemap: 'linked',
   external: ['vscode', 'bufferutil', 'utf-8-validate'],
+  // jsonc-parser 的 main 是 UMD，里面按参数 require 子模块，打包后找不到；改用它的 ESM 构建。
+  // alias 从工作目录解析，而这个包只装在 engine 下，所以给绝对路径
+  alias: { 'jsonc-parser': fromEngine.resolve('jsonc-parser/lib/esm/main.js') },
   logLevel: 'warning',
 };
 
