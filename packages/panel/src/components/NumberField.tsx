@@ -23,7 +23,7 @@ export interface NumberFieldProps {
   onEdit: (e: Edit) => void;
 }
 
-const PX_PER_STEP = 6;
+export const PX_PER_STEP = 6;
 const PX_PER_UNIT = 2;
 
 function fmt(n: number, stepSize: number): string {

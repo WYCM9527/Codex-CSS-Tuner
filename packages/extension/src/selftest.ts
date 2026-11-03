@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
-import type { SelectionView } from '@css-tuner/protocol';
+import { getLocale, localeFrom, setLocale, type SelectionView } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import { summarizeCheck } from './selfcheck';
 import { computeWrite } from './writer';
@@ -74,8 +74,11 @@ defineStep('hover', async (c, s) => {
   return { uid: crumb?.uid ?? null, label: crumb?.label ?? null };
 });
 
+// WebSocket 先连上、hello 后到时，openPage 会在页面信息到达前返回
 defineStep('open', async (c, s) => {
   const ok = await c.openPage(String(s.url));
+  const deadline = Date.now() + 3000;
+  while (ok && !c.state.page && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
   return { ok, connection: c.state.connection, mode: c.session?.mode, page: c.state.page, notice: c.state.notice };
 });
 
@@ -262,7 +265,7 @@ defineStep('fileLine', async (_c, s) => readFileSync(String(s.file), 'utf8').spl
 defineStep('viewport', async (c, s) => {
   const id = c.session!.browserId;
   if (s.clear) await c.browser.cdp(id, 'Emulation.clearDeviceMetricsOverride');
-  else await c.browser.cdp(id, 'Emulation.setDeviceMetricsOverride', { width: Number(s.width) || 1280, height: Number(s.height) || 800, deviceScaleFactor: 1, mobile: false });
+  else await c.browser.cdp(id, 'Emulation.setDeviceMetricsOverride', { width: Number(s.width) || 1280, height: Number(s.height) || 800, deviceScaleFactor: Number(s.scale) || 1, mobile: false });
   await new Promise((r) => setTimeout(r, 300));
   return c.browser.exec(id, 'innerWidth + "x" + innerHeight');
 });
@@ -334,6 +337,26 @@ defineStep('dumpState', async (c, s) => {
   return { bytes: JSON.stringify(c.state).length };
 });
 
+/** 截取页面（含覆盖层）存成 PNG。开发宿主窗口被完全挡住时浏览器不出新帧，截图会一直等，所以要限时 */
+defineStep('screenshot', async (c, s) => {
+  const ms = Number(s.timeoutMs) || 5000;
+  const shot = await Promise.race([
+    c.browser.cdp<{ data: string }>(c.session!.browserId, 'Page.captureScreenshot', { format: 'png' }),
+    new Promise<null>((r) => setTimeout(() => r(null), ms)),
+  ]);
+  if (!shot) return { timeout: ms };
+  writeFileSync(String(s.path), Buffer.from(shot.data, 'base64'));
+  return { path: s.path };
+});
+
+/** 切换扩展这一侧的界面语言：之后生成的提示、改动说明和提示词都用这个语言 */
+defineStep('locale', async (c, s) => {
+  setLocale(localeFrom(String(s.locale)));
+  c.state.locale = getLocale();
+  c.push();
+  return getLocale();
+});
+
 /** 打开侧栏面板，等 webview 里的 React 应用发回 ready */
 defineStep('panel', async (c) => {
   const t0 = Date.now();
@@ -359,6 +382,13 @@ defineStep('debugPlan', async (c, s) => {
 defineStep('scope', async (c, s) => {
   await c.handle({ t: 'setScope', scope: s.scope === 'source' ? 'source' : 'instance' });
   return { scope: c.state.scope, ...summarize(c.state.selection, (s.props as string[]) ?? []) };
+});
+
+/** 执行编辑器命令，比如录屏前关掉侧栏，让浏览器标签页比模拟的视口大 */
+defineStep('command', async (_c, s) => {
+  await vscode.commands.executeCommand(String(s.id), ...((s.args as unknown[]) ?? []));
+  await new Promise((r) => setTimeout(r, 300));
+  return true;
 });
 
 defineStep('wait', async (_c, s) => {
