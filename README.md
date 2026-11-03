@@ -1,8 +1,16 @@
 # Cursor CSS Tuner
 
+A Cursor extension: pick elements in the built-in browser, tune their CSS visually with live preview, write the changes back to your source code deterministically, and revert any single change.
+
+![Select a card, drag its padding and corner radius, then apply both changes to the source](docs/media/hero.gif)
+
+User guide: [English](packages/extension/README.md) · [简体中文](packages/extension/README.zh-CN.md). The rest of this document covers development and is written in Chinese.
+
+---
+
 Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、实时预览，确定性写回源码并可逐条还原。
 
-使用说明、支持范围和限制见 [packages/extension/README.md](packages/extension/README.md)；这份文档讲开发。
+使用说明、支持范围和限制见 [packages/extension/README.zh-CN.md](packages/extension/README.zh-CN.md)（英文版 [README.md](packages/extension/README.md) 是商店页）；这份文档讲开发。
 
 ## 仓库结构
 
@@ -13,7 +21,8 @@ Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、实时预
 | `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、预览、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口） |
 | `packages/panel` | 侧栏 webview 面板（React） |
 | `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划、改动清单、应用与还原、交给 Agent、自检 |
-| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router）、`static-html` |
+| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
+| `docs/media/` | 商店页和 README 用的动图、截图（README 里用 raw.githubusercontent 的绝对地址引用） |
 | `spike/` | Phase 0 的可行性验证脚本（不参与构建） |
 
 一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照和源码位置 → 扩展为每个属性规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / 交给 Agent）→ 拖动时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新并核对计算样式 → 还原时按快照或语义回退。
@@ -61,9 +70,20 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 }
 ```
 
-常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`planWrites`、`apply`、`revert`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`、`exec`（在页面里执行脚本）、`config`（只改工作区级设置，不碰用户设置）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
+常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`planWrites`、`apply`、`revert`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`（`scale` 设像素密度）、`exec`（在页面里执行脚本）、`config`（只改工作区级设置，不碰用户设置）、`locale`（切换扩展这一侧的界面语言）、`dumpState`（导出面板状态）、`screenshot`、`command`（执行编辑器命令）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
 
 在别人的项目上跑之前先 `backup` 所有可能被写的文件，结尾用 `compareFiles` 确认字节级一致。
+
+## 商店页素材
+
+`docs/media/` 里的动图和截图用真实的页面和真实的面板状态逐帧合成，演示页是 `fixtures/demo`（`pnpm --filter fixture-demo dev`）：
+
+1. **面板状态**：在开发宿主里跑自测，每一步之后用 `dumpState` 把面板状态导出到 `packages/panel/public/`（这里的 `*.json` 不进仓库）。状态里只有类名、文件位置这类与语言无关的文字，同一份状态可以渲染两种语言。
+2. **面板帧**：启动面板调试页，打开 `shots.html?lang=en&spec=/shots.json`。spec 把各帧按网格排开渲染，`drag` 模拟按住数值字段拖动（会显示标尺和刻度），`point` 指定指针落点；渲染完后 `window.__shots` 给出每帧的位置、指针坐标和字段的值。格式见 `packages/panel/src/shots.tsx`。
+3. **页面帧**：在 Cursor 内置浏览器里打开演示页，用 `<script>` 加载 `packages/extension/media/bridge.js`，`__cssTunerBridge.boot(...)` 之后通过 `window.__CSS_TUNER__.call('select' | 'hover' | 'preview', ...)` 驱动选中、悬停和预览；应用之后的帧直接改源码，等热更新。
+4. **合成**：写一份分镜 JSON（每帧的面板裁切位置、页面截图、指针和停留时间），运行 `node scripts/media/compose.mjs <分镜文件>` 输出动图和静态截图。
+
+截图用 CDP 的 `Page.captureScreenshot`。两个坑：模拟的视口不能比标签页的实际尺寸大，否则超出的部分是错乱的画面；窗口被别的窗口完全挡住时浏览器不出新帧，截图会一直等（`screenshot` 步骤默认 5 秒超时）。
 
 ## 依赖的内部接口
 

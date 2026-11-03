@@ -1,18 +1,18 @@
-# 更新记录
+# Changelog
 
-## 0.1.0（预览版）
+## 0.1.0 (preview)
 
-第一个可用版本。
+First usable release.
 
-- 在 Cursor 内置浏览器里点选元素：悬停高亮、面包屑、组件结构树、同源实例标记。
-- 调参面板：布局（flex / grid）、间距、尺寸、定位、文字、填充、圆角、效果、CSS 变量；刻度吸附，按住 Alt 写精确值。
-- 确定性写回：
-  - Tailwind 4 类名（字面量、模板字符串、`clsx` / `cn` / `twMerge`、`cva` 变体、类名常量、组件调用处），只改当前生效的响应式变体，刻度外的值写成任意值类名；
-  - 普通 CSS 规则（简写属性、嵌套、`@import`、CSS Modules）；
-  - CSS 变量定义（`:root`、`@theme`）。
-- 应用后等热更新并校验计算样式，热更新慢时后台再等一轮。
-- 逐条还原：字节级恢复，源码后来又改过时只回退这一处，找不到就停下并给出对比。
-- 写不回去的改动整理成提示词，预填进新的 Agent 对话。
-- 纯 HTML 项目用内置静态服务打开。
-- Next.js 16 App Router（Turbopack 开发模式）：服务端组件和客户端组件的源码定位、`globals.css`、CSS Modules。
-- 启动时检查 Cursor 内置浏览器命令是否可用；“CSS Tuner: 自检”在单独的标签页里跑一遍完整流程。
+- Pick elements in Cursor's built-in browser: hover highlight, breadcrumb, component tree and same-source instance markers.
+- Tuning panel: layout (flex / grid), spacing, size, position, text, fill, radius, effects and CSS variables, with scale snapping; hold Alt for exact values.
+- Deterministic write-back:
+  - Tailwind 4 classes (literals, template literals, `clsx` / `cn` / `twMerge`, `cva` variants, class-name constants, component call sites). Only the active responsive variant is changed, and off-scale values become arbitrary-value classes.
+  - Plain CSS rules (shorthands, nesting, `@import`, CSS Modules).
+  - CSS variable definitions (`:root`, `@theme`).
+- After applying, waits for hot reload and verifies computed styles, with another round in the background when hot reload is slow.
+- Revert one change at a time: byte-for-byte restore, or roll back only this change if the source changed since; stops and shows a diff when it can't.
+- Changes that can't be written back become a prompt prefilled in a new Agent chat.
+- Plain HTML projects open with a built-in static server.
+- Next.js 16 App Router (Turbopack dev mode): source locations for server and client components, `globals.css` and CSS Modules.
+- Checks at startup that the built-in browser commands are available; "CSS Tuner: Self-Check" runs the full flow in a separate tab.

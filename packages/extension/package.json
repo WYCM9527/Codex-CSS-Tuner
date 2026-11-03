@@ -31,7 +31,12 @@
     "cursor",
     "css",
     "tailwind",
+    "tailwindcss",
     "visual editor",
+    "live preview",
+    "react",
+    "nextjs",
+    "css modules",
     "design"
   ],
   "main": "./dist/extension.js",
