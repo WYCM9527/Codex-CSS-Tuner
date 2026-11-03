@@ -11,3 +11,4 @@ export type { MessageRef } from './structure/jsx';
 export { editMessage, matchMessage, messageKeyPaths, readMessage, type MessageEditInput, type MessageMatch } from './structure/messages';
 export { editHtmlOrder, editHtmlText, type HtmlOrderInput, type HtmlTextEditInput } from './structure/html';
 export { arrayOrderSite, editArrayOrder, editJsxOrder, jsxOrderCheck, orderSummary, type ArrayOrderInput, type JsxOrderInput, type OrderSite } from './structure/reorder';
+export { editJsxProp, jsxPropSite, recipeVariants, type JsxPropEditInput, type PropSite, type PropSiteInfo, type RecipeInfo } from './structure/attr';

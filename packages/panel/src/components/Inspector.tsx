@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { MARGIN, PADDING, RADIUS, t, type PanelState, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
+import { MARGIN, PADDING, RADIUS, t, type PanelState, type PanelToExt, type PropValue, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
 import { currentValue, declaredVar, isPending } from '../lib/format';
 import { ctxOf, scaleKeyOf, type Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
@@ -7,6 +7,7 @@ import { Content } from './Content';
 import { IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
 import { Icon } from './icons';
 import { NumberField } from './NumberField';
+import { Props as PropsSection } from './Props';
 import type { Edit } from './types';
 import { Vars } from './Vars';
 
@@ -22,12 +23,14 @@ interface Props {
   setPrefs: (p: UiPrefs) => void;
   edit: (props: string[], e: Edit) => void;
   editText: (segment: number, value: string, phase: 'live' | 'commit') => void;
+  editProp: (name: string, value: PropValue, phase: 'live' | 'commit') => void;
+  send: (m: PanelToExt) => void;
 }
 
 const [PT, PR, PB, PL] = PADDING;
 const [MT, MR, MB, ML] = MARGIN;
 
-export function Inspector({ state, sel, prefs, setPrefs, edit, editText }: Props) {
+export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editProp, send }: Props) {
   const ctx = useMemo<Ctx>(() => ctxOf(sel.el), [sel.el]);
   const scales = state.scales;
   const steps = (prop: string): ScaleStep[] | null => {
@@ -74,6 +77,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText }: Props
   return (
     <div className="inspector">
       <Content sel={sel} open={open('content')} onToggle={toggle} editText={editText} />
+      <PropsSection sel={sel} ctx={ctx} open={open('props')} onToggle={toggle} editProp={editProp} send={send} />
 
       <Section id="layout" title={t('insp.layout')} open={open('layout')} onToggle={toggle}>
         <Row label={t('insp.display')}>

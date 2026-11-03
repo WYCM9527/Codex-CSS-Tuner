@@ -92,9 +92,12 @@ describe('交给 Agent 的提示词', () => {
     expect(p).toContain('when the list is rendered from an array, reorder the array');
   });
 
-  it('props 写出组件和属性名', () => {
-    const p = buildPrompt([rec({ kind: 'prop', props: ['variant'], propLabel: 'variant', from: '"primary"', to: '"ghost"', value: '"ghost"', detail: { component: 'Button' } })], ctx);
+  it('props 写出组件和属性名；交给 Agent 时附上调用处，并要求只改调用处', () => {
+    const p = buildPrompt([rec({ kind: 'prop', props: ['variant'], propLabel: 'variant', from: '"primary"', to: '"ghost"', value: '"ghost"', detail: { component: 'Button', site: 'src/App.tsx:18' } })], ctx);
     expect(p).toContain('   - Prop variant of <Button>: "primary" → "ghost"');
+    expect(p).toContain('   - Call site: src/App.tsx:18');
+    expect(p).toContain("- Change props only at the component's call site");
+    expect(p).not.toContain('Tailwind');
   });
 
   it('冲突的条目要求改回原样，并给出当初写入的内容', () => {

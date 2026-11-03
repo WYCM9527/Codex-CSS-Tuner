@@ -181,6 +181,12 @@ export interface PropsInfo {
   props: PropInfo[];
   /** 服务端组件：页面上不能预览，应用后才看得到效果 */
   server: boolean;
+  /** 页面上能预览：React 开发构建初始化前钩子就挂上了（扩展连上之前就打开的页面要刷新一次） */
+  live: boolean;
+  /** 页面上由同一个调用处创建的组件实例数 */
+  same: number;
+  /** 选中的元素就是这个组件自己的 JSX 渲染的（不隔着别的组件），元素 className 里的 cva 配方才算这个组件的变体 */
+  direct: boolean;
 }
 
 export interface CssVar {
@@ -232,8 +238,11 @@ export type PreviewTarget =
    * 纯 HTML 页面带 htmlPath（元素自己的），写回后重新取页面 HTML 校验
    */
   | { kind: 'order'; uid: string; order: number[]; mapped: string | null; anchor?: { path: string; line: number; column: number; index: number }; htmlPath?: number[] }
-  /** 用 React 开发构建的 overrideProps 改渲染这个元素的组件的一个 prop */
-  | { kind: 'props'; uid: string; name: string };
+  /**
+   * 用 React 开发构建的 overrideProps 改渲染这个元素的组件的一个 prop，同一个调用处创建的实例一起改；
+   * anchor 是元素的源码位置（组件被重新挂载、元素换了以后按它找回）
+   */
+  | { kind: 'props'; uid: string; name: string; anchor?: { path: string; line: number; column: number; index: number } };
 
 export interface SelectQuery {
   uid?: string;
@@ -325,6 +334,33 @@ export interface SelectionView {
   texts?: TextView[];
   /** 选中元素所在的兄弟组（少于两项时缺省） */
   order?: OrderView;
+  /** 渲染选中元素的项目组件收到的 props（不是 React 页面、或者没有 props 时缺省） */
+  props?: PropsView;
+}
+
+export interface PropView {
+  name: string;
+  type: PropInfo['type'];
+  /** 有未应用的改动时是改动后的值；调用处没写、由 cva 默认变体决定时是默认值 */
+  value: PropValue;
+  summary?: string;
+  pending: boolean;
+  /** 可选的值：cva 变体、TS 字面量联合类型 */
+  options?: PropValue[];
+  /** 调用处没写这个属性，改了会加上 */
+  missing?: boolean;
+  /** 写回时要注意的地方，如调用处有 {...spread} */
+  warn?: string;
+  target: Target;
+}
+
+export interface PropsView {
+  component: string;
+  /** 组件的调用处 */
+  source: { file: string; line: number; column: number; label: string } | null;
+  server: boolean;
+  live: boolean;
+  items: PropView[];
 }
 
 export interface OrderView {
@@ -433,6 +469,8 @@ export type PanelToExt =
   | { t: 'reorder'; uid: string; to: number; phase: 'live' | 'commit' }
   /** 改渲染选中元素的组件的一个 prop */
   | { t: 'editProp'; name: string; value: PropValue; phase: 'live' | 'commit' }
+  /** 刷新页面（让钩子赶在 React 之前挂上，才能预览 props） */
+  | { t: 'reload' }
   | { t: 'resetProps'; props: string[] }
   | { t: 'apply'; ids?: string[] }
   | { t: 'revert'; id: string }

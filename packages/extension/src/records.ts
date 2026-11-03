@@ -52,8 +52,8 @@ export interface ChangeRecord {
   write: WriteSpec;
   note?: string;
   patch?: AppliedPatch;
-  /** 交给 Agent 时用的附加说明：换序后兄弟的新顺序、props 所属组件、文字来源 */
-  detail?: { order?: string[]; component?: string; origin?: string };
+  /** 交给 Agent 时用的附加说明：换序后兄弟的新顺序、props 所属组件和它的调用处、文字来源 */
+  detail?: { order?: string[]; component?: string; site?: string; origin?: string };
 }
 
 /** 存下来的记录：0.2.0 及以前的没有 kind，都是样式改动 */

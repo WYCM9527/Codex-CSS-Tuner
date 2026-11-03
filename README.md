@@ -1,6 +1,6 @@
 # Cursor CSS Tuner
 
-A Cursor extension: pick elements in the built-in browser, tune their CSS, edit their text and reorder them among their siblings with live preview, write the changes back to your source code deterministically, and revert any single change.
+A Cursor extension: pick elements in the built-in browser, tune their CSS, edit their text and their components' props, and reorder them among their siblings with live preview, write the changes back to your source code deterministically, and revert any single change.
 
 ![Select a card, drag its padding and corner radius, then apply both changes to the source](docs/media/hero.gif)
 
@@ -8,7 +8,7 @@ User guide: [English](packages/extension/README.md) · [简体中文](packages/e
 
 ---
 
-Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、改文字、在兄弟之间换序、实时预览，确定性写回源码并可逐条还原。
+Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、改文字和组件属性、在兄弟之间换序、实时预览，确定性写回源码并可逐条还原。
 
 使用说明、支持范围和限制见 [packages/extension/README.zh-CN.md](packages/extension/README.zh-CN.md)（英文版 [README.md](packages/extension/README.md) 是商店页）；这份文档讲开发。
 
@@ -17,15 +17,15 @@ Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、改文字
 | 目录 | 内容 |
 | --- | --- |
 | `packages/protocol` | 扩展、页面脚本、面板之间的消息类型和数值工具（颜色、单位换算、刻度） |
-| `packages/engine` | 写回引擎：Tailwind 类名改写、CSS 规则改写、CSS 变量、CSS Modules 类名映射；`structure/` 里是结构性写回：JSX 文字和字符串 prop、翻译 JSON（jsonc-parser）、HTML 文字和子元素顺序（parse5）、JSX 子节点换序和 `.map()` 用的数组字面量换序（`reorder.ts`）。纯函数，单元测试最多 |
-| `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、文字分段、兄弟组识别（按 fiber 链分叉处分项，`.map()` 渲染的各项单独成组）、预览（样式、文字、用 `order` / 位移模拟的换序）、双击编辑、覆盖层上的拖动把手、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口） |
+| `packages/engine` | 写回引擎：Tailwind 类名改写、CSS 规则改写、CSS 变量、CSS Modules 类名映射；`structure/` 里是结构性写回：JSX 文字和字符串 prop、翻译 JSON（jsonc-parser）、HTML 文字和子元素顺序（parse5）、JSX 子节点换序和 `.map()` 用的数组字面量换序（`reorder.ts`）、组件调用处的属性和 `cva` / `tv` 配方的变体（`attr.ts`）。纯函数，单元测试最多 |
+| `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、文字分段、兄弟组识别（按 fiber 链分叉处分项，`.map()` 渲染的各项单独成组）、预览（样式、文字、用 `order` / 位移模拟的换序）、双击编辑、覆盖层上的拖动把手、组件 props 的读取和预览（页面加载时装上 React DevTools 钩子，用 renderer 的 `overrideProps`，见 `devtools.ts`、`props.ts`）、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口；React 18 的 `_debugSource` 按模块的 sourcemap 纠正 `@vitejs/plugin-react` 4 造成的行号偏移） |
 | `packages/panel` | 侧栏 webview 面板（React） |
-| `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划（样式和文字：元素自己的 JSX、调用处的 prop、`t()` 对应的翻译文件、HTML；换序：JSX 父元素、数组字面量、HTML 父元素）、改动清单、应用与还原、交给 Agent、自检 |
+| `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划（样式和文字：元素自己的 JSX、调用处的 prop、`t()` 对应的翻译文件、HTML；换序：JSX 父元素、数组字面量、HTML 父元素；属性：组件调用处）、属性的可选值（配方变体，或在调用处问 TS 语言服务的字面量补全，`completions.ts`）、改动清单、应用与还原、交给 Agent、自检 |
 | `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4，带 react-i18next）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router，带 next-intl）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
 | `docs/media/` | 商店页和 README 用的动图、截图（README 里用 raw.githubusercontent 的绝对地址引用） |
 | `spike/` | Phase 0 的可行性验证脚本（不参与构建） |
 
-一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照、文字分段、兄弟组和源码位置 → 扩展为每个属性、每段文字和兄弟组规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / JSX 文字 / 调用处的 prop / 翻译 JSON / HTML / JSX 子节点顺序 / 数组字面量 / 交给 Agent）→ 拖动和输入时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新（改翻译文件时 Vite 会整页刷新，刷新后再核对）并核对计算样式、文字和兄弟的顺序（按各项文字的字符计数指纹认，和它里面的顺序无关）→ 还原时按快照或语义回退。
+一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照、文字分段、兄弟组、所属组件收到的 props 和源码位置 → 扩展为每个属性、每段文字、兄弟组和组件属性规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / JSX 文字 / 调用处的 prop / 翻译 JSON / HTML / JSX 子节点顺序 / 数组字面量 / 调用处的属性 / 交给 Agent）→ 拖动和输入时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新（改翻译文件时 Vite 会整页刷新，刷新后再核对）并核对计算样式、文字、兄弟的顺序（按各项文字的字符计数指纹认，和它里面的顺序无关）和组件收到的 props→ 还原时按快照或语义回退。
 
 ## 开发
 
@@ -70,7 +70,7 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 }
 ```
 
-常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`texts`（列出选中元素的文字分段和写回目标）、`editText`（在面板里改一段文字）、`pageEdit`（在页面上双击文字输入，`key` 是 `Enter` 或 `Escape`）、`order`（列出选中元素所在兄弟组和写回目标，`read` 给了时按显示位置读出这组元素的文字）、`reorder`（在面板里把第 `item` 项挪到第 `to` 个）、`pageDrag`（在页面上拖选中元素的把手，放到 `over` 那个元素的前半或后半）、`planWrites`、`apply`、`revert`、`discard`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`（`scale` 设像素密度）、`exec`（在页面里执行脚本）、`execFallback`（模拟 CSP 拦住 WebSocket：`keep: true` 停在 exec 模式，`end: true` 恢复）、`config`（只改工作区级设置，不碰用户设置）、`locale`（切换扩展这一侧的界面语言）、`dumpState`（导出面板状态）、`screenshot`、`command`（执行编辑器命令）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
+常用步骤：`open`、`serveStatic`、`select`、`hover`、`edit`、`texts`（列出选中元素的文字分段和写回目标）、`editText`（在面板里改一段文字）、`pageEdit`（在页面上双击文字输入，`key` 是 `Enter` 或 `Escape`）、`order`（列出选中元素所在兄弟组和写回目标，`read` 给了时按显示位置读出这组元素的文字）、`reorder`（在面板里把第 `item` 项挪到第 `to` 个）、`pageDrag`（在页面上拖选中元素的把手，放到 `over` 那个元素的前半或后半）、`props`（列出选中元素所属组件的属性、可选值和写回目标，`waitOptions` 指定的属性等到 TS 补全给出选项再返回）、`editProp`（在面板里改一个属性）、`completions`（直接问语言服务某处的补全，排查选项用）、`planWrites`、`apply`、`revert`、`discard`、`diff`、`fileLine` / `fileRange`、`backup` / `compareFiles`（`restore: true` 时把备份写回去）、`viewport`（`scale` 设像素密度）、`exec`（在页面里执行脚本）、`execFallback`（模拟 CSP 拦住 WebSocket：`keep: true` 停在 exec 模式，`end: true` 恢复）、`config`（只改工作区级设置，不碰用户设置）、`locale`（切换扩展这一侧的界面语言）、`dumpState`（导出面板状态）、`screenshot`、`command`（执行编辑器命令）、`selfCheck`、`state`。完整列表见 `packages/extension/src/selftest.ts`。
 
 自测窗口里的内置浏览器标签不在前台时，`requestAnimationFrame` 可能一帧都不跑：靠它驱动的入场动画（比如 GSAP 的滚动入场）会停在 `opacity: 0`，元素看不见、也不能双击编辑。在真实项目上测双击前，先用 `exec` 把要测的元素设成可见。
 
@@ -89,10 +89,11 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 
 ## 依赖的内部接口
 
-这两处都不是公开 API，变化时只需要改对应的适配代码：
+这几处都不是公开 API，变化时只需要改对应的适配代码：
 
 - **Cursor 内置浏览器命令**（`workbench.action.openBrowserEditor`、`cursor.browserView.*`）：集中在 `packages/extension/src/browser.ts`；启动时 `selfcheck.ts` 会检查命令是否还在。
 - **Next.js 开发服务器的 `/__nextjs_original-stack-frames`**（错误浮层用的栈帧解析接口）：请求和 URL 换算在 `packages/bridge/src/source.ts` 和 `packages/bridge/src/next.ts`；接口不可用时退回直接读 sourcemap。
+- **React DevTools 全局钩子**（`__REACT_DEVTOOLS_GLOBAL_HOOK__`，renderer 注册时带上的 `overrideProps`）：props 预览用，集中在 `packages/bridge/src/devtools.ts`。钩子要在 React 加载前装上，所以扩展打开页面时先在空白页登记文档开始时执行的脚本，再导航过去；拿不到 `overrideProps` 时面板提示刷新页面。
 
 ## 发布
 

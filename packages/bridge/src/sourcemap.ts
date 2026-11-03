@@ -115,6 +115,45 @@ export function originalPositionFor(map: RawMap, decoded: Decoded, line: number,
   return { source: (map.sourceRoot ?? '') + map.sources[best[1]], line: best[2] + 1, column: best[3] + 1 };
 }
 
+const SOURCE_OBJ = /\{\s*fileName:\s*("(?:[^"\\]|\\.)*"|[\w$]+),\s*lineNumber:\s*(\d+),\s*columnNumber:\s*(\d+)\s*\}/g;
+
+/**
+ * 模块里 JSX 开发态位置（jsxDEV 的 source 对象，React 18 的 _debugSource）整体往下偏了几行。
+ * @vitejs/plugin-react 4 先在 Babel 输出前面插 react-refresh 的代码、再由 esbuild 转 JSX，esbuild 按插过之后的代码算 lineNumber。
+ * 每个位置对象经 sourcemap 映射回原始 JSX，多数对象差同样的行数才算偏了；没偏或判断不了是 0
+ */
+export function jsxLineShift(code: string, map: SourceMap, fileName: string): number {
+  const counts = new Map<number, number>();
+  let total = 0;
+  let line = 1;
+  let lineStart = 0;
+  let at = 0;
+  for (const m of code.matchAll(SOURCE_OBJ)) {
+    for (; at < m.index; at++) {
+      if (code.charCodeAt(at) === 10) {
+        line++;
+        lineStart = at + 1;
+      }
+    }
+    // 写成字符串的文件名要对得上（_jsxFileName 这种变量就不比了）
+    if (m[1].startsWith('"') && JSON.parse(m[1]) !== fileName) continue;
+    const pos = originalPosition(map, line, m.index - lineStart + 1);
+    if (!pos) continue;
+    const d = Number(m[2]) - pos.line;
+    counts.set(d, (counts.get(d) ?? 0) + 1);
+    total++;
+  }
+  let shift = 0;
+  let most = 0;
+  for (const [d, c] of counts) {
+    if (c > most) {
+      shift = d;
+      most = c;
+    }
+  }
+  return shift > 0 && most >= total * 0.6 ? shift : 0;
+}
+
 const SOURCE_MAPPING_RE = /\/\/[#@] sourceMappingURL=(\S+)\s*$/;
 const CSS_SOURCE_MAPPING_RE = /\/\*[#@] sourceMappingURL=(\S+?)\s*\*\/\s*$/;
 

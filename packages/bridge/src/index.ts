@@ -1,4 +1,5 @@
 import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
+import { installHook } from './devtools';
 import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
 import { visibleBoxes } from './order';
 import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './overlay';
@@ -333,8 +334,8 @@ class Bridge {
       return el ? uidOf(el) : null;
     },
     snapshot: async () => (this.selected && this.selected.isConnected ? snapshot(this.selected) : null),
-    preview: async ({ id, target, decls = {}, text }) => {
-      const count = await preview(id, target, decls, text);
+    preview: async ({ id, target, decls = {}, text, prop }) => {
+      const count = await preview(id, target, decls, text, prop);
       const el = elOf(target.uid);
       const computed: Record<string, string> = {};
       if (el) {
@@ -431,6 +432,7 @@ function reloadSheets(hrefs?: string[]): number {
 
 export function boot(cfg: BootConfig) {
   if (window.top !== window) return;
+  installHook();
   const w = window as unknown as { __CSS_TUNER__?: Bridge };
   if (w.__CSS_TUNER__) {
     w.__CSS_TUNER__.configure(cfg);

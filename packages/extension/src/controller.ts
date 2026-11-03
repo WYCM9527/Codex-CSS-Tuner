@@ -17,16 +17,20 @@ import {
   type PanelState,
   type PanelToExt,
   type PreviewTarget,
+  type PropInfo,
+  type PropsView,
   type PropValue,
+  type PropView,
   type RuleRef,
   type Scope,
   type SelectionView,
   type Target,
   type TextView,
 } from '@css-tuner/protocol';
-import { hasArbitraryValue, previewCompanions, tailwindScales, type TwDesign } from '@css-tuner/engine';
+import { hasArbitraryValue, previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
 import { BrowserAdapter } from './browser';
+import { literalCompletions } from './completions';
 import { prefill, type PrefillResult } from './handoff';
 import { Journal, type ChangeRecord } from './journal';
 import { MessageFiles } from './messages';
@@ -34,14 +38,18 @@ import {
   oneLine,
   plan,
   planOrder,
+  planProp,
   planText,
   planVar,
+  propKey,
   sourceKeyOf,
   tailwindEntry,
   textKey,
   type OrderContext,
   type OrderPlan,
   type Plan,
+  type PropContext,
+  type PropPlan,
   type TextContext,
   type TextPlan,
   type WriteSpec,
@@ -122,6 +130,12 @@ export class Controller implements vscode.Disposable {
   private orderPlan: OrderPlan | null = null;
   /** 还没提交的实时换序预览：重建选中状态时按它显示，和页面上看到的一致 */
   private liveOrder: { key: string; order: number[] } | null = null;
+  /** 选中元素所属组件每个属性的写回规划，键是属性名 */
+  private propPlans = new Map<string, PropPlan>();
+  /** 调用处没写、由 cva 默认变体决定的属性显示的默认值（改回它就等于没改） */
+  private propDefaults = new Map<string, PropValue>();
+  /** TS 在调用处字符串里给出的字面量补全：键是文件、mtime 和位置；null 是问过但没有，at 是上次问的时间 */
+  private propOptions = new Map<string, { options: string[] | null; at: number; busy?: boolean }>();
   /** 当前页面 Tailwind 入口的设计系统，不是 Tailwind 页面时为 null */
   private design: TwDesign | null = null;
   private editChain: Promise<unknown> = Promise.resolve();
@@ -287,6 +301,12 @@ export class Controller implements vscode.Disposable {
       case 'reorder':
         await this.reorder(msg.uid, msg.to, msg.phase);
         return;
+      case 'editProp':
+        await this.editProp(msg.name, msg.value, msg.phase);
+        return;
+      case 'reload':
+        if (this.session) await this.browser.reload(this.session.browserId);
+        return;
     }
   }
 
@@ -404,12 +424,10 @@ export class Controller implements vscode.Disposable {
     await this.server.start();
 
     let browserId = this.session?.browserId ?? this.ctx.workspaceState.get<string>(BROWSER_KEY) ?? null;
-    if (browserId && (await this.browser.isOpen(browserId))) {
-      const cur = await this.browser.url(browserId);
-      if (cur !== target) await this.browser.navigate(browserId, target);
-      await this.browser.focus(browserId);
-    } else {
-      browserId = await this.browser.open(target);
+    const reuse = !!browserId && (await this.browser.isOpen(browserId));
+    if (!reuse || !browserId) {
+      // 先开空白页、注册好桥接脚本再跳过去：页面一开始加载桥接就在
+      browserId = await this.browser.open('about:blank');
       await this.ctx.workspaceState.update(BROWSER_KEY, browserId);
     }
 
@@ -426,6 +444,12 @@ export class Controller implements vscode.Disposable {
       );
     }
 
+    if (!reuse || (await this.browser.url(browserId)) !== target) {
+      await this.registerEarly(this.session);
+      await this.browser.navigate(browserId, target);
+    }
+    if (reuse) await this.browser.focus(browserId);
+
     const href = await this.browser.waitReady(browserId);
     if (!href || href.startsWith('chrome-error://')) {
       this.notify('error', t('ext.open.unreachable', { target }));
@@ -440,6 +464,21 @@ export class Controller implements vscode.Disposable {
     this.state.connection = ok ? 'connected' : 'lost';
     this.push();
     return ok;
+  }
+
+  /**
+   * 跳转前注册桥接脚本：React 初始化之前挂上 DevTools 钩子，组件属性才能在页面上预览。
+   * 新开的标签页 CDP 可能还没就绪，稍等再试；一直不行也不要紧，加载完会照常注入
+   */
+  private async registerEarly(session: PageSession): Promise<void> {
+    for (let i = 0; i < 12; i++) {
+      try {
+        await session.register();
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
   }
 
   private disposeSession() {
@@ -622,7 +661,7 @@ export class Controller implements vscode.Disposable {
         targets[v.name] = p.view;
       }
     }
-    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el) };
+    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el), props: this.propsFor(el) };
   }
 
   private orderContext(page: PageInfo): OrderContext {
@@ -683,6 +722,158 @@ export class Controller implements vscode.Disposable {
       const rec = this.journal.findPending(textKey(p, el, i));
       return { segment: i, value: rec ? rec.value : oneLine(seg.value), pending: !!rec, origin: p.origin, target: p.view };
     });
+  }
+
+  private propContext(page: PageInfo): PropContext {
+    return { page, project: this.project, propSite: (f, line, column, name, tag) => this.classSites.propSite(f, line, column, name, tag) };
+  }
+
+  /** 选中元素自己的 JSX 用到的 cva / tv 配方（元素隔着别的组件时配方不是这个组件的） */
+  private recipeFor(el: ElementSnapshot): RecipeInfo | null {
+    if (!this.page || !el.props?.direct || !el.source) return null;
+    const file = this.project.fileFor(this.page.url, el.source.path, el.source.file);
+    return file ? this.classSites.recipe(file, el.source.line, el.source.column) : null;
+  }
+
+  /** 渲染选中元素的组件收到的属性；有未应用的改动时显示改动后的值，cva 变体里调用处没写的也列出来 */
+  private propsFor(el: ElementSnapshot): PropsView | undefined {
+    this.propPlans.clear();
+    this.propDefaults.clear();
+    const info = el.props;
+    if (!this.page || !info) return undefined;
+    const ctx = this.propContext(this.page);
+    const recipe = this.recipeFor(el);
+    const items: PropView[] = [];
+    const add = (prop: PropInfo, missing: boolean) => {
+      const p = planProp(el, prop.name, ctx);
+      this.propPlans.set(prop.name, p);
+      if (missing) this.propDefaults.set(prop.name, prop.value);
+      const rec = this.journal.findPending(propKey(p, el, prop.name));
+      const options = this.optionsFor(el, prop, p, recipe);
+      items.push({
+        name: prop.name,
+        type: prop.type,
+        value: rec ? (JSON.parse(rec.value) as PropValue) : prop.value,
+        ...(prop.summary ? { summary: prop.summary } : {}),
+        pending: !!rec,
+        ...(options ? { options } : {}),
+        ...(missing ? { missing } : {}),
+        ...(p.warn ? { warn: p.warn } : {}),
+        target: p.view,
+      });
+    };
+    for (const prop of info.props) add(prop, false);
+    for (const name of recipe?.passed ?? []) {
+      const opts = recipe!.variants[name] ?? [];
+      if (!opts.length || info.props.some((x) => x.name === name)) continue;
+      const d = recipe!.defaults[name];
+      const bool = opts.every((o) => o === 'true' || o === 'false');
+      add(bool ? { name, type: 'boolean', value: d === 'true' } : { name, type: d === undefined ? 'undefined' : 'string', value: d ?? null }, true);
+    }
+    const loc = info.source;
+    const file = loc ? this.project.fileFor(this.page.url, loc.path, loc.file) : null;
+    return {
+      component: info.component,
+      source: loc && file ? { file, line: loc.line, column: loc.column, label: `${this.project.label(file)}:${loc.line}` } : null,
+      server: info.server,
+      live: info.live,
+      items,
+    };
+  }
+
+  /** 属性可选的值：cva / tv 配方的变体，或者 TS 在调用处字符串里给出的字面量补全（异步，问到了再推一次） */
+  private optionsFor(el: ElementSnapshot, prop: PropInfo, p: PropPlan, recipe: RecipeInfo | null): PropValue[] | undefined {
+    if (prop.type !== 'string' && prop.type !== 'undefined' && prop.type !== 'null') return undefined;
+    const variant = recipe?.passed.includes(prop.name) ? recipe.variants[prop.name] : undefined;
+    if (variant?.length && !variant.every((o) => o === 'true' || o === 'false')) return variant;
+    const inner = p.site?.kind === 'literal' ? p.site.inner : undefined;
+    if (!inner || p.write.kind !== 'jsxProp') return undefined;
+    const file = p.write.file;
+    let mtime = 0;
+    try {
+      mtime = statSync(file).mtimeMs;
+    } catch {
+      return undefined;
+    }
+    const key = `${file}|${mtime}|${inner.line}|${inner.column}`;
+    const hit = this.propOptions.get(key);
+    if (hit?.options) return hit.options;
+    if (hit && (hit.busy || Date.now() - hit.at < 15000)) return undefined;
+    this.propOptions.set(key, { options: null, at: Date.now(), busy: true });
+    void literalCompletions(file, inner.line, inner.column).then((options) => {
+      this.propOptions.set(key, { options, at: Date.now() });
+      if (this.propOptions.size > 200) this.propOptions.delete(this.propOptions.keys().next().value as string);
+      const now = this.selectionOf(el);
+      const item = now?.props?.items.find((x) => x.name === prop.name);
+      if (!options || !item) return;
+      item.options = options;
+      this.push();
+    });
+    return undefined;
+  }
+
+  /** 改选中元素所属组件的属性：live 只预览，commit 记进改动清单；改回原来的值就撤掉这条改动 */
+  editProp(name: string, value: PropValue, phase: 'live' | 'commit'): Promise<void> {
+    const run = this.editChain.then(() => this.doEditProp(name, value, phase));
+    this.editChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async doEditProp(name: string, value: PropValue, phase: 'live' | 'commit') {
+    const sel = this.state.selection;
+    const session = this.session;
+    const p = this.propPlans.get(name);
+    const info = sel?.el.props;
+    const item = sel?.props?.items.find((x) => x.name === name);
+    if (!sel || !session || !this.page || !p || !info || !item) return;
+    if (typeof value === 'number' && !Number.isFinite(value)) return;
+    const el = sel.el;
+    const key = propKey(p, el, name);
+    const existing = this.journal.findPending(key);
+    const previewId = existing?.previewId ?? key;
+    // 调用处原来的值（JSON）：取快照里的（面板上的值在实时预览时已经变了）；没写时是 "undefined"，界面上显示的是默认值
+    const snap = info.props.find((x) => x.name === name);
+    const base = existing?.original[name] ?? (!snap || snap.type === 'undefined' ? 'undefined' : JSON.stringify(snap.value));
+    const shown: PropValue = base === 'undefined' ? (this.propDefaults.get(name) ?? null) : (JSON.parse(base) as PropValue);
+    const json = JSON.stringify(value);
+    const back = json === base || (base === 'undefined' && this.propDefaults.has(name) && json === JSON.stringify(shown));
+    if (back) await session.call('clearPreview', { id: previewId });
+    else if (info.live) await session.call('preview', { id: previewId, target: p.preview, prop: value });
+    const now = this.selectionOf(el)?.props?.items.find((x) => x.name === name);
+    if (now) now.value = back ? shown : value;
+    if (phase === 'commit') {
+      if (back) {
+        if (existing) this.journal.remove(existing.id);
+      } else {
+        const fields = { value: json, to: json, expected: { [name]: json }, view: p.view, write: p.write };
+        if (existing) this.journal.update(existing.id, fields);
+        else {
+          this.journal.add({
+            kind: 'prop',
+            key,
+            pageUrl: this.page.url,
+            element: {
+              label: el.label,
+              source: el.source,
+              sourceIndex: el.sourceIndex,
+              sameSource: el.sameSource,
+              path: el.breadcrumb.map((b) => b.label).join(' > '),
+            },
+            props: [name],
+            propLabel: name,
+            from: base === 'undefined' ? t('engine.prop.unset') : base,
+            token: null,
+            original: { [name]: base },
+            preview: p.preview,
+            previewId,
+            detail: { component: info.component, ...(sel.props?.source ? { site: sel.props.source.label } : {}) },
+            ...fields,
+          });
+        }
+      }
+      if (now) now.pending = !back;
+    }
+    this.push();
   }
 
   /** 选中元素上仍未应用的改动值（同一写回目标、同一属性） */

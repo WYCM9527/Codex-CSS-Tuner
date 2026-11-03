@@ -1,6 +1,7 @@
 import type { CallerLoc, SourceLoc } from '@css-tuner/protocol';
+import { reactHooked } from './devtools';
 import { clientModuleUrl, distDirOf, joinPath, projectRootOf, SERVER_URL, serverModuleUrl } from './next';
-import { decodeDataUrl, extractMapUrl, filePathOf, originalPosition, type SourceMap } from './sourcemap';
+import { decodeDataUrl, extractMapUrl, filePathOf, jsxLineShift, originalPosition, type SourceMap } from './sourcemap';
 import { stripQuery } from './util';
 
 /** fiber，或服务端组件的调试信息（React Server Components 渲染的元素，owner 不是 fiber） */
@@ -16,6 +17,7 @@ export interface DebugNode {
   return?: DebugNode | null;
   alternate?: DebugNode | null;
   child?: DebugNode | null;
+  sibling?: DebugNode | null;
   /** 宿主 fiber 是 DOM 节点；根和 portal 的 fiber 带着 containerInfo（挂载到的容器） */
   stateNode?: unknown;
   _debugStack?: { stack?: string } | null;
@@ -62,7 +64,7 @@ export function fiberOf(el: Node): DebugNode | null {
 }
 
 export function hasReact(): boolean {
-  return !!(window as unknown as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: unknown }).__REACT_DEVTOOLS_GLOBAL_HOOK__ || !!fiberKey;
+  return reactHooked() || !!fiberKey;
 }
 
 const stackOf = (n: DebugNode) => n._debugStack?.stack ?? n.debugStack?.stack;
@@ -273,11 +275,90 @@ function resolveFrame(fr: RawFrame): Promise<Resolved | null> {
   return p;
 }
 
+/* ---------- React 18 的 _debugSource ---------- */
+
+/** 页面上每个模块路径最近一次加载的地址：热更新后带着新的 ?t=，模块换了版本要重新对行号 */
+const loadedModules = new Map<string, string>();
+let watchingModules = false;
+
+function watchModules() {
+  if (watchingModules) return;
+  watchingModules = true;
+  const note = (list: PerformanceEntryList) => {
+    for (const e of list) {
+      const r = e as PerformanceResourceTiming;
+      // 我们自己取模块的请求不算
+      if (r.initiatorType === 'fetch' || r.initiatorType === 'xmlhttprequest') continue;
+      try {
+        const u = new URL(r.name);
+        if (u.origin === location.origin) loadedModules.set(decodeURIComponent(u.pathname), r.name);
+      } catch {
+        /* 不是合法地址 */
+      }
+    }
+  };
+  note(performance.getEntriesByType('resource'));
+  try {
+    new PerformanceObserver((l) => note(l.getEntries())).observe({ type: 'resource' });
+  } catch {
+    /* 没有 PerformanceObserver */
+  }
+}
+
+const modulePathOf = new Map<string, string>();
+
+/** 页面加载这个文件用的地址：路径是文件绝对路径的后缀（Vite 的 /src/…、/@fs/…）；找不到时按 Vite 的 /@fs/ 约定拼一个 */
+function moduleUrlOf(fileName: string): string {
+  const known = modulePathOf.get(fileName);
+  const hit = known && loadedModules.get(known);
+  if (hit) return hit;
+  let best: string | null = null;
+  let len = 0;
+  for (const path of loadedModules.keys()) {
+    const p = path.startsWith('/@fs/') ? path.slice(4) : path;
+    if (p.length > len && p.length > 1 && fileName.endsWith(p)) {
+      best = path;
+      len = p.length;
+    }
+  }
+  if (best) {
+    modulePathOf.set(fileName, best);
+    return loadedModules.get(best)!;
+  }
+  return location.origin + '/@fs' + encodeURI(fileName.startsWith('/') ? fileName : '/' + fileName);
+}
+
+const lineShifts = new Map<string, Promise<number>>();
+
+async function lineShiftOf(url: string, fileName: string): Promise<number> {
+  const code = await (await fetch(url)).text();
+  const ref = extractMapUrl(code);
+  if (!ref) return 0;
+  const map = JSON.parse(ref.startsWith('data:') ? decodeDataUrl(ref) : await (await fetch(new URL(ref, url))).text()) as SourceMap;
+  return jsxLineShift(code, map, fileName);
+}
+
+/** _debugSource 的行号要减掉几行：按这个文件当前版本的模块算 */
+function lineShiftFor(fileName: string): Promise<number> {
+  watchModules();
+  const url = moduleUrlOf(fileName);
+  const key = `${url}\n${fileName}`;
+  let p = lineShifts.get(key);
+  if (!p) {
+    if (lineShifts.size > 500) lineShifts.clear();
+    p = lineShiftOf(url, fileName).catch(() => 0);
+    lineShifts.set(key, p);
+  }
+  return p;
+}
+
 /** 这个节点自己的调用栈里第一个业务代码帧 */
 async function ownFrame(n: DebugNode, hops: number): Promise<Picked | null> {
   const s = n._debugSource;
   if (s && s.fileName && !s.fileName.includes('/node_modules/')) {
-    const loc = { path: s.fileName, file: s.fileName, line: s.lineNumber, column: s.columnNumber ?? 1, library: false };
+    const shift = await lineShiftFor(s.fileName);
+    const line = s.lineNumber - shift >= 1 ? s.lineNumber - shift : s.lineNumber;
+    const loc = { path: s.fileName, file: s.fileName, line, column: s.columnNumber ?? 1, library: false };
     return { node: n, url: s.fileName, hops, loc };
   }
   for (const fr of framesOf(stackOf(n))) {

@@ -3,6 +3,7 @@ import { collectRules, matchRules, pickWinner, type FlatRule, type Matched, type
 import { orderInfo } from './order';
 import { kindOf } from './page';
 import { originalReader } from './preview';
+import { propsInfo } from './props';
 import { callersOf, ownerName, sameSourceElements, sourceOf } from './source';
 import { staticSelector } from './specificity';
 import { textInfo } from './text';
@@ -175,5 +176,6 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
     rootFontSizePx: parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
     text: await textInfo(el, source),
     order: await orderInfo(el),
+    props: await propsInfo(el),
   };
 }

@@ -1,6 +1,7 @@
-import type { PreviewTarget, RuleRef } from '@css-tuner/protocol';
+import type { PreviewTarget, PropValue, RuleRef } from '@css-tuner/protocol';
 import { collectRules, type Reader } from './cascade';
 import { movableKids, orderDecls } from './order';
+import { clearAllProps, clearProp, hasPropPreview, previewProp } from './props';
 import { sameSourceElements } from './source';
 import { clearAllTexts, clearTextPreview, hasTextPreview, previewText } from './text';
 import { elOf, isOwnSheet, sheetDevId, uidOf } from './util';
@@ -156,8 +157,13 @@ function reapply(k: HTMLElement | CSSStyleDeclaration) {
 let chain: Promise<unknown> = Promise.resolve();
 
 /** 拖动时预览请求很密，串行处理，避免同一 id 并发建出两条记录 */
-export function preview(id: string, target: PreviewTarget, decls: Record<string, string>, text = ''): Promise<number> {
-  const run = chain.then(() => (target.kind === 'text' ? previewText(id, target, text) : target.kind === 'order' ? previewOrder(id, target) : doPreview(id, target, decls)));
+export function preview(id: string, target: PreviewTarget, decls: Record<string, string>, text = '', prop: PropValue = null): Promise<number> {
+  const run = chain.then(() => {
+    if (target.kind === 'text') return previewText(id, target, text);
+    if (target.kind === 'order') return previewOrder(id, target);
+    if (target.kind === 'props') return previewProp(id, target, prop);
+    return doPreview(id, target, decls);
+  });
   chain = run.catch(() => undefined);
   return run;
 }
@@ -225,7 +231,7 @@ function sameTarget(a: PreviewTarget, b: PreviewTarget): boolean {
 }
 
 export function clearPreview(id: string): boolean {
-  if (clearTextPreview(id)) return true;
+  if (clearTextPreview(id) || clearProp(id)) return true;
   const e = entries.get(id);
   if (!e) return false;
   entries.delete(id);
@@ -243,11 +249,11 @@ export function clearPreview(id: string): boolean {
 export function clearAll(): number {
   const n = entries.size;
   for (const id of Array.from(entries.keys())) clearPreview(id);
-  return n + clearAllTexts();
+  return n + clearAllTexts() + clearAllProps();
 }
 
 export function hasPreview(id: string): boolean {
-  return entries.has(id) || hasTextPreview(id);
+  return entries.has(id) || hasTextPreview(id) || hasPropPreview(id);
 }
 
 /** 热更新替换 <style> 后，旧 CSSOM 规则就脱离了文档 */

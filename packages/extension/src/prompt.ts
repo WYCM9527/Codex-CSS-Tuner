@@ -53,7 +53,9 @@ function changeLines(rec: ChangeRecord, tw: boolean): string[] {
     case 'prop': {
       const component = rec.detail?.component ?? '?';
       const name = rec.props[0] ?? rec.propLabel;
-      return [back ? t('handoff.prop.revert', { component, name, value: rec.to, from: rec.from }) : t('handoff.prop', { component, name, from: rec.from, to: rec.to })];
+      const lines = [back ? t('handoff.prop.revert', { component, name, value: rec.to, from: rec.from }) : t('handoff.prop', { component, name, from: rec.from, to: rec.to })];
+      if (rec.detail?.site && rec.view.kind === 'agent') lines.push(t('handoff.prop.site', { site: rec.detail.site }));
+      return lines;
     }
     default: {
       const props = rec.props.join(' / ');
@@ -103,6 +105,7 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
   if (has('style')) lines.push(t(tw ? 'handoff.req.twTokens' : 'handoff.req.cssVars'));
   if (has('text')) lines.push(t('handoff.req.text'));
   if (has('reorder')) lines.push(t('handoff.req.reorder'));
+  if (has('prop')) lines.push(t('handoff.req.prop'));
   lines.push(t('handoff.req.scope'));
   lines.push(t('handoff.req.report'));
   return lines.join('\n');

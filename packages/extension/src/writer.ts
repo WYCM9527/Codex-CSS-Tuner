@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { t } from '@css-tuner/protocol';
-import { editArrayOrder, editCssRule, editHtmlOrder, editHtmlText, editJsxAttr, editJsxOrder, editJsxText, editMessage, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
+import { t, type PropValue } from '@css-tuner/protocol';
+import { editArrayOrder, editCssRule, editHtmlOrder, editHtmlText, editJsxAttr, editJsxOrder, editJsxProp, editJsxText, editMessage, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
 import type { ChangeRecord } from './journal';
 import type { TailwindService } from './tailwind';
 
@@ -79,6 +79,14 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
     if (w.kind === 'jsxOrder') return editJsxOrder({ file: w.file, source, sites: w.sites, order: w.order });
     if (w.kind === 'arrayOrder') return editArrayOrder({ file: w.file, source, line: w.line, column: w.column, count: w.count, order: w.order, read });
     return editHtmlOrder({ file: w.file, source, path: w.path, tags: w.tags, order: w.order });
+  }
+  if (w.kind === 'jsxProp') {
+    const source = read(w.file);
+    if (source === null) return { ok: false, reason: t('engine.readFailed', { file: w.file }) };
+    const name = rec.props[0];
+    const before = rec.original[name];
+    const from = before === undefined || before === 'undefined' ? undefined : (JSON.parse(before) as PropValue);
+    return editJsxProp({ file: w.file, source, line: w.line, column: w.column, name, value: JSON.parse(rec.value) as PropValue, from, tag: w.tag });
   }
   return { ok: false, reason: t('ext.write.unsupported') };
 }

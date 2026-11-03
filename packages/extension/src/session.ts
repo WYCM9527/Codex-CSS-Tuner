@@ -69,19 +69,26 @@ export class PageSession implements vscode.Disposable {
     return `${this.bundle}\n;try{__cssTunerBridge.boot(${JSON.stringify(cfg)})}catch(e){console.warn('[css-tuner]',e)}`;
   }
 
-  /** 注册“每个新文档开头执行”的脚本（刷新、跳转后自动重新注入），并在当前文档里执行一次 */
-  async inject(): Promise<void> {
-    if (!this.socket) this.setState('opening');
+  /**
+   * 注册“每个新文档开头执行”的脚本（刷新、跳转后自动重新注入）。打开页面前先注册，
+   * 桥接脚本就赶在 React 初始化之前挂上 DevTools 钩子，组件属性才能在页面上预览
+   */
+  async register(): Promise<void> {
     const { browser: b, browserId: id } = this;
     await b.cdp(id, 'Page.enable');
     await b.cdp(id, 'Page.setBypassCSP', { enabled: true }).catch(() => undefined);
     if (this.scriptId) {
       await b.cdp(id, 'Page.removeScriptToEvaluateOnNewDocument', { identifier: this.scriptId }).catch(() => undefined);
     }
-    const source = this.bootScript();
-    const reg = await b.cdp<{ identifier?: string }>(id, 'Page.addScriptToEvaluateOnNewDocument', { source });
+    const reg = await b.cdp<{ identifier?: string }>(id, 'Page.addScriptToEvaluateOnNewDocument', { source: this.bootScript() });
     this.scriptId = reg?.identifier ?? null;
-    await withTimeout(b.exec(id, `${source};true`), 10000, t('session.inject'));
+  }
+
+  /** 注册新文档脚本，并在当前文档里执行一次 */
+  async inject(): Promise<void> {
+    if (!this.socket) this.setState('opening');
+    await this.register();
+    await withTimeout(this.browser.exec(this.browserId, `${this.bootScript()};true`), 10000, t('session.inject'));
     if (this.socket && this.socket.readyState === this.socket.OPEN) this.setState('connected');
     else this.armWatchdog();
   }

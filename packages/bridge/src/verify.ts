@@ -2,6 +2,7 @@ import { sameValue, type PreviewTarget } from '@css-tuner/protocol';
 import { arrange, fetchedKids, findGroup, groupOf, matchIn, movableKids, parentOf, sigOf, unitShort } from './order';
 import { sameOrder } from './sig';
 import { clearPreview, resolveRule } from './preview';
+import { verifyProp } from './props';
 import { findBySource } from './source';
 import { baseOf, commitTextPreview, elementAtPath, fetchedText, fill, hasTextPreview, textNodesOf } from './text';
 import { elOf, sleep, waitUntil } from './util';
@@ -154,6 +155,7 @@ export async function verify(
 ) {
   if (target.kind === 'text') return verifyText(id, target, expected.text ?? '', timeoutMs, refind);
   if (target.kind === 'order') return verifyOrder(id, target, expected.order ?? '', timeoutMs, refind);
+  if (target.kind === 'props') return verifyProp(id, target, expected, timeoutMs, refind);
   if (target.kind !== 'inline' && target.kind !== 'rule') return { ok: false, actual: {}, waitedMs: 0 };
   const t0 = performance.now();
   const el = elOf(target.uid) ?? (await refind());

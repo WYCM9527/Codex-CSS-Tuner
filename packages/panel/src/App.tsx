@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getLocale, setLocale, t, type PanelState, type PanelToExt } from '@css-tuner/protocol';
+import { getLocale, setLocale, t, type PanelState, type PanelToExt, type PropValue } from '@css-tuner/protocol';
 import type { Host } from './host';
 import { ChangeList, ElementHeader, NoticeBar, Toolbar } from './components/Chrome';
 import { Inspector, type UiPrefs } from './components/Inspector';
@@ -29,6 +29,7 @@ export function App({ host }: { host: Host }) {
   );
   const edit = useCallback((props: string[], e: Edit) => host.send({ t: 'edit', edit: { ...e, props } }), [host]);
   const editText = useCallback((segment: number, value: string, phase: 'live' | 'commit') => host.send({ t: 'editText', segment, value, phase }), [host]);
+  const editProp = useCallback((name: string, value: PropValue, phase: 'live' | 'commit') => host.send({ t: 'editProp', name, value, phase }), [host]);
 
   if (!state) return <div className="boot">{t('panel.boot')}</div>;
   const sel = state.selection;
@@ -63,7 +64,7 @@ export function App({ host }: { host: Host }) {
               onlyComponents={prefs.split.includes('tree-components')}
               setOnlyComponents={(on) => setPrefs({ ...prefs, split: on ? [...prefs.split, 'tree-components'] : prefs.split.filter((x) => x !== 'tree-components') })}
             />
-            <Inspector state={state} sel={sel} prefs={prefs} setPrefs={setPrefs} edit={edit} editText={editText} />
+            <Inspector state={state} sel={sel} prefs={prefs} setPrefs={setPrefs} edit={edit} editText={editText} editProp={editProp} send={send} />
           </>
         )}
       </main>

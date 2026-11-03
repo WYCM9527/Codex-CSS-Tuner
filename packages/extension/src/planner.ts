@@ -1,5 +1,5 @@
 import { t, type ElementSnapshot, type OrderUnit, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
-import type { MessageRef, OrderSite, TextSite } from '@css-tuner/engine';
+import type { MessageRef, OrderSite, PropSite, PropSiteInfo, TextSite } from '@css-tuner/engine';
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
 
@@ -47,6 +47,8 @@ export type WriteSpec =
   | { kind: 'htmlText'; file: string; path: number[]; tag: string; segment: number }
   /** 纯 HTML 换序：path 是父元素的，tags 是参与换序的子元素标签（按页面上原来的顺序） */
   | { kind: 'htmlOrder'; file: string; path: number[]; tags: string[]; order: number[] }
+  /** (line, column) 处组件调用上的属性，值是任意字面量；tag 是组件名，列号对不上时用来确认找对了元素 */
+  | { kind: 'jsxProp'; file: string; line: number; column: number; name: string; tag?: string }
   | { kind: 'agent'; reason: string };
 
 export interface Plan {
@@ -523,6 +525,52 @@ export function planOrder(el: ElementSnapshot, ctx: OrderContext): OrderPlan | n
     view: { kind: 'source', label: `${project.label(file)}:${check.line} ${check.parent}`, file, line: check.line, column: check.column, affects: 1 },
     write: (order) => ({ kind: 'jsxOrder', file, sites, order }),
   };
+}
+
+export interface PropContext {
+  page: PageInfo;
+  project: ProjectResolver;
+  /** (line, column) 处组件调用上属性 name 的写法；文件读不到时为 null */
+  propSite: (file: string, line: number, column: number, name: string, tag?: string) => PropSiteInfo | { error: string } | null;
+}
+
+export interface PropPlan extends Plan {
+  /** 调用处现在的写法，写回目标是 Agent 时没有 */
+  site?: PropSite;
+  /** 调用处有 {...spread} 时的提醒 */
+  warn?: string;
+}
+
+/** 组件属性写在哪：调用处写的字面量就地改，没写的加上；是表达式、或找不到调用处的交给 Agent */
+export function planProp(el: ElementSnapshot, name: string, ctx: PropContext): PropPlan {
+  const { page, project } = ctx;
+  const info = el.props;
+  const anchor = el.source ? { path: el.source.path, line: el.source.line, column: el.source.column, index: el.sourceIndex } : undefined;
+  const preview: PreviewTarget = { kind: 'props', uid: el.uid, name, ...(anchor ? { anchor } : {}) };
+  const affects = info?.same ?? 1;
+  const agent = (reason: string): PropPlan => ({ view: { kind: 'agent', label: t('plan.agent'), affects, reason }, preview, write: { kind: 'agent', reason } });
+  const loc = info?.source;
+  const file = loc ? project.fileFor(page.url, loc.path, loc.file) : null;
+  if (!info || !loc || !file) return agent(t('plan.prop.noSource'));
+  const tag = info.component === '?' ? undefined : info.component;
+  const site = ctx.propSite(file, loc.line, loc.column, name, tag);
+  if (!site || 'error' in site) return agent(site ? site.error : t('engine.readFailed', { file }));
+  if (site.site.kind === 'dynamic') return agent(t('engine.prop.dynamic', { name, code: oneLine(site.site.code).slice(0, 60) }));
+  const warn = site.spread === 'after' ? t('plan.prop.spreadAfter') : site.spread === 'before' && site.site.kind === 'missing' ? t('plan.prop.spreadBefore') : undefined;
+  return {
+    view: { kind: 'source', label: `${project.label(file)}:${loc.line} <${info.component}> ${name}`, file, line: loc.line, column: loc.column, affects },
+    preview,
+    write: { kind: 'jsxProp', file, line: loc.line, column: loc.column, name, ...(tag ? { tag } : {}) },
+    site: site.site,
+    ...(warn ? { warn } : {}),
+  };
+}
+
+/** 属性改动的标识：同一个调用处的同一个属性合并成一条 */
+export function propKey(p: Plan, el: ElementSnapshot, name: string): string {
+  const w = p.write;
+  if (w.kind === 'jsxProp') return `prop|${w.file}|${w.line}|${w.column}|${w.name}`;
+  return `prop|agent|${el.props?.source ? locOf(el.props.source) : (sourceKeyOf(el) ?? el.uid)}|${name}`;
 }
 
 /** 加声明用的规则：优先级最高、且最后一段选择器写着元素自己的类名或 id 的作者规则 */

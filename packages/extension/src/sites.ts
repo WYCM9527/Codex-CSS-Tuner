@@ -6,11 +6,15 @@ import {
   jsxAttrSite,
   jsxChildSite,
   jsxOrderCheck,
+  jsxPropSite,
   locateClassSite,
   lookupCssRule,
+  recipeVariants,
   type CssRuleIndex,
   type CssRuleSpec,
   type OrderSite,
+  type PropSiteInfo,
+  type RecipeInfo,
   type TextSite,
 } from '@css-tuner/engine';
 
@@ -44,6 +48,8 @@ interface FileEntry {
   literals?: LiteralInfo[] | null;
   texts?: Map<string, TextSite | { error: string }>;
   orders?: Map<string, ReturnType<typeof jsxOrderCheck>>;
+  props?: Map<string, PropSiteInfo | { error: string }>;
+  recipes?: Map<string, RecipeInfo | null>;
 }
 
 const MAX_FILES = 64;
@@ -130,6 +136,30 @@ export class ClassSiteReader {
     const f = this.entry(file);
     if (!f) return null;
     return arrayOrderSite({ file, source: f.source, line, column, count, read: readOrNull });
+  }
+
+  /** (line, column) 处组件调用上 name 属性的写法 */
+  propSite(file: string, line: number, column: number, name: string, tag?: string): PropSiteInfo | { error: string } | null {
+    const f = this.entry(file);
+    if (!f) return null;
+    f.props ??= new Map();
+    const key = `${line}:${column}:${name}:${tag ?? ''}`;
+    let s = f.props.get(key);
+    if (!s) {
+      s = jsxPropSite(f.source, file, line, column, name, tag);
+      f.props.set(key, s);
+    }
+    return s;
+  }
+
+  /** (line, column) 处元素 className 用到的 cva / tv 配方 */
+  recipe(file: string, line: number, column: number): RecipeInfo | null {
+    const f = this.entry(file);
+    if (!f) return null;
+    f.recipes ??= new Map();
+    const key = `${line}:${column}`;
+    if (!f.recipes.has(key)) f.recipes.set(key, recipeVariants(f.source, file, line, column));
+    return f.recipes.get(key) ?? null;
   }
 
   private text(file: string, key: string, read: (source: string) => TextSite | { error: string }): TextSite | { error: string } | null {

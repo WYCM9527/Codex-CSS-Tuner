@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { maxSpecificity, resolveNested, specificity, splitTopLevel, staticSelector } from '../src/specificity';
 import { clientModuleUrl, distDirOf, joinPath, projectRootOf, serverModuleUrl } from '../src/next';
-import { decodeMappings, extractMapUrl, filePathOf, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
+import { decodeMappings, extractMapUrl, filePathOf, jsxLineShift, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
 import { unescapeIdent } from '../src/util';
 import { dropSlot, slotLine } from '../src/drop';
 import { hasRun, sameOrder, textSig } from '../src/sig';
@@ -141,6 +141,53 @@ describe('sourcemap', () => {
     expect(filePathOf('turbopack:///[project]/a.css')).toBeNull();
     expect(extractMapUrl('.a{}\n/*# sourceMappingURL=x._.css.map*/')).toBe('x._.css.map');
     expect(extractMapUrl('x()\n//# sourceMappingURL=data:application/json;base64,e30=')).toBe('data:application/json;base64,e30=');
+  });
+});
+
+describe('React 18 的 JSX 开发态位置', () => {
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const vlq = (n: number) => {
+    let v = n < 0 ? (-n << 1) | 1 : n << 1;
+    let s = '';
+    do {
+      let d = v & 31;
+      v >>>= 5;
+      if (v) d |= 32;
+      s += B64[d];
+    } while (v);
+    return s;
+  };
+  /** 每行一段，[原始行, 原始列]（1 起）映射到这一行的第 0 列 */
+  const mapOf = (rows: Array<[number, number]>) => {
+    let line = 0;
+    let col = 0;
+    const mappings = rows
+      .map(([l, c]) => {
+        const s = vlq(0) + vlq(0) + vlq(l - 1 - line) + vlq(c - 1 - col);
+        line = l - 1;
+        col = c - 1;
+        return s;
+      })
+      .join(';');
+    return { sources: ['main.jsx'], mappings };
+  };
+  const obj = (file: string, line: number, column: number) => `{ fileName: ${file}, lineNumber: ${line}, columnNumber: ${column} }`;
+  const main = JSON.stringify('/p/src/main.jsx');
+
+  it('plugin-react 4 在前面插了 react-refresh 的代码：位置对象映射回原始 JSX，多数差同样的行数', () => {
+    const code = [obj(main, 26, 7), obj(main, 27, 7), obj(main, 25, 5), obj(JSON.stringify('/p/src/other.jsx'), 90, 1)].join('\n');
+    expect(jsxLineShift(code, mapOf([[7, 7], [8, 7], [6, 5], [1, 1]]), '/p/src/main.jsx')).toBe(19);
+  });
+
+  it('位置本来就对、或者差的行数各不相同时不纠正', () => {
+    const code = [obj(main, 7, 7), obj(main, 8, 7)].join('\n');
+    expect(jsxLineShift(code, mapOf([[7, 7], [8, 7]]), '/p/src/main.jsx')).toBe(0);
+    expect(jsxLineShift([obj(main, 30, 7), obj(main, 9, 7), obj(main, 20, 3)].join('\n'), mapOf([[7, 7], [8, 7], [6, 3]]), '/p/src/main.jsx')).toBe(0);
+  });
+
+  it('文件名是 _jsxFileName 这种变量时也算', () => {
+    const code = [obj('_jsxFileName', 10, 5), obj('_jsxFileName', 12, 7)].join('\n');
+    expect(jsxLineShift(code, mapOf([[7, 5], [9, 7]]), '/p/src/main.jsx')).toBe(3);
   });
 });
 

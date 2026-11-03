@@ -1,4 +1,4 @@
-import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
 /** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
@@ -222,11 +222,31 @@ export function createMockHost(): Host {
       start: ['e2', 'e3'],
     },
   };
+  const hero = (name: string): Target => ({ kind: 'source', label: `src/App.tsx:12 <Hero> ${name}`, file: '/proj/src/App.tsx', line: 12, column: 7, affects: 1 });
+  const propViews: Record<string, PropsView> = {
+    e1: {
+      component: 'Hero',
+      source: { file: '/proj/src/App.tsx', line: 12, column: 7, label: 'src/App.tsx:12' },
+      server: false,
+      live: true,
+      items: [
+        { name: 'title', type: 'string', value: '可视化调样式', pending: false, target: hero('title') },
+        { name: 'variant', type: 'string', value: 'primary', options: ['primary', 'outline', 'ghost'], pending: false, target: hero('variant') },
+        { name: 'size', type: 'undefined', value: 'md', options: ['sm', 'md', 'lg', 'xl'], missing: true, pending: false, target: hero('size') },
+        { name: 'tone', type: 'string', value: 'neutral', options: ['neutral', 'brand', 'success', 'warning', 'danger'], pending: false, target: hero('tone') },
+        { name: 'count', type: 'number', value: 3, pending: false, target: hero('count') },
+        { name: 'compact', type: 'boolean', value: false, pending: false, target: hero('compact') },
+        { name: 'onClose', type: 'function', value: null, summary: 'onClose()', pending: false, target: hero('onClose') },
+      ],
+    },
+  };
+  const propStart = Object.fromEntries(Object.entries(propViews).map(([uid, v]) => [uid, Object.fromEntries(v.items.map((x) => [x.name, x.value]))]));
   const select = (uid: string) => {
     const e = els[uid] ?? els.e1;
     const edited = (textByEl[e.uid] ??= {});
     const o = orders[e.uid];
     state.selection = {
+      props: propViews[e.uid],
       order: o ? { items: o.items, index: o.items.findIndex((i) => i.uid === e.uid), axis: o.axis, pending: o.pending, target: o.target } : undefined,
       texts: e.text?.segments.map((s, i) => ({
         segment: i,
@@ -375,6 +395,33 @@ export function createMockHost(): Host {
             to: String(m.to + 1),
             target: o.target,
             simulated: true,
+            pageUrl: state.page!.url,
+            createdAt: Date.now(),
+          } satisfies ChangeView);
+        select(uid);
+        break;
+      }
+      case 'editProp': {
+        const uid = state.selection!.el.uid;
+        const item = propViews[uid]?.items.find((x) => x.name === m.name);
+        if (!item) break;
+        const start = propStart[uid][m.name];
+        item.value = m.value;
+        if (m.phase !== 'commit') break;
+        const id = `${uid}|prop|${m.name}`;
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === id));
+        item.pending = m.value !== start;
+        if (item.pending)
+          state.changes.unshift({
+            id,
+            kind: 'prop',
+            status: 'pending',
+            element: state.selection!.el.label,
+            props: [m.name],
+            propLabel: m.name,
+            from: item.missing ? t('engine.prop.unset') : JSON.stringify(start),
+            to: JSON.stringify(m.value),
+            target: item.target,
             pageUrl: state.page!.url,
             createdAt: Date.now(),
           } satisfies ChangeView);

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
-import { getLocale, localeFrom, setLocale, type SelectionView } from '@css-tuner/protocol';
+import { getLocale, localeFrom, setLocale, type PropValue, type SelectionView } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import { summarizeCheck } from './selfcheck';
 import { computeWrite } from './writer';
@@ -273,6 +273,64 @@ defineStep('reorder', async (c, s) => {
   await c.reorder(item.uid, Number(s.to), (s.phase as 'live' | 'commit') ?? 'commit');
   await new Promise((r) => setTimeout(r, 150));
   return { order: orderLine(c.state.selection), page: await visualOrder(c, s.read), changes: changeLines(c) };
+});
+
+/** 选中元素所属组件的属性：每项的类型、值、可选值、写回目标 */
+const propsLines = (sel: SelectionView | null) => {
+  const p = sel?.props;
+  if (!p) return null;
+  const line = (x: NonNullable<SelectionView['props']>['items'][number]) =>
+    [
+      `${x.name}: ${x.type} ${JSON.stringify(x.value)}`,
+      x.summary ? `(${x.summary})` : '',
+      x.options ? `[${x.options.join('|')}]` : '',
+      x.missing ? 'missing' : '',
+      x.pending ? 'pending' : '',
+      x.warn ? `warn(${x.warn})` : '',
+      `→ ${x.target.kind}:${x.target.label}${x.target.affects > 1 ? ` affects=${x.target.affects}` : ''}${x.target.reason ? ` (${x.target.reason})` : ''}`,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  return { component: p.component, source: p.source?.label ?? null, server: p.server, live: p.live, items: p.items.map(line) };
+};
+
+/** 页面上一组元素的 class（看属性预览有没有让组件换了样式） */
+const pageClasses = (c: Controller, selector: unknown) =>
+  typeof selector === 'string'
+    ? c.browser.exec<string[]>(c.session!.browserId, `[...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => e.getAttribute('class') ?? '')`)
+    : Promise.resolve(undefined);
+
+/** 选中元素所属组件的属性；TS 补全是异步的，waitOptions 指定的属性拿到可选值后再返回 */
+defineStep('props', async (c, s) => {
+  const want = typeof s.waitOptions === 'string' ? s.waitOptions : null;
+  const deadline = Date.now() + (Number(s.timeoutMs) || 10000);
+  while (want && !c.state.selection?.props?.items.find((x) => x.name === want)?.options && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+  return { props: propsLines(c.state.selection), page: await pageTexts(c, s.read), classes: await pageClasses(c, s.readClass) };
+});
+
+/** 直接问语言服务某处（行列从 1 起）的补全，排查属性可选值用：返回耗时和前几项的种类 */
+defineStep('completions', async (_c, s) => {
+  const t0 = Date.now();
+  const ts = vscode.extensions.getExtension('vscode.typescript-language-features');
+  const active = !!ts?.isActive;
+  if (s.prepare) {
+    await ts?.activate();
+    await vscode.workspace.openTextDocument(vscode.Uri.file(String(s.file)));
+  }
+  const list = await vscode.commands.executeCommand<vscode.CompletionList | undefined>(
+    'vscode.executeCompletionItemProvider',
+    vscode.Uri.file(String(s.file)),
+    new vscode.Position(Number(s.line) - 1, Number(s.column) - 1),
+  );
+  const items = (list?.items ?? []).slice(0, Number(s.count) || 12).map((x) => `${typeof x.label === 'string' ? x.label : x.label.label} kind=${x.kind === undefined ? '?' : vscode.CompletionItemKind[x.kind]}`);
+  return { ms: Date.now() - t0, wasActive: active, active: !!ts?.isActive, total: list?.items.length ?? 0, items };
+});
+
+/** 在面板上改选中元素所属组件的属性 */
+defineStep('editProp', async (c, s) => {
+  await c.editProp(String(s.name), s.value as PropValue, (s.phase as 'live' | 'commit') ?? 'commit');
+  await new Promise((r) => setTimeout(r, Number(s.settleMs) || 200));
+  return { props: propsLines(c.state.selection), page: await pageTexts(c, s.read), classes: await pageClasses(c, s.readClass), changes: changeLines(c) };
 });
 
 /**

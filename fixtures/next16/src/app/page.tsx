@@ -1,3 +1,4 @@
+import { Badge } from '@/components/Badge';
 import { Counter } from '@/components/Counter';
 import { IntlNote } from '@/components/IntlNote';
 import { Panel } from '@/components/Panel';
@@ -17,6 +18,7 @@ export default function Home() {
       <Panel title="CSS Modules 面板" />
       <Counter />
       <IntlNote />
+      <Badge label="客户端徽标" tone="brand" count={3} />
     </main>
   );
 }

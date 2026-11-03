@@ -574,6 +574,61 @@ select {
   box-shadow: inset 2px 0 0 var(--fg);
 }
 
+/* ---------- 属性 ---------- */
+
+.pp-site {
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+
+.pp-row .row-label {
+  font: 11px/var(--row) var(--mono);
+  color: var(--fg-2);
+}
+
+/* 调用处没写的属性（cva 默认变体）：名字淡一些，改了才会写进源码 */
+.pp-row.is-missing .row-label {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.pp-warn {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--fg-2);
+  vertical-align: middle;
+}
+
+.pp-readonly {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 11px/var(--row) var(--mono);
+  color: var(--muted);
+}
+
+.pp-reload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.pp-reload span {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---------- 变量 ---------- */
 
 .sec-note {
