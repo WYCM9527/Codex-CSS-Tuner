@@ -17,15 +17,15 @@ Cursor 扩展：在内置浏览器里点选元素、可视化调 CSS、改文字
 | 目录 | 内容 |
 | --- | --- |
 | `packages/protocol` | 扩展、页面脚本、面板之间的消息类型和数值工具（颜色、单位换算、刻度） |
-| `packages/engine` | 写回引擎：Tailwind 类名改写、CSS 规则改写、CSS 变量、CSS Modules 类名映射；`structure/` 里是结构性写回：JSX 文字和字符串 prop、翻译 JSON（jsonc-parser）、HTML 文字和子元素顺序（parse5）、JSX 子节点换序和 `.map()` 用的数组字面量换序（`reorder.ts`）、组件调用处的属性和 `cva` / `tv` 配方的变体（`attr.ts`）。纯函数，单元测试最多 |
+| `packages/engine` | 写回引擎：Tailwind 类名改写（v4 用项目里 `@tailwindcss/node` 的设计系统；v3 由 `tailwind/v3.ts` 适配成同样的接口：用项目自己的 tailwindcss 读 tailwind.config、按候选类生成 CSS）、CSS 规则改写、CSS 变量、CSS Modules 类名映射；`structure/` 里是结构性写回：JSX 文字和字符串 prop、翻译 JSON（jsonc-parser）、HTML 文字和子元素顺序（parse5）、JSX 子节点换序和 `.map()` 用的数组字面量换序（`reorder.ts`）、组件调用处的属性和 `cva` / `tv` 配方的变体（`attr.ts`）。纯函数，单元测试最多 |
 | `packages/bridge` | 注入到页面里的脚本：点选、高亮、样式快照（命中规则和胜出声明）、文字分段、兄弟组识别（按 fiber 链分叉处分项，`.map()` 渲染的各项单独成组）、预览（样式、文字、用 `order` / 位移模拟的换序）、双击编辑、覆盖层上的拖动把手、组件 props 的读取和预览（页面加载时装上 React DevTools 钩子，用 renderer 的 `overrideProps`，见 `devtools.ts`、`props.ts`）、应用后校验、元素到源码的定位（React 调试信息 + sourcemap，Next.js 走开发服务器接口；React 18 的 `_debugSource` 按模块的 sourcemap 纠正 `@vitejs/plugin-react` 4 造成的行号偏移） |
 | `packages/panel` | 侧栏 webview 面板（React） |
 | `packages/extension` | 扩展本体：内置浏览器适配、会话通道、写回计划（样式和文字：元素自己的 JSX、调用处的 prop、`t()` 对应的翻译文件、HTML；换序：JSX 父元素、数组字面量、HTML 父元素；属性：组件调用处）、属性的可选值（配方变体，或在调用处问 TS 语言服务的字面量补全，`completions.ts`）、改动清单、应用与还原、交给 Agent、自检 |
-| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4，带 react-i18next）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router，带 next-intl）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
+| `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4，带 react-i18next）、`tw3-react`（Vite + Tailwind 3.4，主题在 `tailwind.config.ts`）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router，带 next-intl；`dev` 是 Turbopack，`dev:webpack` 是 webpack）、`static-html`；`demo` 是录商店页素材用的英文演示页 |
 | `docs/media/` | 商店页和 README 用的动图、截图（README 里用 raw.githubusercontent 的绝对地址引用） |
 | `spike/` | Phase 0 的可行性验证脚本（不参与构建） |
 
-一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照、文字分段、兄弟组、所属组件收到的 props 和源码位置 → 扩展为每个属性、每段文字、兄弟组和组件属性规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / JSX 文字 / 调用处的 prop / 翻译 JSON / HTML / JSX 子节点顺序 / 数组字面量 / 调用处的属性 / 交给 Agent）→ 拖动和输入时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新（改翻译文件时 Vite 会整页刷新，刷新后再核对）并核对计算样式、文字、兄弟的顺序（按各项文字的字符计数指纹认，和它里面的顺序无关）和组件收到的 props→ 还原时按快照或语义回退。
+一次调参的数据流：扩展用 Cursor 内置浏览器的 CDP 命令把 `bridge` 注入页面 → 页面经带 token 的 WebSocket 连回扩展 → 选中元素时页面上报样式快照、文字分段、兄弟组、所属组件收到的 props 和源码位置 → 扩展为每个属性、每段文字、兄弟组和组件属性规划写回目标（Tailwind 类名 / CSS 规则 / 变量定义 / JSX 文字 / 调用处的 prop / 翻译 JSON / HTML / JSX 子节点顺序 / 数组字面量 / 调用处的属性 / 交给 Agent）→ 拖动和输入时页面只做预览 → 应用时 `engine` 计算文本改动、直接写盘 → 页面等热更新（改翻译文件时 Vite 会整页刷新，Next 的 webpack 模式改 CSS Module 也会，页面重新连上后再核对）并核对计算样式、文字、兄弟的顺序（按各项文字的字符计数指纹认，和它里面的顺序无关）和组件收到的 props→ 还原时按快照或语义回退。
 
 ## 开发
 
@@ -45,7 +45,7 @@ pnpm package     # 产出 packages/extension/dist/cursor-css-tuner.vsix
 cursor --extensionDevelopmentPath="$PWD/packages/extension" --new-window "$PWD/fixtures/tw-react"
 ```
 
-fixture 的开发服务器各自启动（`pnpm --filter fixture-tw-react dev`、`pnpm --filter fixture-next16 dev` 等）。改了 `bridge` 或 `panel` 之后要重新 `pnpm build`，扩展构建时会把它们复制进 `packages/extension/media/`。
+fixture 的开发服务器各自启动（`pnpm --filter fixture-tw-react dev`、`pnpm --filter fixture-next16 dev` 等）。next16 的 webpack 模式用 `pnpm --filter fixture-next16 dev:webpack`，输出目录是 `.next-webpack`，能和 Turbopack 的开发服务器同时跑（换个端口）。改了 `bridge` 或 `panel` 之后要重新 `pnpm build`，扩展构建时会把它们复制进 `packages/extension/media/`。
 
 面板可以脱离 Cursor 在浏览器里调：`pnpm --filter @css-tuner/panel dev`，页面里用模拟宿主驱动。
 
@@ -92,7 +92,8 @@ CI 跑不了内置浏览器，端到端测试在本机的 Cursor 里跑：扩展
 这几处都不是公开 API，变化时只需要改对应的适配代码：
 
 - **Cursor 内置浏览器命令**（`workbench.action.openBrowserEditor`、`cursor.browserView.*`）：集中在 `packages/extension/src/browser.ts`；启动时 `selfcheck.ts` 会检查命令是否还在。
-- **Next.js 开发服务器的 `/__nextjs_original-stack-frames`**（错误浮层用的栈帧解析接口）：请求和 URL 换算在 `packages/bridge/src/source.ts` 和 `packages/bridge/src/next.ts`；接口不可用时退回直接读 sourcemap。
+- **Next.js 开发服务器的 `/__nextjs_original-stack-frames`**（错误浮层用的栈帧解析接口）：请求和 URL 换算在 `packages/bridge/src/source.ts` 和 `packages/bridge/src/next.ts`；接口不可用时退回直接读 sourcemap。webpack 模式的栈帧是 `webpack-internal:///…`，原样交给这个接口解析；它的 CSS 没有 sourcemap，靠 webpack 在模块前面留下的 `!*** css …!./src/app/globals.css ***!` 注释认出源文件（`webpackCssSources`）。
+- **Tailwind 3 的内部模块**（`tailwindcss/lib/lib/setupContextUtils` 的 `createContext`、`tailwindcss/lib/lib/generateRules`）：v3 适配器用它们同步地为候选类生成规则，集中在 `packages/engine/src/tailwind/v3.ts`。
 - **React DevTools 全局钩子**（`__REACT_DEVTOOLS_GLOBAL_HOOK__`，renderer 注册时带上的 `overrideProps`）：props 预览用，集中在 `packages/bridge/src/devtools.ts`。钩子要在 React 加载前装上，所以扩展打开页面时先在空白页登记文档开始时执行的脚本，再导航过去；拿不到 `overrideProps` 时面板提示刷新页面。
 
 ## 发布

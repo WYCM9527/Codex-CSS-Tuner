@@ -1,3 +1,4 @@
+import { webpackCssSources } from './next';
 import { decodeDataUrl, extractMapUrl, filePathOf, sourcesOf, type SourceMap } from './sourcemap';
 
 export const OWN_ATTR = 'data-css-tuner';
@@ -53,7 +54,10 @@ export function sheetDevId(sheet: CSSStyleSheet): string | null {
   return sheet.href ? (linkSources.get(stripQuery(sheet.href)) ?? null) : null;
 }
 
-/** 读新出现的同源外链样式表的 sourcemap，记下对应的源文件；有新发现时返回 true */
+/**
+ * 读新出现的同源外链样式表的 sourcemap，记下对应的源文件；有新发现时返回 true。
+ * 没有 sourcemap 时看 webpack 的 pathinfo 注释，记下相对项目根的路径（扩展按项目根解析）
+ */
 export async function loadSheetSources(): Promise<boolean> {
   const hrefs = Array.from(document.styleSheets)
     .map((s) => s.href)
@@ -64,8 +68,16 @@ export async function loadSheetSources(): Promise<boolean> {
       const key = stripQuery(href);
       linkSources.set(key, null);
       try {
-        const ref = extractMapUrl(await (await fetch(href)).text());
-        if (!ref) return;
+        const text = await (await fetch(href)).text();
+        const ref = extractMapUrl(text);
+        if (!ref) {
+          const files = webpackCssSources(text);
+          if (files.length === 1) {
+            linkSources.set(key, files[0].replace(/^\.\//, '/'));
+            learned = true;
+          }
+          return;
+        }
         const json = ref.startsWith('data:') ? decodeDataUrl(ref) : await (await fetch(new URL(ref, href))).text();
         const files = [...new Set(sourcesOf(JSON.parse(json) as SourceMap).map(filePathOf))];
         if (files.length === 1 && files[0] && /\.css$/i.test(files[0])) {
@@ -82,7 +94,10 @@ export async function loadSheetSources(): Promise<boolean> {
 
 const twCache = new WeakMap<CSSStyleSheet, boolean>();
 
-/** Tailwind 生成的样式表：Vite 注入的 <style> 带版权横幅；外链 CSS 看有没有 theme + utilities 两个层 */
+/**
+ * Tailwind 生成的样式表：Vite 注入的 <style> 带版权横幅；外链 CSS 读不到注释，
+ * v4 看有没有 theme + utilities 两个层，v3 没有层，看开头的预设样式里有没有定义 --tw-* 变量
+ */
 export function isTailwindSheet(sheet: CSSStyleSheet): boolean {
   let v = twCache.get(sheet);
   if (v !== undefined) return v;
@@ -92,13 +107,17 @@ export function isTailwindSheet(sheet: CSSStyleSheet): boolean {
   if (!v) {
     try {
       const names = new Set<string>();
+      let twVars = false;
       const rules = sheet.cssRules;
       for (let i = 0; i < Math.min(rules.length, 12); i++) {
         const r = rules[i];
         if (typeof CSSLayerStatementRule === 'function' && r instanceof CSSLayerStatementRule) r.nameList.forEach((n) => names.add(n));
         else if (typeof CSSLayerBlockRule === 'function' && r instanceof CSSLayerBlockRule) names.add(r.name);
+        else if (r instanceof CSSStyleRule && /^(\*|::before|::after|::backdrop)/.test(r.selectorText)) {
+          for (let j = 0; j < r.style.length; j++) if (r.style[j].startsWith('--tw-')) twVars = true;
+        }
       }
-      v = names.has('theme') && names.has('utilities');
+      v = (names.has('theme') && names.has('utilities')) || (names.size === 0 && twVars);
     } catch {
       v = false;
     }

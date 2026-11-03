@@ -77,6 +77,8 @@ describe('交给 Agent 的提示词', () => {
     const text = buildPrompt([rec({ kind: 'text', props: [], propLabel: 'Text', from: 'Hello', to: 'Hi "there"', value: 'Hi "there"' })], ctx);
     expect(text).not.toContain('Tailwind');
     expect(text).toContain('For translated text, change only the current language');
+    const v3 = buildPrompt([rec({ token: '6', value: '1.5rem', to: '6' })], { ...ctx, tailwindVersion: '3.4.19', tailwindTokens: '/repo/tailwind.config.ts' });
+    expect(v3).toContain('The project uses Tailwind 3.4.19; its design tokens are in tailwind.config.ts.');
   });
 
   it('文字用 JSON 字符串给出原文和新文字，附上来源', () => {

@@ -13,23 +13,25 @@ function px(value: string, rem: number): number | undefined {
   return v === null ? undefined : v;
 }
 
-/** 刻度来自项目实际加载的设计系统（含 @theme 里自定义的令牌） */
+/** 刻度来自项目实际加载的设计系统（含 @theme 或 tailwind.config 里自定义的令牌） */
 export function tailwindScales(d: TwDesign, rem = d.rem): Scales {
   const base = d.themeValue('--spacing') ?? '0.25rem';
   const unit = /^([\d.]+)(rem|px|em)$/.exec(base.trim());
+  // 基准倍数只留项目里真有的类（v3 的主题可能整个换掉），单独定义过的令牌按定义的值
+  const namedSpacing = new Map(d.namespace('--spacing').filter((e): e is [string, string] => e[0] !== null));
   const spacing: ScaleStep[] = [];
   if (unit) {
     const n = parseFloat(unit[1]);
     for (const k of SPACING_STEPS) {
-      const value = k === 0 ? '0px' : `${num(n * k)}${unit[2]}`;
-      spacing.push({ label: num(k), value, px: px(value, rem), token: num(k) });
+      const token = num(k);
+      if (!namedSpacing.has(token) && d.valid(`p-${token}`)) {
+        const value = k === 0 ? '0px' : `${num(n * k)}${unit[2]}`;
+        spacing.push({ label: token, value, px: px(value, rem), token });
+      }
+      if (k === 0 && !namedSpacing.has('px') && d.valid('p-px')) spacing.push({ label: 'px', value: '1px', px: 1, token: 'px' });
     }
-    spacing.splice(1, 0, { label: 'px', value: '1px', px: 1, token: 'px' });
   }
-  for (const [k, v] of d.namespace('--spacing')) {
-    if (k === null) continue;
-    spacing.push({ label: k, value: v, px: px(v, rem), token: k });
-  }
+  for (const [k, v] of namedSpacing) spacing.push({ label: k, value: v, px: px(v, rem), token: k });
 
   const size: ScaleStep[] = [...spacing];
   for (const [k, v] of d.namespace('--container')) {
@@ -51,12 +53,12 @@ export function tailwindScales(d: TwDesign, rem = d.rem): Scales {
   const fontWeight: ScaleStep[] = d.namespace('--font-weight').flatMap(([k, v]) => (k === null ? [] : [{ label: k, value: v, token: k }]));
 
   const lineHeight: ScaleStep[] = [{ label: 'none', value: '1', token: 'none' }];
-  for (const [k, v] of d.namespace('--leading')) {
-    if (k !== null) lineHeight.push({ label: k, value: v, token: k });
-  }
+  const namedLeading = new Map(d.namespace('--leading').filter((e): e is [string, string] => e[0] !== null));
+  for (const [k, v] of namedLeading) lineHeight.push({ label: k, value: v, token: k });
   if (unit) {
     const n = parseFloat(unit[1]);
     for (const k of [3, 4, 5, 6, 7, 8, 9, 10]) {
+      if (namedLeading.has(String(k)) || !d.valid(`leading-${k}`)) continue;
       const value = `${num(n * k)}${unit[2]}`;
       lineHeight.push({ label: String(k), value, px: px(value, rem), token: String(k) });
     }

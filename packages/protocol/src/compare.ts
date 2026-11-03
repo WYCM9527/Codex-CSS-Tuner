@@ -1,10 +1,26 @@
 import { parseColor, sameColor } from './color';
 import { propMeta } from './props';
+import { splitTopLevel } from './selectors';
 import { toPx } from './values';
+
+const COLOR_IN_LAYER = /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^()]*\)|#[\da-f]{3,8}\b|\btransparent\b/i;
+
+/** 阴影去掉全透明的层（画不出东西）：Tailwind 会在 --tw-shadow 前面拼 ring 之类的 0 0 #0000 占位层 */
+function visibleShadows(v: string): string {
+  const layers = splitTopLevel(v, ',')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => {
+      if (!l || l === 'none') return false;
+      const color = COLOR_IN_LAYER.exec(l)?.[0];
+      return !color || parseColor(color)?.a !== 0;
+    });
+  return layers.join(', ') || 'none';
+}
 
 /** 两个计算值是否视为相同：颜色按感知距离、长度允许 ±0.5px、纯数字允许 0.01 误差 */
 export function sameValue(prop: string, a: string, b: string): boolean {
   if (a === b) return true;
+  if (prop === 'box-shadow' || prop === 'text-shadow') return visibleShadows(a) === visibleShadows(b);
   const kind = propMeta(prop)?.kind;
   if (kind === 'color' || (parseColor(a) && parseColor(b))) return sameColor(a, b);
   const pa = toPx(a);

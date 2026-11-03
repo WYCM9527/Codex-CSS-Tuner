@@ -165,6 +165,7 @@ export const zhCN: Record<keyof typeof en, string> = {
   'apply.notOnPage': '{summary}（不在当前页面，未校验）',
   'apply.unverifiedStill': '{summary} · 已写入，但页面上仍是 {actual}（开发服务器没热更新，或被别的样式覆盖）',
   'apply.unverifiedNoChange': '{summary} · 已写入，但页面上没有看到变化（开发服务器没热更新，或被别的样式覆盖）',
+  'apply.unverifiedReload': '{summary} · 已写入，页面正在整页刷新，重新连上后再核对',
   'apply.log': '应用 {n} 条改动：写盘 {writeMs}ms，页面生效 {ms}ms',
   'apply.lateVerified': '热更新晚到，已确认生效：{summary}',
   'revert.unsaved': '{file} 在编辑器里有未保存的修改，先保存再还原。',

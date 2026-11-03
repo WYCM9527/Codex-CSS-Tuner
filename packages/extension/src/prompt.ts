@@ -9,6 +9,8 @@ export interface HandoffContext {
   tailwindEntry: string | null;
   /** 项目装的 tailwindcss 版本号 */
   tailwindVersion?: string | null;
+  /** 设计令牌不在 CSS 入口里时（v3 的 tailwind.config）写的文件 */
+  tailwindTokens?: string | null;
 }
 
 function where(rec: ChangeRecord, project: HandoffContext['project']): string {
@@ -78,7 +80,7 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
   if (ctx.pageUrl) lines.push(t('handoff.page', { url: ctx.pageUrl }));
   if (ctx.tailwindEntry && has('style')) {
     const tailwind = ctx.tailwindVersion ? `Tailwind ${ctx.tailwindVersion}` : 'Tailwind';
-    lines.push(t('handoff.tailwind', { tailwind, file: ctx.project.label(ctx.tailwindEntry) }));
+    lines.push(t('handoff.tailwind', { tailwind, file: ctx.project.label(ctx.tailwindTokens ?? ctx.tailwindEntry) }));
   }
   lines.push('');
   recs.forEach((rec, i) => {

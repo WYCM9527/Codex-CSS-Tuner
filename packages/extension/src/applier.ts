@@ -251,7 +251,12 @@ export class Applier {
           const actual = v ? shortValues(v.actual) : '';
           c.journal.update(rec.id, {
             status: 'unverified',
-            note: actual ? t('apply.unverifiedStill', { summary: patch.summary, actual }) : t('apply.unverifiedNoChange', { summary: patch.summary }),
+            // 核对请求没等到回复：页面在核对途中断开了，多半是写的文件让开发服务器整页刷新
+            note: !v
+              ? t('apply.unverifiedReload', { summary: patch.summary })
+              : actual
+                ? t('apply.unverifiedStill', { summary: patch.summary, actual })
+                : t('apply.unverifiedNoChange', { summary: patch.summary }),
           });
           report.unverified++;
         }
@@ -274,17 +279,39 @@ export class Applier {
    */
   private async verifyLate(ids: string[]) {
     const c = this.c;
-    // 写的文件让开发服务器整页刷新了（如 Vite 里被普通模块引入的多语言 JSON）：等页面重新连上再核对
-    if (c.session && !c.session.connected) await c.session.waitConnected(verifyMs());
+    const deadline = Date.now() + verifyMs() * 3;
+    const left = () => Math.max(0, deadline - Date.now());
     await Promise.all(
       ids.map(async (id) => {
-        const rec = c.journal.get(id);
-        if (!rec || rec.status !== 'unverified') return;
-        const hashAfter = rec.patch?.hashAfter;
-        const v = await this.verify(rec, rec.expected, verifyMs() * 2);
+        const attempt = async () => {
+          for (;;) {
+            // 写的文件让开发服务器整页刷新了（如 Vite 里被普通模块引入的多语言 JSON、Next 的 webpack 模式里的 CSS Module）：
+            // 等页面重新连上再核对，核对途中又断开就再等一轮
+            if (c.session && !c.session.connected) await c.session.waitConnected(left());
+            const rec = c.journal.get(id);
+            if (!rec || rec.status !== 'unverified') return null;
+            const v = await this.verify(rec, rec.expected, Math.min(verifyMs() * 2, Math.max(1000, left())));
+            if (v === null && left()) {
+              await new Promise((r) => setTimeout(r, Math.min(200, left())));
+              continue;
+            }
+            if (v === 'skip' && c.session && !c.session.connected && left()) continue;
+            return { v, hashAfter: rec.patch?.hashAfter };
+          }
+        };
+        const res = await attempt();
+        if (!res) return;
+        const { v, hashAfter } = res;
         const now = c.journal.get(id);
         if (!now || now.status !== 'unverified' || now.patch?.hashAfter !== hashAfter || !now.patch) return;
-        if (v === 'skip' || !v?.ok) return;
+        if (v === 'skip') return;
+        if (!v?.ok) {
+          const actual = v ? shortValues(v.actual) : '';
+          const summary = now.patch.summary;
+          c.journal.update(id, { note: actual ? t('apply.unverifiedStill', { summary, actual }) : t('apply.unverifiedNoChange', { summary }) });
+          c.push();
+          return;
+        }
         c.journal.update(id, { status: 'applied', note: now.patch.summary });
         c.log(t('apply.lateVerified', { summary: now.patch.summary }));
         c.push();

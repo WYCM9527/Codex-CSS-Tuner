@@ -330,6 +330,7 @@ export class Controller implements vscode.Disposable {
       project: this.project,
       tailwindEntry: entry,
       tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
+      tailwindTokens: this.design?.major === 3 ? (this.design.files[1] ?? null) : null,
     });
     const how = await prefill(prompt);
     for (const r of recs) {
@@ -558,6 +559,14 @@ export class Controller implements vscode.Disposable {
     this.push();
   }
 
+  /** 设计系统还没加载好（或加载失败）时按项目里装的版本号 */
+  private tailwindMajor(): number | null {
+    if (this.design) return this.design.major;
+    const entry = this.page ? tailwindEntry(this.page, this.project) : null;
+    const version = entry ? this.tailwind.versionFor(entry) : null;
+    return version ? Number(version.split('.')[0]) || null : null;
+  }
+
   /** 刻度：Tailwind 项目从项目自己的设计系统读，普通 CSS 用页面上的 CSS 变量 */
   protected async loadScales(page: PageInfo) {
     const entry = tailwindEntry(page, this.project);
@@ -649,6 +658,7 @@ export class Controller implements vscode.Disposable {
         classLiterals: (f: string) => this.classSites.literals(f),
         ruleSource: (entry: string, ref: RuleRef) => this.cssRules.sourceOf(entry, ref),
         isUtility: (candidate: string) => !!this.design?.valid(candidate),
+        tailwindMajor: this.tailwindMajor(),
       };
       for (const prop of PROP_NAMES) {
         const p = plan(el, prop, ctx);

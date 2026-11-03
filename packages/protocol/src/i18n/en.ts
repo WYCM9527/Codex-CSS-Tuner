@@ -163,6 +163,7 @@ export const en = {
   'apply.notOnPage': "{summary} (not on the current page, so it wasn't verified)",
   'apply.unverifiedStill': "{summary} · written, but the page still shows {actual} (the dev server didn't hot-reload, or another style overrides it)",
   'apply.unverifiedNoChange': "{summary} · written, but nothing changed on the page (the dev server didn't hot-reload, or another style overrides it)",
+  'apply.unverifiedReload': '{summary} · written; the page is reloading and will be checked once it reconnects',
   'apply.log': 'Applied {n} {n|change|changes}: written to disk in {writeMs}ms, live on the page in {ms}ms',
   'apply.lateVerified': 'Hot reload arrived late, now confirmed: {summary}',
   'revert.unsaved': '{file} has unsaved changes in the editor. Save it before reverting.',

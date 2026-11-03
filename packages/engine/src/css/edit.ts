@@ -29,6 +29,8 @@ export interface FoundRule {
   source: string;
   fullSelector: string;
   key: string;
+  /** 不算 @layer 的 key：Tailwind 3 会把 @layer 拍平，页面上的规则没有层 */
+  flatKey: string;
 }
 
 const MAX_IMPORT_DEPTH = 8;
@@ -75,7 +77,8 @@ function collect(entry: string, read: (f: string) => string | null): { rules: Fo
         if (node.type === 'rule') {
           const sel = node.selector;
           const full = parentSel ? splitTopLevel(sel).map((s) => resolveNested(parentSel, s.trim())).join(', ') : sel;
-          rules.push({ rule: node, file, source, fullSelector: full, key: `${normalizeSelector(full)}|${condKey(conds)}` });
+          const norm = normalizeSelector(full);
+          rules.push({ rule: node, file, source, fullSelector: full, key: `${norm}|${condKey(conds)}`, flatKey: `${norm}|${condKey(conds.filter((c) => !c.startsWith('@layer')))}` });
           walk(node, full, conds);
         } else if (node.type === 'atrule') {
           const name = node.name.toLowerCase();
@@ -125,6 +128,7 @@ function pick(rules: FoundRule[], errors: string[], spec: RuleKey): FoundRule | 
     const local = localized(rules, spec.fullSelector);
     if (local) same = rules.filter((r) => r.key === keyOf(local));
   }
+  if (!same.length) same = rules.filter((r) => r.flatKey === keyOf(spec.fullSelector));
   if (!same.length) return { error: t('engine.css.ruleNotFound', { selector: spec.selector }) };
   return same[spec.ordinal] ?? (same.length === 1 ? same[0] : { error: t('engine.css.ruleAmbiguous', { selector: spec.selector, n: same.length }) });
 }
@@ -189,7 +193,7 @@ function minifyBox(v: string[]): string {
 }
 
 /** postcss 的 end.offset 是开区间：slice(start, end) 正好是整条声明（有分号时含分号） */
-function declRange(d: Declaration): { start: number; end: number } | null {
+function declRange(d: Declaration | AtRule): { start: number; end: number } | null {
   const s = d.source?.start?.offset;
   const e = d.source?.end?.offset;
   return typeof s === 'number' && typeof e === 'number' ? { start: s, end: e } : null;
@@ -220,13 +224,16 @@ function indentOf(rule: Rule | AtRule, source: string): string {
   return ruleIndent + '  ';
 }
 
-/** 在规则最后一条声明后面（嵌套规则之前）追加声明；单行规则保持单行 */
+/**
+ * 在规则最后一条声明后面（嵌套规则之前）追加声明；单行规则保持单行。
+ * @apply 这类没有块的 at-rule 会在原位展开成声明，追加的要排在它后面才盖得住
+ */
 export function appendDecls(rule: Rule | AtRule, source: string, decls: Array<[string, string]>): TextEdit[] {
   const rs = rule.source?.start?.offset ?? 0;
   const re = rule.source?.end?.offset ?? rs;
   const singleLine = !source.slice(rs, re).includes('\n');
   const indent = indentOf(rule, source);
-  const own = (rule.nodes ?? []).filter((n) => n.type === 'decl') as Declaration[];
+  const own = (rule.nodes ?? []).filter((n) => n.type === 'decl' || (n.type === 'atrule' && !n.nodes)) as Array<Declaration | AtRule>;
   const last = own[own.length - 1];
   const body = singleLine ? decls.map(([p, v]) => ` ${p}: ${v};`).join('') : decls.map(([p, v]) => `\n${indent}${p}: ${v};`).join('');
   if (last) {

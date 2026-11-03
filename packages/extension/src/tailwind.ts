@@ -9,9 +9,22 @@ function warmUp(d: TwDesign) {
   editTailwind(d, { file: '/warmup.tsx', source, line: 1, column: 24, props: ['padding-left', 'padding-right'], value: '1.5rem', token: '6', utility: 'px-4' });
 }
 
-/** 按 CSS 入口文件缓存设计系统；入口文件改过（比如改了 @theme）就重新加载 */
+/** 文件的修改时间拼起来，有一个变了（或被删了）就不一样 */
+function stamp(files: string[]): string {
+  return files
+    .map((f) => {
+      try {
+        return String(statSync(f).mtimeMs);
+      } catch {
+        return '-';
+      }
+    })
+    .join('|');
+}
+
+/** 按 CSS 入口文件缓存设计系统；入口文件（比如改了 @theme）或 v3 的 tailwind.config 改过就重新加载 */
 export class TailwindService {
-  private cache = new Map<string, { mtime: number; rem: number; design: Promise<TwDesign> }>();
+  private cache = new Map<string, { files: string[]; stamp: string; rem: number; design: Promise<TwDesign> }>();
   private versions = new Map<string, string | null>();
 
   constructor(private readonly log: (msg: string) => void) {}
@@ -24,19 +37,20 @@ export class TailwindService {
   }
 
   designFor(entry: string, rem: number): Promise<TwDesign | null> {
-    let mtime = 0;
-    try {
-      mtime = statSync(entry).mtimeMs;
-    } catch {
-      return Promise.resolve(null);
-    }
     const hit = this.cache.get(entry);
-    if (hit && hit.mtime === mtime && hit.rem === rem) return hit.design.catch(() => null);
+    const now = stamp(hit?.files ?? [entry]);
+    if (now.startsWith('-')) return Promise.resolve(null);
+    if (hit && hit.stamp === now && hit.rem === rem) return hit.design.catch(() => null);
     const t0 = Date.now();
     const design = loadTailwindDesign(entry, { rem });
-    this.cache.set(entry, { mtime, rem, design });
+    const record = { files: [entry], stamp: stamp([entry]), rem, design };
+    this.cache.set(entry, record);
     return design.then(
       (d) => {
+        if (d.files.length) {
+          record.files = d.files;
+          record.stamp = stamp(d.files);
+        }
         this.log(t('ext.log.twLoaded', { entry, ms: Date.now() - t0 }));
         setTimeout(() => {
           try {

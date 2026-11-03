@@ -125,4 +125,27 @@ describe('CSS 规则写回（fixtures/react-css）', () => {
     const b = run(['color'], 'blue', spec('.d', { conditions: ['@media (min-width: 768px)'] }), read, '/p/a.css');
     expect(b.ok && b.out).toContain('.d { color: blue }');
   });
+
+  it('Tailwind 3 拍平了 @layer：页面上没有层的规则对上源码里 @layer 里的那条', () => {
+    const files: Record<string, string> = {
+      '/p/index.css': '@tailwind base;\n@tailwind components;\n\n@layer components {\n  .btn {\n    @apply px-4 py-2;\n    color: red;\n  }\n}\n\n.card { margin: 0; }\n',
+    };
+    const read = (f: string) => files[f] ?? null;
+    const c = run(['color'], 'blue', spec('.btn'), read, '/p/index.css');
+    expect(c.ok && c.out).toContain('    @apply px-4 py-2;\n    color: blue;\n');
+    // 值来自 @apply：在规则末尾追加，排在 @apply 展开的声明后面
+    const p = run(['padding-left', 'padding-right'], '1.5rem', spec('.btn'), read, '/p/index.css');
+    expect(p.ok && p.out).toContain('    @apply px-4 py-2;\n    color: red;\n    padding-left: 1.5rem;\n    padding-right: 1.5rem;\n');
+    expect(lookupCssRule(indexCssRules('/p/index.css', read), spec('.btn'))).toEqual({ file: '/p/index.css', line: 5, selector: '.btn' });
+    expect(lookupCssRule(indexCssRules('/p/index.css', read), spec('.card'))).toEqual({ file: '/p/index.css', line: 11, selector: '.card' });
+  });
+
+  it('规则里只有 @apply：追加的声明排在它后面', () => {
+    const files: Record<string, string> = { '/p/index.css': '@layer components {\n  .btn {\n    @apply px-4 py-2;\n  }\n}\n.chip { @apply px-2 }\n' };
+    const read = (f: string) => files[f] ?? null;
+    const p = run(['padding-left', 'padding-right'], '1.5rem', spec('.btn'), read, '/p/index.css');
+    expect(p.ok && p.out).toContain('  .btn {\n    @apply px-4 py-2;\n    padding-left: 1.5rem;\n    padding-right: 1.5rem;\n  }\n');
+    const c = run(['color'], 'red', spec('.chip'), read, '/p/index.css');
+    expect(c.ok && c.out).toContain('.chip { @apply px-2; color: red; }');
+  });
 });

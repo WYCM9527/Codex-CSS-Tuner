@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { maxSpecificity, resolveNested, specificity, splitTopLevel, staticSelector } from '../src/specificity';
-import { clientModuleUrl, distDirOf, joinPath, projectRootOf, serverModuleUrl } from '../src/next';
+import { clientModuleUrl, distDirOf, isWebpackModule, joinPath, projectRootOf, serverModuleUrl, webpackCssSources } from '../src/next';
 import { decodeMappings, extractMapUrl, filePathOf, jsxLineShift, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
 import { unescapeIdent } from '../src/util';
 import { dropSlot, slotLine } from '../src/drop';
@@ -221,6 +221,23 @@ describe('Next.js 栈帧', () => {
     );
     expect(clientModuleUrl('http://127.0.0.1:3000/_next/static/chunks/a.js', 'C:/proj/.next/dev')).toBe('file:///C:/proj/.next/dev/static/chunks/a.js');
     expect(clientModuleUrl('http://127.0.0.1:3000/src/App.tsx', dist)).toBeNull();
+  });
+
+  it('webpack 模式：业务模块帧原样交给接口，node_modules 里的不算', () => {
+    expect(isWebpackModule('webpack-internal:///(app-pages-browser)/./src/components/Counter.tsx')).toBe(true);
+    expect(isWebpackModule('webpack-internal:///(app-pages-browser)/../../node_modules/.pnpm/next@16.4.4/node_modules/next/dist/compiled/react/cjs/react-jsx-dev-runtime.development.js')).toBe(false);
+    expect(isWebpackModule('http://127.0.0.1:3000/_next/static/chunks/a.js')).toBe(false);
+    expect(serverModuleUrl('about://React/Server/webpack-internal:///(rsc)/./src/app/page.tsx?4')).toBe('webpack-internal:///(rsc)/./src/app/page.tsx');
+    expect(distDirOf('about://React/Server/webpack-internal:///(rsc)/./src/app/page.tsx?4')).toBeNull();
+  });
+
+  it('webpack 模式的 CSS 从 pathinfo 注释认出源文件', () => {
+    const loaders = '../../node_modules/.pnpm/next@16.4.4/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!../../node_modules/.pnpm/next@16.4.4/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]';
+    const head = (file: string) => `/*!*****!*\\\n  !*** css ${loaders}!${file} ***!\n  \\*****/\n`;
+    expect(webpackCssSources(`${head('./src/app/globals.css')}.a { color: red }\n`)).toEqual(['./src/app/globals.css']);
+    expect(webpackCssSources(`${head('./src/a.module.css')}.a{}\n${head('./src/b.css')}.b{}\n${head('./src/a.module.css')}`)).toEqual(['./src/a.module.css', './src/b.css']);
+    expect(webpackCssSources(`${head('../../node_modules/pkg/style.css')}.x{}`)).toEqual([]);
+    expect(webpackCssSources('.a { color: red }')).toEqual([]);
   });
 });
 

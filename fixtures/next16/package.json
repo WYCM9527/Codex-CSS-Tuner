@@ -2,7 +2,8 @@
   "name": "fixture-next16",
   "private": true,
   "scripts": {
-    "dev": "next dev"
+    "dev": "next dev",
+    "dev:webpack": "next dev --webpack"
   },
   "dependencies": {
     "next": "16.4.4",

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { t } from '@css-tuner/protocol';
 import { physical } from '../physical';
+import { loadTailwind3 } from './v3';
 
 /** @tailwindcss/node 的 __unstable__loadDesignSystem 返回值里用到的部分 */
 export interface RawDesignSystem {
@@ -25,6 +26,18 @@ export interface UtilityInfo {
 
 const DECL = /^\s*(--[\w-]+|[a-z-]+)\s*:\s*(.+?)\s*;\s*$/gm;
 
+/** 整个值就是 var(--tw-*, 默认值)：只给个默认值，别的工具类设了这个变量就让位（v3 的阴影是几个 var 拼起来的，不算） */
+function fallbackOnly(value: string): boolean {
+  if (!/^var\(\s*--tw-[\w-]+\s*,/.test(value)) return false;
+  let depth = 0;
+  for (let i = 3; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '(') depth++;
+    else if (ch === ')' && --depth === 0) return i === value.length - 1;
+  }
+  return false;
+}
+
 export class TwDesign {
   private cssCache = new Map<string, string | null>();
   private infoCache = new Map<string, UtilityInfo | null>();
@@ -32,6 +45,10 @@ export class TwDesign {
   constructor(
     readonly raw: RawDesignSystem,
     readonly rem = 16,
+    /** 项目装的 Tailwind 主版本 */
+    readonly major = 4,
+    /** 加载时读过的文件（CSS 入口、v3 的 tailwind.config 及其引入的文件），调用方据此判断缓存是否过期 */
+    readonly files: string[] = [],
   ) {}
 
   css(candidate: string): string | null {
@@ -65,7 +82,7 @@ export class TwDesign {
           info.important = true;
           value = value.replace(/\s*!important$/, '');
         }
-        const soft = /^var\(--tw-[\w-]+\s*,/.test(value);
+        const soft = fallbackOnly(value);
         for (const p of physical(prop)) {
           (soft ? info.soft : info.hard).add(p);
           info.values.set(p, value);
@@ -145,16 +162,24 @@ export function tailwindVersion(fromDir: string): string | null {
   return null;
 }
 
-/** 用项目自己的 Tailwind 版本加载设计系统；entryFile 是含 @import "tailwindcss" 的 CSS 入口 */
+/**
+ * 用项目自己的 Tailwind 版本加载设计系统。entryFile 是 CSS 入口：v4 是含 @import "tailwindcss" 的那个，
+ * v3 是含 @tailwind 指令的那个，主题从它对应的 tailwind.config 读
+ */
 export async function loadTailwindDesign(entryFile: string, opts: { rem?: number; css?: string } = {}): Promise<TwDesign> {
   const base = dirname(entryFile);
+  const css = opts.css ?? readFileSync(entryFile, 'utf8');
+  const rem = opts.rem ?? 16;
+  if (/^3\./.test(tailwindVersion(base) ?? '')) {
+    const v3 = await loadTailwind3(entryFile, css);
+    return new TwDesign(v3.raw, rem, 3, [entryFile, ...v3.files]);
+  }
   const nodePath = resolveTailwindNode(base);
   if (!nodePath) throw new Error(t('engine.tw.noNode'));
   const mod = (await import(pathToFileURL(nodePath).href)) as {
     __unstable__loadDesignSystem?: (css: string, o: { base: string }) => Promise<RawDesignSystem>;
   };
   if (typeof mod.__unstable__loadDesignSystem !== 'function') throw new Error(t('engine.tw.noDesignApi'));
-  const css = opts.css ?? readFileSync(entryFile, 'utf8');
   const ds = await mod.__unstable__loadDesignSystem(css, { base });
-  return new TwDesign(ds, opts.rem ?? 16);
+  return new TwDesign(ds, rem, 4, [entryFile]);
 }

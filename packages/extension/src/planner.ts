@@ -72,9 +72,11 @@ export interface PlanContext {
   ruleSource: (entry: string, ref: RuleRef) => { file: string; selector: string } | null;
   /** 类名是不是项目设计系统里的工具类（设计系统没加载时当作不是） */
   isUtility: (candidate: string) => boolean;
+  /** 项目装的 Tailwind 主版本，不是 Tailwind 项目时为 null */
+  tailwindMajor?: number | null;
 }
 
-/** Tailwind 4 的工具类都在 @layer utilities 里；不在层里的类名规则多半是写在入口 CSS 里的普通规则 */
+/** Tailwind 4 的工具类都在 @layer utilities 里；不在层里的类名规则（v3 全都不在层里）要按设计系统认 */
 function utilityOf(ref: RuleRef, ctx: PlanContext): string | null {
   if (!ref.utility) return null;
   return ref.layer !== null || ctx.isUtility(ref.utility) ? ref.utility : null;
@@ -100,9 +102,14 @@ function sheetOf(page: PageInfo, ref: RuleRef): SheetInfo | undefined {
   return page.sheets.find((s) => s.index === ref.sheet.index);
 }
 
-function isFramework(page: PageInfo, ref: RuleRef): boolean {
+function isFramework(page: PageInfo, ref: RuleRef, ctx: PlanContext): boolean {
   const s = sheetOf(page, ref);
-  return !!s?.tailwind && ref.layer !== null && FRAMEWORK_LAYERS.has(ref.layer.split('.')[0]);
+  if (!s?.tailwind) return false;
+  if (ref.layer !== null) return FRAMEWORK_LAYERS.has(ref.layer.split('.')[0]);
+  // Tailwind 3 不保留 @layer：预设样式（preflight）这类框架生成的规则，在 CSS 入口里找不到对应的写法
+  if (ctx.tailwindMajor !== 3 || utilityOf(ref, ctx)) return false;
+  const file = ctx.project.sheetFile(page.url, ref.sheet);
+  return !file || !ctx.ruleSource(file, ref);
 }
 
 /** 页面上 Tailwind 样式表对应的 CSS 入口文件 */
@@ -258,7 +265,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
 
   if (w?.origin === 'inline') return agent(t('plan.inlineStyle'));
 
-  if (w?.origin === 'rule' && w.rule && !isFramework(page, w.rule)) {
+  if (w?.origin === 'rule' && w.rule && !isFramework(page, w.rule, ctx)) {
     const utility = utilityOf(w.rule, ctx);
     if (utility) return tailwind(utility);
     if (/^\s*>|:has\(|:hover|:focus/.test(w.rule.selector) && w.rule.matchCount > 1 && sheetOf(page, w.rule)?.tailwind) {
@@ -269,7 +276,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
 
   // 没有作者声明（继承、初始值或只命中了 Tailwind 预设样式）：Tailwind 项目加类名，CSS 项目加到元素自己的规则里
   if (twPage && el.source && srcFile) return tailwind(null);
-  const own = ownRule(el, page, (r) => !utilityOf(r, ctx) && !!project.sheetFile(pageUrl, r.sheet));
+  const own = ownRule(el, page, ctx, (r) => !utilityOf(r, ctx) && !!project.sheetFile(pageUrl, r.sheet));
   if (own) return css(own, 'add', null);
   return agent(t('plan.noWritableRule'));
 }
@@ -295,7 +302,7 @@ export function planVar(el: ElementSnapshot, name: string, ctx: PlanContext): Pl
   if (sheetOf(page, w.rule)?.tailwind && w.rule.layer?.split('.')[0] === 'theme') {
     return { view: { kind: 'css', label: `${project.label(file)} @theme ${name}`, file, affects: 0 }, preview, write: { kind: 'theme', file, name } };
   }
-  if (isFramework(page, w.rule)) return agent(t('plan.varInPreset'), preview);
+  if (isFramework(page, w.rule, ctx)) return agent(t('plan.varInPreset'), preview);
   const src = ctx.ruleSource(file, w.rule);
   const real = src?.file ?? file;
   return {
@@ -574,8 +581,8 @@ export function propKey(p: Plan, el: ElementSnapshot, name: string): string {
 }
 
 /** 加声明用的规则：优先级最高、且最后一段选择器写着元素自己的类名或 id 的作者规则 */
-function ownRule(el: ElementSnapshot, page: PageInfo, writable: (r: RuleRef) => boolean): RuleRef | null {
-  const candidates = [...el.rules].reverse().filter((r) => !isFramework(page, r) && writable(r));
+function ownRule(el: ElementSnapshot, page: PageInfo, ctx: PlanContext, writable: (r: RuleRef) => boolean): RuleRef | null {
+  const candidates = [...el.rules].reverse().filter((r) => !isFramework(page, r, ctx) && writable(r));
   const subject = (r: RuleRef) => r.fullSelector.split(/\s*[\s>+~]\s*/).pop() ?? '';
   return (
     candidates.find((r) => {

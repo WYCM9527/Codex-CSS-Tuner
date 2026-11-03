@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - fixtures/tw-react
+  - fixtures/tw3-react
   - fixtures/react-css
   - fixtures/next16
   - fixtures/demo

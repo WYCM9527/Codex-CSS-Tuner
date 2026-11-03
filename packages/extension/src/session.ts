@@ -13,6 +13,8 @@ interface Pending {
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
   timer: NodeJS.Timeout;
+  /** 请求发在哪条连接上：这条连接断了，回复就不会来了 */
+  ws: WebSocket;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
@@ -178,13 +180,15 @@ export class PageSession implements vscode.Disposable {
       this.dispatch(msg);
     });
     ws.on('close', () => {
-      if (this.socket !== ws) return;
-      this.socket = null;
+      // 整页刷新时新页面可能比旧连接的 close 先连上，旧连接上没回的请求也要在这里结束
       for (const [id, p] of this.pending) {
+        if (p.ws !== ws) continue;
         clearTimeout(p.timer);
         p.reject(new Error(t('session.lost')));
         this.pending.delete(id);
       }
+      if (this.socket !== ws) return;
+      this.socket = null;
       if (!this.disposed) {
         this.setState('lost');
         this.armWatchdog(5000);
@@ -215,15 +219,16 @@ export class PageSession implements vscode.Disposable {
   }
 
   async call<M extends BridgeMethod>(m: M, p: Params<M>, timeoutMs = 8000): Promise<Result<M>> {
-    if (this.socket && this.socket.readyState === this.socket.OPEN) {
+    const ws = this.socket;
+    if (ws && ws.readyState === ws.OPEN) {
       const id = ++this.seq;
       return new Promise<Result<M>>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pending.delete(id);
           reject(new Error(t('session.timeout', { what: m })));
         }, timeoutMs);
-        this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
-        this.socket!.send(JSON.stringify({ t: 'req', id, m, p }));
+        this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer, ws });
+        ws.send(JSON.stringify({ t: 'req', id, m, p }));
       });
     }
     if (this.mode === 'exec') {

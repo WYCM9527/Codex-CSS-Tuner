@@ -56,6 +56,24 @@ export function clientModuleUrl(url: string, dist: string): string | null {
   return `file://${dist.startsWith('/') ? '' : '/'}${dist}${m[1]}${u.search}`;
 }
 
+/** webpack 模式的模块帧（客户端 eval 进去的模块），接口原样认；node_modules 里的不算业务代码 */
+export function isWebpackModule(url: string): boolean {
+  return url.startsWith('webpack-internal:///') && !url.includes('/node_modules/');
+}
+
+/**
+ * webpack 开发态的 CSS 没有 sourcemap，每个模块前有一段 pathinfo 注释：
+ * `!*** css <loader>!…!./src/app/globals.css ***!`，最后一个 ! 后面是相对项目根的源文件
+ */
+export function webpackCssSources(css: string): string[] {
+  const out = new Set<string>();
+  for (const m of css.matchAll(/!\*{3} css (.+?) \*{3}!/g)) {
+    const file = m[1].slice(m[1].lastIndexOf('!') + 1).split('?')[0];
+    if (/\.css$/i.test(file) && !file.includes('/node_modules/')) out.add(file);
+  }
+  return [...out];
+}
+
 /** 接口返回相对项目根的路径；项目根是构建目录（默认 .next/dev）的上级 */
 export function projectRootOf(dist: string): string {
   const std = /^(.*)\/\.next(?:\/dev)?$/.exec(dist);

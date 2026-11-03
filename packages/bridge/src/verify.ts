@@ -1,7 +1,7 @@
 import { sameValue, type PreviewTarget } from '@css-tuner/protocol';
 import { arrange, fetchedKids, findGroup, groupOf, matchIn, movableKids, parentOf, sigOf, unitShort } from './order';
 import { sameOrder } from './sig';
-import { clearPreview, resolveRule } from './preview';
+import { clearPreview, hasPreview, resolveRule } from './preview';
 import { verifyProp } from './props';
 import { findBySource } from './source';
 import { baseOf, commitTextPreview, elementAtPath, fetchedText, fill, hasTextPreview, textNodesOf } from './text';
@@ -145,6 +145,7 @@ function allMatch(actual: Record<string, string>, expected: Record<string, strin
  * 写回后等热更新到达再比对计算样式：
  * - Tailwind（内联预览）：等元素 className 变化后撤掉预览，再轮询到与预览值一致（新工具类的 CSS 可能晚于 className 到达）；
  * - 语义 CSS（CSSOM 预览）：等 <style> 被替换（旧规则脱离文档），再比对。
+ * 页面上已经没有这条预览时（整页刷新过，或上一轮核对已经撤掉）读到的就是真实样式，直接轮询比对。
  */
 export async function verify(
   id: string,
@@ -158,18 +159,25 @@ export async function verify(
   if (target.kind === 'props') return verifyProp(id, target, expected, timeoutMs, refind);
   if (target.kind !== 'inline' && target.kind !== 'rule') return { ok: false, actual: {}, waitedMs: 0 };
   const t0 = performance.now();
-  const el = elOf(target.uid) ?? (await refind());
   const props = Object.keys(expected);
   const elapsed = () => performance.now() - t0;
-  if (!el) {
-    clearPreview(id);
-    return { ok: false, actual: {}, waitedMs: 0 };
-  }
   const left = () => Math.max(0, timeoutMs - elapsed());
-  if (target.kind === 'inline') {
+  let found = elOf(target.uid) ?? (await refind());
+  // 整页刷新后马上来核对时，页面可能还没渲染出这个元素（或还认不出它的源码位置）
+  while (!found && left() > 0) {
+    await sleep(Math.min(150, left()));
+    found = await refind();
+  }
+  if (!found) {
+    clearPreview(id);
+    return { ok: false, actual: {}, waitedMs: Math.round(elapsed()) };
+  }
+  const el = found;
+  const previewing = hasPreview(id);
+  if (previewing && target.kind === 'inline') {
     const before = el.getAttribute('class');
     await waitUntil(() => !el.isConnected || el.getAttribute('class') !== before, timeoutMs);
-  } else {
+  } else if (previewing && target.kind === 'rule') {
     const liveBefore = resolveRule(target.rule);
     if (liveBefore) {
       await waitUntil(() => {

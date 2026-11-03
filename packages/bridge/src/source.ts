@@ -1,6 +1,6 @@
 import type { CallerLoc, SourceLoc } from '@css-tuner/protocol';
 import { reactHooked } from './devtools';
-import { clientModuleUrl, distDirOf, joinPath, projectRootOf, SERVER_URL, serverModuleUrl } from './next';
+import { clientModuleUrl, distDirOf, isWebpackModule, joinPath, projectRootOf, SERVER_URL, serverModuleUrl } from './next';
 import { decodeDataUrl, extractMapUrl, filePathOf, jsxLineShift, originalPosition, type SourceMap } from './sourcemap';
 import { stripQuery } from './util';
 
@@ -90,7 +90,7 @@ const BOTTOM = /react[-_]stack[-_]bottom[-_]frame/;
 const LIB_PATH = /\/node_modules\/|__nextjs-internal-proxy|^\/?\[(?:turbopack|externals)\]/;
 
 function maybeUser(url: string): boolean {
-  if (SERVER_URL.test(url)) return true;
+  if (SERVER_URL.test(url) || isWebpackModule(url)) return true;
   return url.startsWith(location.origin) && !/\/node_modules\/|\/\.vite\/|\/@vite\/|\/@react-refresh|\/@id\//.test(url);
 }
 
@@ -201,12 +201,13 @@ async function viaMap(fr: RawFrame): Promise<Resolved | null> {
 /**
  * Next.js 开发态交给开发服务器解析（和它的错误浮层同一个接口）：服务端组件的帧在 Node 里执行，
  * 热更新后执行的是 eval 进去的新模块，行号和磁盘上的 chunk 对不上，只有服务端知道；
- * 客户端帧照它的做法换成构建目录里的 file:// 路径，热更新后的 chunk.js?id=… 也认。
+ * 客户端帧照它的做法换成构建目录里的 file:// 路径，热更新后的 chunk.js?id=… 也认；webpack 模式的 webpack-internal:/// 帧原样交给它。
  * 这个接口不是公开 API，接口不在或格式变了就退回直接读 sourcemap。
  */
 function nextFileOf(url: string): string | null {
   const server = serverModuleUrl(url);
   if (server) return server;
+  if (isWebpackModule(url)) return url;
   if (!/\/_next\/static\//.test(url)) return null;
   if (!nextDist) scanForNextDist();
   return nextDist ? clientModuleUrl(url, nextDist) : null;
@@ -269,7 +270,7 @@ function resolveFrame(fr: RawFrame): Promise<Resolved | null> {
   let p = resolved.get(key);
   if (!p) {
     const next = nextFileOf(fr.url);
-    p = next ? viaNext(next, fr).then((r) => r ?? (SERVER_URL.test(fr.url) || fr.url.includes('?') ? null : viaMap(fr))) : viaMap(fr);
+    p = next ? viaNext(next, fr).then((r) => r ?? (next !== fr.url && !SERVER_URL.test(fr.url) && !fr.url.includes('?') ? viaMap(fr) : null)) : viaMap(fr);
     resolved.set(key, p);
   }
   return p;

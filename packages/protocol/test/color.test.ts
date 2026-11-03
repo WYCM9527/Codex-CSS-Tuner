@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { parseColor, toHex, rgbToHsv, hsvToRgb, sameColor, toPx, parseCssNumber, stepScale, groupLabel } from '../src';
+import { parseColor, toHex, rgbToHsv, hsvToRgb, sameColor, sameValue, toPx, parseCssNumber, stepScale, groupLabel } from '../src';
+
+describe('sameValue', () => {
+  it('阴影忽略全透明的占位层（Tailwind 的 ring 阴影）', () => {
+    const lg = 'rgba(0, 0, 0, 0.1) 0px 10px 15px -3px, rgba(0, 0, 0, 0.1) 0px 4px 6px -4px';
+    expect(sameValue('box-shadow', `rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, ${lg}`, lg)).toBe(true);
+    expect(sameValue('box-shadow', 'rgba(0, 0, 0, 0) 0px 0px 0px 0px', 'none')).toBe(true);
+    expect(sameValue('box-shadow', lg, 'rgba(0, 0, 0, 0.1) 0px 10px 15px -3px')).toBe(false);
+    expect(sameValue('box-shadow', 'rgb(255, 0, 0) 0px 0px 0px 2px inset', 'rgb(255, 0, 0) 0px 0px 0px 2px inset')).toBe(true);
+  });
+});
 
 describe('parseColor', () => {
   it('解析十六进制和 rgb', () => {
