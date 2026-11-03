@@ -15,6 +15,8 @@ import {
   type PageInfo,
   type PanelState,
   type PanelToExt,
+  type PreviewTarget,
+  type PropValue,
   type RuleRef,
   type Scope,
   type SelectionView,
@@ -23,10 +25,11 @@ import {
 import { hasArbitraryValue, previewCompanions, tailwindScales, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
 import { BrowserAdapter } from './browser';
-import { buildPrompt, prefill, type PrefillResult } from './handoff';
+import { prefill, type PrefillResult } from './handoff';
 import { Journal, type ChangeRecord } from './journal';
 import { plan, planVar, sourceKeyOf, tailwindEntry, type Plan, type WriteSpec } from './planner';
 import { ProjectResolver } from './project';
+import { buildPrompt } from './prompt';
 import { cssScales } from './scales';
 import { commandCheck, liveCheck, type CheckItem } from './selfcheck';
 import { BridgeServer } from './server';
@@ -499,18 +502,31 @@ export class Controller implements vscode.Disposable {
     if (!session || !this.page) return;
     for (const rec of this.journal.pending()) {
       if (!this.samePage(rec.pageUrl, this.page.url)) continue;
-      let target = rec.preview;
-      if (target.kind === 'inline' || target.kind === 'rule') {
-        const src = rec.element.source;
-        const uid = src
-          ? await session.call('resolve', { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex }, waitMs: 3000 }, 6000).catch(() => null)
-          : null;
-        if (!uid && target.kind === 'inline') continue;
-        target = { ...target, uid: uid ?? target.uid } as typeof target;
-        this.journal.update(rec.id, { preview: target });
-      }
-      const decls = { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) };
-      await session.call('preview', { id: rec.previewId, target, decls }).catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
+      const src = rec.element.source;
+      const uid = src
+        ? await session.call('resolve', { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex }, waitMs: 3000 }, 6000).catch(() => null)
+        : null;
+      // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
+      if (!uid && rec.preview.kind !== 'rule') continue;
+      const target = { ...rec.preview, uid: uid ?? rec.preview.uid } as PreviewTarget;
+      this.journal.update(rec.id, { preview: target });
+      await session
+        .call('preview', { id: rec.previewId, target, ...(await this.previewValue(rec)) })
+        .catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
+    }
+  }
+
+  /** 一条改动的预览值：样式是声明（含 Tailwind 令牌顺带的属性），文字和 props 是新值，换序的位置在目标里 */
+  private async previewValue(rec: ChangeRecord): Promise<{ decls?: Record<string, string>; text?: string; prop?: PropValue }> {
+    switch (rec.kind) {
+      case 'text':
+        return { text: rec.value };
+      case 'prop':
+        return { prop: JSON.parse(rec.value) as PropValue };
+      case 'reorder':
+        return {};
+      default:
+        return { decls: { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) } };
     }
   }
 
@@ -642,6 +658,7 @@ export class Controller implements vscode.Disposable {
         this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write });
       } else {
         this.journal.add({
+          kind: 'style',
           key,
           pageUrl: this.page.url,
           element: {

@@ -156,17 +156,26 @@ export function ChangeList({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
+/** 改动前后的值：文字加引号，换序显示位置，样式按颜色、变量缩写 */
+function changeValues(c: ChangeView): [string, string] {
+  if (c.kind === 'text') return [`“${c.from}”`, `“${c.to}”`];
+  if (c.kind === 'reorder') return [t('panel.change.position', { n: c.from }), t('panel.change.position', { n: c.to })];
+  if (c.kind === 'prop') return [c.from, c.to];
+  return [displayValue(c.from), displayValue(c.to)];
+}
+
 function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Send }) {
   const file = c.target.file;
+  const [from, to] = changeValues(c);
   return (
     <li className={`change is-${c.status}`}>
       <div className="change-main">
         <span className={`status s-${c.status}`} title={t(`panel.status.${c.status}`)} />
         <span className="change-prop">{c.propLabel}</span>
         <span className="change-vals">
-          <s>{displayValue(c.from)}</s>
+          <s title={from}>{from}</s>
           <span className="arrow">→</span>
-          <b>{displayValue(c.to)}</b>
+          <b title={to}>{to}</b>
         </span>
       </div>
       <div className="change-sub">

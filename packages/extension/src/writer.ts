@@ -45,11 +45,14 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
     });
   }
   if (w.kind === 'theme') return editThemeVar({ file: w.file, read, name: w.name, value: rec.value });
-  return editCssRule({
-    file: w.file,
-    read,
-    spec: { selector: w.selector, fullSelector: w.fullSelector, conditions: w.conditions, ordinal: w.ordinal, mode: w.mode, via: w.via },
-    props: rec.props,
-    value: rec.value,
-  });
+  if (w.kind === 'css') {
+    return editCssRule({
+      file: w.file,
+      read,
+      spec: { selector: w.selector, fullSelector: w.fullSelector, conditions: w.conditions, ordinal: w.ordinal, mode: w.mode, via: w.via },
+      props: rec.props,
+      value: rec.value,
+    });
+  }
+  return { ok: false, reason: t('ext.write.unsupported') };
 }

@@ -106,6 +106,63 @@ export interface ElementSnapshot {
   inline: Record<string, string>;
   fontSizePx: number;
   rootFontSizePx: number;
+  /** 元素自己的文字；页面脚本没分析时缺省 */
+  text?: TextInfo;
+  /** 同一个父元素下可以互换位置的兄弟 */
+  order?: OrderInfo;
+  /** 渲染这个元素的项目组件和它收到的 props（只有 React） */
+  props?: PropsInfo;
+}
+
+/** 元素的一段直接子文本 */
+export interface TextSegment {
+  /** 页面上现在的文字（文本节点原样，含首尾空白） */
+  value: string;
+  /** React：文本在元素 JSX children 里的下标（和运行时 children 数组一致）；不是元素自己的 JSX 直接写的为 null */
+  child: number | null;
+  /** 沿组件调用链找到的、值和这段文字相等的字符串 prop；depth 对应 callers 的层级（1 起） */
+  props: Array<{ depth: number; name: string }>;
+}
+
+export interface TextInfo {
+  /** 直接子文本节点里非空白的那些，按文档顺序 */
+  segments: TextSegment[];
+  /** 纯 HTML 页面：元素从 <html> 起逐层的子元素下标 */
+  htmlPath: number[] | null;
+}
+
+export interface OrderInfo {
+  /** 同一个 JSX 父元素下的兄弟元素（含自己），按页面顺序 */
+  siblings: Crumb[];
+  /** 自己在 siblings 里的下标 */
+  index: number;
+  /** 父元素的排列方式：flex / grid 预览时写 order，其余按位移量做 transform */
+  layout: 'flex' | 'grid' | 'flow';
+  axis: 'x' | 'y';
+  /** 兄弟由 .map() 渲染（共用一个源码位置），写回改数组顺序 */
+  mapped: boolean;
+  /** 纯 HTML 页面：父元素从 <html> 起逐层的子元素下标 */
+  htmlPath: number[] | null;
+}
+
+export type PropValue = string | number | boolean | null;
+
+export interface PropInfo {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'null' | 'undefined' | 'object' | 'array' | 'function' | 'element';
+  /** 基本类型的值；对象、函数、React 元素为 null，只读 */
+  value: PropValue;
+  /** 只读值的类型说明，如 "() => void" */
+  summary?: string;
+}
+
+export interface PropsInfo {
+  component: string;
+  /** 组件的调用处（属性写在这里） */
+  source: SourceLoc | null;
+  props: PropInfo[];
+  /** 服务端组件：页面上不能预览，应用后才看得到效果 */
+  server: boolean;
 }
 
 export interface CssVar {
@@ -144,7 +201,13 @@ export type PreviewTarget =
    * withClass：写回落在变体字符串里，预览只作用于带着这个类名的同源元素
    */
   | { kind: 'inline'; uid: string; sourceKey: string | null; depth?: number; withClass?: string }
-  | { kind: 'rule'; rule: RuleRef; uid: string };
+  | { kind: 'rule'; rule: RuleRef; uid: string }
+  /** 元素第 segment 段直接子文本；sourceKey、depth 的含义同 inline，同源实例一起改 */
+  | { kind: 'text'; uid: string; sourceKey: string | null; segment: number; depth?: number }
+  /** 把元素挪到兄弟组里第 to 个：不动真实 DOM，用 order 或 transform 模拟 */
+  | { kind: 'order'; uid: string; to: number }
+  /** 用 React 开发构建的 overrideProps 改渲染这个元素的组件的一个 prop */
+  | { kind: 'props'; uid: string; name: string };
 
 export interface SelectQuery {
   uid?: string;
@@ -163,13 +226,20 @@ export interface BridgeMethods {
   /** 只定位元素、不改变选中，返回 uid（刷新后重新挂预览用） */
   resolve: { p: SelectQuery; r: string | null };
   snapshot: { p: Record<string, never>; r: ElementSnapshot | null };
-  preview: { p: { id: string; target: PreviewTarget; decls: Record<string, string> }; r: { computed: Record<string, string>; count: number } };
+  /** 样式目标用 decls，text 目标用 text，props 目标用 prop；order 目标的位置在目标里 */
+  preview: {
+    p: { id: string; target: PreviewTarget; decls?: Record<string, string>; text?: string; prop?: PropValue };
+    r: { computed: Record<string, string>; count: number };
+  };
   clearPreview: { p: { id: string }; r: boolean };
   clearAllPreviews: { p: Record<string, never>; r: number };
   /** 面板结构树上悬停的元素，在页面上描边；null 取消 */
   hover: { p: { uid: string | null }; r: boolean };
   verify: {
-    /** source：热更新后元素可能被重建，按源码位置重新找回（不能用当前选中的元素） */
+    /**
+     * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"（兄弟的源码位置按新顺序排），props 是属性名（值为 JSON）。
+     * source：热更新后元素可能被重建，按源码位置重新找回（不能用当前选中的元素）
+     */
     p: { id: string; target: PreviewTarget; expected: Record<string, string>; timeoutMs: number; source?: { path: string; line: number; column: number; index: number } };
     /** changedMs：等到 className / 样式表变化用了多久（排查热更新慢在哪） */
     r: { ok: boolean; actual: Record<string, string>; waitedMs: number; changedMs?: number };
@@ -251,12 +321,17 @@ export interface Scales {
 
 export type ChangeStatus = 'pending' | 'applied' | 'unverified' | 'failed' | 'reverted' | 'conflict' | 'handoff';
 
+/** 改动类型：样式、文字、同一父元素内换序、组件 props */
+export type ChangeKind = 'style' | 'text' | 'reorder' | 'prop';
+
 export interface ChangeView {
   id: string;
+  kind: ChangeKind;
   status: ChangeStatus;
   element: string;
   props: string[];
   propLabel: string;
+  /** 样式是属性值，文字是原文，换序是位置（1 起），props 是 JSON */
   from: string;
   to: string;
   target: Target;
@@ -297,6 +372,12 @@ export type PanelToExt =
   | { t: 'select'; uid: string }
   | { t: 'hover'; uid: string | null }
   | { t: 'edit'; edit: EditRequest }
+  /** 改选中元素第 segment 段文字 */
+  | { t: 'editText'; segment: number; value: string; phase: 'live' | 'commit' }
+  /** 把选中元素兄弟组里的 uid 挪到第 to 个 */
+  | { t: 'reorder'; uid: string; to: number; phase: 'live' | 'commit' }
+  /** 改渲染选中元素的组件的一个 prop */
+  | { t: 'editProp'; name: string; value: PropValue; phase: 'live' | 'commit' }
   | { t: 'resetProps'; props: string[] }
   | { t: 'apply'; ids?: string[] }
   | { t: 'revert'; id: string }

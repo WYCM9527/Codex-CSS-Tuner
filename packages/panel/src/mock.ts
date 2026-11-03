@@ -270,6 +270,7 @@ export function createMockHost(): Host {
           else
             state.changes.unshift({
               id: `${key}#${++seq}`,
+              kind: 'style',
               status: 'pending',
               element: e.label,
               props: m.edit.props,

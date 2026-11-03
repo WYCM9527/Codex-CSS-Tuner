@@ -125,8 +125,11 @@ async function holdersFor(target: PreviewTarget): Promise<Holder[]> {
     if (target.withClass) els = els.filter((e) => e === el || e.classList.contains(target.withClass!));
     return els.filter((e): e is HTMLElement => e instanceof HTMLElement || e instanceof SVGElement).map((e) => ({ kind: 'inline', el: e as HTMLElement }));
   }
-  const style = resolveRule(target.rule);
-  return style ? [{ kind: 'rule', style }] : [];
+  if (target.kind === 'rule') {
+    const style = resolveRule(target.rule);
+    return style ? [{ kind: 'rule', style }] : [];
+  }
+  return [];
 }
 
 function reapply(k: HTMLElement | CSSStyleDeclaration) {

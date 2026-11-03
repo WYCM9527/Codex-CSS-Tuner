@@ -265,7 +265,7 @@ class Bridge {
       return el ? uidOf(el) : null;
     },
     snapshot: async () => (this.selected && this.selected.isConnected ? snapshot(this.selected) : null),
-    preview: async ({ id, target, decls }) => {
+    preview: async ({ id, target, decls = {} }) => {
       const count = await preview(id, target, decls);
       const el = elOf(target.uid);
       const computed: Record<string, string> = {};

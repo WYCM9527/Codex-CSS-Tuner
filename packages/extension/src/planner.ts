@@ -32,6 +32,17 @@ export type WriteSpec =
     }
   /** Tailwind 主题变量：改 @theme 里的声明，项目没声明过就加一条 */
   | { kind: 'theme'; file: string; name: string }
+  /** (line, column) 处 JSX 元素的文字子节点，segment 是运行时 children 数组里的下标 */
+  | { kind: 'jsxText'; file: string; line: number; column: number; segment: number }
+  /** (line, column) 处 JSX 元素上的属性，如组件调用处的 title="..." */
+  | { kind: 'jsxAttr'; file: string; line: number; column: number; name: string }
+  /** 多语言 JSON 文件里的一条消息 */
+  | { kind: 'message'; file: string; keyPath: string[] }
+  /** 换序：jsxOrder 的 (line, column) 是父元素，arrayOrder 的是 .map() 用的数组字面量 */
+  | { kind: 'jsxOrder' | 'arrayOrder'; file: string; line: number; column: number; from: number; to: number }
+  /** 纯 HTML：path 是元素从 <html> 起逐层的子元素下标 */
+  | { kind: 'htmlText'; file: string; path: number[]; segment: number }
+  | { kind: 'htmlOrder'; file: string; path: number[]; from: number; to: number }
   | { kind: 'agent'; reason: string };
 
 export interface Plan {

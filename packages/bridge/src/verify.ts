@@ -25,6 +25,7 @@ export async function verify(
   timeoutMs: number,
   refind: () => Promise<Element | null>,
 ) {
+  if (target.kind !== 'inline' && target.kind !== 'rule') return { ok: false, actual: {}, waitedMs: 0 };
   const t0 = performance.now();
   const el = elOf(target.uid) ?? (await refind());
   const props = Object.keys(expected);
