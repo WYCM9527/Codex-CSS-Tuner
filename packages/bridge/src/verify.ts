@@ -1,11 +1,82 @@
 import { sameValue, type PreviewTarget } from '@css-tuner/protocol';
+import { arrange, fetchedKids, findGroup, groupOf, matchIn, movableKids, parentOf, sigOf, unitShort } from './order';
+import { sameOrder } from './sig';
 import { clearPreview, resolveRule } from './preview';
+import { findBySource } from './source';
 import { baseOf, commitTextPreview, elementAtPath, fetchedText, fill, hasTextPreview, textNodesOf } from './text';
 import { elOf, sleep, waitUntil } from './util';
 
 export { sameValue };
 
 type TextTarget = Extract<PreviewTarget, { kind: 'text' }>;
+type OrderTarget = Extract<PreviewTarget, { kind: 'order' }>;
+
+/**
+ * 换序：React 页面等热更新把 DOM 换成新顺序（一变就撤掉模拟预览，免得叠在新顺序上再挪一遍），再比对兄弟的样子；
+ * 纯 HTML 页面重新取页面 HTML 比对，对上了就把页面上的元素真的挪成这个顺序
+ */
+async function verifyOrder(id: string, target: OrderTarget, expected: string, timeoutMs: number, refind: () => Promise<Element | null>) {
+  const t0 = performance.now();
+  const elapsed = () => performance.now() - t0;
+  const left = () => Math.max(0, timeoutMs - elapsed());
+  const want = expected.split('\n');
+  if (target.htmlPath) {
+    const parentPath = target.htmlPath.slice(0, -1);
+    let got: Awaited<ReturnType<typeof fetchedKids>> = null;
+    for (;;) {
+      got = await fetchedKids(parentPath);
+      if ((got && sameOrder(got.sigs, want)) || left() <= 0) break;
+      await sleep(Math.min(300, left()));
+    }
+    clearPreview(id);
+    const ok = !!got && sameOrder(got.sigs, want);
+    const p = parentOf(target) ?? elementAtPath(parentPath);
+    if (ok && p) arrange(p, want);
+    return { ok, actual: { order: (got?.shorts ?? []).join(' · ') }, waitedMs: Math.round(elapsed()) };
+  }
+  const a = target.anchor;
+  const parentNow = async () => parentOf(target) ?? (a ? (await findBySource(a.path, a.line, a.column, a.index))?.parentElement : null) ?? (await refind())?.parentElement ?? null;
+  let p = await parentNow();
+  const kidsKey = () => (p && p.isConnected ? movableKids(p).map(sigOf).join('\n') : '');
+  let before = kidsKey();
+  let changedMs = -1;
+  // 页面一变就撤掉模拟预览，免得叠在新顺序上再挪一遍
+  const changed = () => {
+    if (changedMs >= 0) return;
+    changedMs = Math.round(elapsed());
+    clearPreview(id);
+  };
+  // 整页刷新后重新校验时页面上已经是新顺序，不用再等变化
+  let hit = await matchIn(p, want, target.mapped);
+  let searched = elapsed();
+  while (!hit && left() > 0) {
+    if (p?.isConnected) {
+      if (await waitUntil(() => !p!.isConnected || kidsKey() !== before, Math.min(left(), 500))) {
+        changed();
+        searched = -Infinity;
+      }
+    } else {
+      // 找不到父元素时也要真的睡一会儿：只在微任务里打转会卡住页面，热更新的消息就一直进不来
+      await sleep(Math.min(left(), 200));
+      p = await parentNow();
+    }
+    before = kidsKey();
+    hit = await matchIn(p, want, target.mapped);
+    // p 可能已经不是这一组的父元素了（React 换掉了它，或者源码挪过、按旧位置找错了）：隔一会儿在整个页面里按指纹找
+    if (!hit && elapsed() - searched >= 500) {
+      searched = elapsed();
+      const found = await findGroup(want, target.mapped);
+      if (found) {
+        p = found.p;
+        hit = found.units;
+      }
+    }
+  }
+  if (hit) changed();
+  else clearPreview(id);
+  const shown = hit ?? (p?.isConnected ? await groupOf(p, target.mapped) : []);
+  return { ok: !!hit, actual: { order: shown.map(unitShort).join(' · ') }, waitedMs: Math.round(elapsed()), changedMs };
+}
 
 /**
  * 文字：React 页面等热更新把文字改成新值（有预览时看的是预览底下 React 的值）再撤掉预览；
@@ -82,6 +153,7 @@ export async function verify(
   refind: () => Promise<Element | null>,
 ) {
   if (target.kind === 'text') return verifyText(id, target, expected.text ?? '', timeoutMs, refind);
+  if (target.kind === 'order') return verifyOrder(id, target, expected.order ?? '', timeoutMs, refind);
   if (target.kind !== 'inline' && target.kind !== 'rule') return { ok: false, actual: {}, waitedMs: 0 };
   const t0 = performance.now();
   const el = elOf(target.uid) ?? (await refind());
@@ -109,11 +181,15 @@ export async function verify(
   let live: Element | null = el.isConnected ? el : await refind();
   let actual = live ? read(live, props) : {};
   while (!allMatch(actual, expected) && left() > 0) {
-    await waitUntil(() => {
-      if (!live || !live.isConnected) return true;
-      actual = read(live, props);
-      return allMatch(actual, expected);
-    }, Math.min(left(), 1000));
+    if (live && live.isConnected) {
+      await waitUntil(() => {
+        if (!live || !live.isConnected) return true;
+        actual = read(live, props);
+        return allMatch(actual, expected);
+      }, Math.min(left(), 1000));
+    } else {
+      await sleep(Math.min(150, left()));
+    }
     if (!live || !live.isConnected) {
       live = await refind();
       actual = live ? read(live, props) : {};

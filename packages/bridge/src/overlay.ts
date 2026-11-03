@@ -1,3 +1,4 @@
+import { dropSlot, slotLine } from './drop';
 import { OWN_ATTR, labelOf } from './util';
 
 // 只用灰阶，而且要在任意颜色的页面上都看得见：描边和外边距斜线都是黑白两层，填充用半透明中灰
@@ -18,8 +19,22 @@ const STYLE = `
   text-overflow: ellipsis; font-variant-numeric: tabular-nums;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.3); }
 .tag .dim { opacity: 0.6; margin-left: 6px; }
+.grip { position: fixed; pointer-events: auto; box-sizing: border-box; width: 16px; height: 20px; border-radius: 4px; background: #111; color: #f5f5f5;
+  display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 2px 8px rgba(0, 0, 0, 0.3); }
+.grip:hover { background: #2a2a2a; }
+.grip.dragging { cursor: grabbing; background: #2a2a2a; }
+.line { position: fixed; pointer-events: none; background: #111; box-shadow: 0 0 0 1px #fff; border-radius: 1px; }
+.ghost { position: fixed; pointer-events: none; outline: 1.5px dashed #fff; box-shadow: 0 0 0 2.5px rgba(17, 17, 17, 0.6); background: rgba(128, 128, 128, 0.12); }
 .hidden { display: none; }
 `;
+
+/** 拖动换序要用的：页面上现在看到的顺序排好的各项外框、选中元素那项的下标，和放下时的回调 */
+export interface DragModel {
+  axis: 'x' | 'y';
+  boxes: () => { boxes: DOMRect[]; index: number } | null;
+  drop: (to: number) => void;
+}
 
 interface Layer {
   m: HTMLDivElement;
@@ -35,11 +50,17 @@ let hoverLayer: Layer | null = null;
 let selLayer: Layer | null = null;
 let tag: HTMLDivElement | null = null;
 let peerBox: HTMLDivElement | null = null;
+let grip: HTMLDivElement | null = null;
+let line: HTMLDivElement | null = null;
+let ghost: HTMLDivElement | null = null;
 
 let hoverEl: Element | null = null;
 let selEl: Element | null = null;
 let selNote = '';
 let peers: Element[] = [];
+let model: DragModel | null = null;
+let gripOff = false;
+let drag: { pointer: number; x0: number; y0: number; rect: DOMRect; index: number; slot: number } | null = null;
 let raf = 0;
 let fallback = 0;
 
@@ -69,7 +90,80 @@ function ensure() {
   hoverLayer = makeLayer('hov-outline');
   selLayer = makeLayer('sel-outline');
   tag = div('tag hidden', root);
+  line = div('line hidden', root);
+  ghost = div('ghost hidden', root);
+  grip = div('grip hidden', root);
+  grip.innerHTML = '<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor" aria-hidden="true"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg>';
+  wireGrip(grip);
   document.documentElement.appendChild(host);
+}
+
+/** 把手上的事件不往页面上传（页面在 document 上的监听不该看到它） */
+function wireGrip(g: HTMLDivElement) {
+  const stop = (e: Event) => e.stopPropagation();
+  g.addEventListener('pointerdown', (e) => {
+    stop(e);
+    if (e.button !== 0 || !model || !selEl) return;
+    const m = model.boxes();
+    if (!m) return;
+    e.preventDefault();
+    try {
+      g.setPointerCapture(e.pointerId);
+    } catch {
+      // 脚本合成的指针事件没有对应的活动指针，捕获不了，移动事件直接发到把手上
+    }
+    drag = { pointer: e.pointerId, x0: e.clientX, y0: e.clientY, rect: selEl.getBoundingClientRect(), index: m.index, slot: m.index };
+    g.classList.add('dragging');
+    moveDrag(e);
+  });
+  g.addEventListener('pointermove', (e) => {
+    stop(e);
+    moveDrag(e);
+  });
+  g.addEventListener('pointerup', (e) => {
+    stop(e);
+    endDrag(true);
+  });
+  g.addEventListener('pointercancel', () => endDrag(false));
+  g.addEventListener('lostpointercapture', () => endDrag(false));
+  for (const t of ['click', 'dblclick', 'mousedown', 'mouseup', 'contextmenu']) g.addEventListener(t, stop);
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!drag || e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      endDrag(false);
+    },
+    true,
+  );
+}
+
+function moveDrag(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.pointer || !model || !line || !ghost) return;
+  const m = model.boxes();
+  if (!m) return;
+  drag.slot = dropSlot(m.boxes, e.clientX, e.clientY, model.axis);
+  const r = drag.rect;
+  place(ghost, r.left + e.clientX - drag.x0, r.top + e.clientY - drag.y0, r.width, r.height);
+  if (drag.slot === drag.index || drag.slot === drag.index + 1) line.classList.add('hidden');
+  else {
+    const l = slotLine(m.boxes, drag.slot, model.axis);
+    place(line, l.x, l.y, l.w, l.h);
+  }
+}
+
+function endDrag(commit: boolean) {
+  if (!drag) return;
+  const { slot, index, pointer } = drag;
+  drag = null;
+  if (grip?.hasPointerCapture(pointer)) grip.releasePointerCapture(pointer);
+  grip?.classList.remove('dragging');
+  line?.classList.add('hidden');
+  ghost?.classList.add('hidden');
+  const to = slot > index ? slot - 1 : slot;
+  if (commit && model && to !== index) model.drop(to);
+  kick();
 }
 
 function place(d: HTMLElement, x: number, y: number, w: number, h: number, borders?: [number, number, number, number]) {
@@ -104,7 +198,8 @@ function drawLayer(l: Layer, el: Element, tint: boolean) {
   place(l.c, r.left + bl + pl, r.top + bt + pt, r.width - bl - br - pl - pr, r.height - bt - bb - pt - pb);
 }
 
-function drawTag(el: Element, note: string) {
+/** 元素的标签；withGrip 时左边带着拖动换序的把手 */
+function drawTag(el: Element, note: string, withGrip: boolean) {
   if (!tag) return;
   const r = el.getBoundingClientRect();
   tag.textContent = '';
@@ -116,9 +211,12 @@ function drawTag(el: Element, note: string) {
   tag.append(main, dim);
   tag.classList.remove('hidden');
   const h = 20;
-  const top = r.top - h - 4 >= 0 ? r.top - h - 4 : r.bottom + 4;
-  tag.style.left = `${Math.max(2, Math.min(r.left, innerWidth - 240))}px`;
-  tag.style.top = `${Math.min(top, innerHeight - h - 2)}px`;
+  const top = Math.min(r.top - h - 4 >= 0 ? r.top - h - 4 : r.bottom + 4, innerHeight - h - 2);
+  const left = Math.max(2, Math.min(r.left, innerWidth - 260));
+  if (withGrip && grip) place(grip, left, top, 16, h);
+  else grip?.classList.add('hidden');
+  tag.style.left = `${withGrip ? left + 20 : left}px`;
+  tag.style.top = `${top}px`;
 }
 
 function drawPeers() {
@@ -145,10 +243,11 @@ function frame() {
   else hideLayer(hoverLayer);
   if (selEl && selEl.isConnected) {
     drawLayer(selLayer!, selEl, !hoverEl || hoverEl === selEl);
-    drawTag(selEl, selNote);
+    drawTag(selEl, selNote, !!model && !gripOff);
   } else {
     hideLayer(selLayer);
-    if (hoverEl && hoverEl.isConnected) drawTag(hoverEl, '');
+    grip?.classList.add('hidden');
+    if (hoverEl && hoverEl.isConnected) drawTag(hoverEl, '', false);
     else tag?.classList.add('hidden');
   }
   drawPeers();
@@ -174,9 +273,28 @@ export function setHover(el: Element | null) {
 }
 
 export function setSelected(el: Element | null, note = '', same: Element[] = []) {
+  if (el !== selEl) setDragModel(null);
   selEl = el;
   selNote = note;
   peers = same;
+  kick();
+}
+
+/** 选中元素有可以换序的兄弟时给出拖动模型，null 收起把手 */
+export function setDragModel(m: DragModel | null) {
+  model = m;
+  if (!m) endDrag(false);
+  kick();
+}
+
+/** 选元素模式下收起把手：点击要留给选元素 */
+export function setGripHidden(off: boolean) {
+  gripOff = off;
+  if (off) endDrag(false);
+  kick();
+}
+
+export function redraw() {
   kick();
 }
 

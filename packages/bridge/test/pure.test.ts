@@ -3,6 +3,69 @@ import { maxSpecificity, resolveNested, specificity, splitTopLevel, staticSelect
 import { clientModuleUrl, distDirOf, joinPath, projectRootOf, serverModuleUrl } from '../src/next';
 import { decodeMappings, extractMapUrl, filePathOf, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
 import { unescapeIdent } from '../src/util';
+import { dropSlot, slotLine } from '../src/drop';
+import { hasRun, sameOrder, textSig } from '../src/sig';
+
+const box = (x: number, y: number, w: number, h: number) => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h }) as DOMRect;
+
+describe('拖动换序的落点', () => {
+  const rows = [box(0, 0, 100, 20), box(0, 30, 100, 20), box(0, 60, 100, 20)];
+  it('竖排：落在某项上半截插到它前面，下半截插到它后面；离得远按最近的一项算', () => {
+    expect(dropSlot(rows, 50, 5, 'y')).toBe(0);
+    expect(dropSlot(rows, 50, 15, 'y')).toBe(1);
+    expect(dropSlot(rows, 50, 44, 'y')).toBe(2);
+    expect(dropSlot(rows, 50, 300, 'y')).toBe(3);
+    expect(dropSlot(rows, -40, 34, 'y')).toBe(1);
+  });
+
+  it('横排按水平中线算，插入线画在两项之间', () => {
+    const cols = [box(0, 0, 40, 20), box(50, 0, 40, 20)];
+    expect(dropSlot(cols, 80, 10, 'x')).toBe(2);
+    expect(dropSlot(cols, 55, 10, 'x')).toBe(1);
+    expect(slotLine(cols, 1, 'x')).toMatchObject({ x: 44, w: 2, y: 0, h: 20 });
+    expect(slotLine(rows, 3, 'y')).toMatchObject({ x: 0, w: 100, y: 81 });
+  });
+});
+
+describe('换序校验的指纹', () => {
+  const li = (text: string) => textSig('li', text, '');
+  it('和一项里面文字的先后无关', () => {
+    expect(li('调参应用')).toBe(li('应用调参'));
+    expect(li('调参')).not.toBe(li('应用'));
+    expect(textSig('img', '', 'a.png')).toBe('img|a:a.png');
+  });
+
+  it('只差数字时也认得出（跟着位置变的编号），但各项不算数字分不开时只认全部文字', () => {
+    const want = [li('02需求访谈'), li('01方案设计')];
+    expect(sameOrder([li('01需求访谈'), li('02方案设计')], want)).toBe(true);
+    expect(sameOrder([li('01方案设计'), li('02需求访谈')], want)).toBe(false);
+    expect(sameOrder([li('2'), li('1')], [li('1'), li('2')])).toBe(false);
+    expect(sameOrder([li('1'), li('2')], [li('1'), li('2')])).toBe(true);
+    expect(sameOrder([li('1')], [li('1'), li('2')])).toBe(false);
+  });
+
+  it('一项由几个元素组成时逐个比', () => {
+    const unit = (...xs: string[]) => xs.map(li).join(' + ');
+    expect(sameOrder([unit('3天', '4时'), unit('甲')], [unit('5天', '6时'), unit('甲')])).toBe(true);
+    expect(sameOrder([unit('甲'), unit('3天', '4时')], [unit('5天', '6时'), unit('甲')])).toBe(false);
+  });
+
+  it('可以有一项自己在变（轮播文案），其余各项在原位就算对上；改之前的顺序不会被当成对上', () => {
+    const want = [li('给正在难熬的人'), li('社区'), li('赞助'), li('关于')];
+    expect(sameOrder([li('给小时候的自己'), li('社区'), li('赞助'), li('关于')], want)).toBe(true);
+    expect(sameOrder([li('给小时候的自己'), li('赞助'), li('社区'), li('关于')], want)).toBe(false);
+    expect(sameOrder([li('社区'), li('给小时候的自己'), li('赞助'), li('关于')], want)).toBe(false);
+    expect(sameOrder([li('给小时候的自己'), li('社区'), li('另一项'), li('关于')], want)).toBe(false);
+    expect(sameOrder([li('乙'), li('丙')], [li('甲'), li('丙')])).toBe(false);
+  });
+
+  it('找父元素时按子元素的指纹序列先筛：要连着出现，允许一项对不上', () => {
+    const want = [li('甲'), li('乙'), li('丙')];
+    expect(hasRun([li('头'), li('甲'), li('乙'), li('丙')], want)).toBe(true);
+    expect(hasRun([li('甲'), li('变了'), li('丙')], want)).toBe(true);
+    expect(hasRun([li('甲'), li('头'), li('乙'), li('尾'), li('丙')], want)).toBe(false);
+  });
+});
 
 describe('specificity', () => {
   it('基础选择器', () => {

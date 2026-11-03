@@ -112,8 +112,11 @@ export class ProjectResolver {
     if (rel && file.endsWith(sep + rel)) this.roots.set(origin, file.slice(0, file.length - rel.length - 1));
   }
 
-  /** 开发服务器路径 → 本地绝对路径；absHint 是页面直接给出的绝对路径（开发态 JSX 的 fileName）。找不到返回 null */
-  fileFor(pageUrl: string, devPath: string, absHint?: string | null): string | null {
+  /**
+   * 开发服务器路径 → 本地绝对路径；absHint 是页面直接给出的绝对路径（开发态 JSX 的 fileName）。找不到返回 null。
+   * strict 时不知道页面源对应哪个根、又有好几个候选根都有这个文件，就当找不到
+   */
+  fileFor(pageUrl: string, devPath: string, absHint?: string | null, strict = false): string | null {
     if (absHint && isFile(absHint)) {
       this.learnFromFile(pageUrl, devPath.split('?')[0], absHint);
       return absHint;
@@ -148,13 +151,10 @@ export class ProjectResolver {
       if (isFile(f)) return f;
     }
     if (isAbsolute(p) && isFile(p) && this.inWorkspace(p)) return p;
-    for (const root of this.candidateRoots()) {
-      const f = join(root, p);
-      if (isFile(f)) {
-        if (origin && !known) this.roots.set(origin, root);
-        return f;
-      }
-    }
+    const hits = this.candidateRoots().filter((root) => isFile(join(root, p)));
+    // 好几个项目都有的路径（index.html、src/main.tsx）说明不了页面是哪个项目的，只在唯一时记下来
+    if (hits.length === 1 && origin && !known) this.roots.set(origin, hits[0]);
+    if (hits.length && !(strict && hits.length > 1)) return join(hits[0], p);
     if (isAbsolute(p) && isFile(p)) return p;
     return null;
   }
@@ -163,7 +163,7 @@ export class ProjectResolver {
   htmlFileFor(pageUrl: string): string | null {
     try {
       const path = new URL(pageUrl).pathname;
-      const f = this.fileFor(pageUrl, path.endsWith('/') ? `${path}index.html` : path);
+      const f = this.fileFor(pageUrl, path.endsWith('/') ? `${path}index.html` : path, null, true);
       return f && /\.html?$/i.test(f) ? f : null;
     } catch {
       return null;

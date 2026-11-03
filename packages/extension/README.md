@@ -1,28 +1,30 @@
 # Cursor CSS Tuner
 
-Pick an element in Cursor's built-in browser, drag its values or edit its text and watch the page update, then write the change back to your source code. Every change can be reverted on its own.
+Pick an element in Cursor's built-in browser, drag its values, edit its text or move it among its siblings and watch the page update, then write the change back to your source code. Every change can be reverted on its own.
 
 English · [简体中文](https://github.com/WYCM9527/Cursor-CSS-Tuner/blob/main/packages/extension/README.zh-CN.md)
 
 ![Select a card, drag its padding and corner radius, then apply both changes to the source](https://raw.githubusercontent.com/WYCM9527/Cursor-CSS-Tuner/main/docs/media/hero.gif)
 
-It does one job: **adjust styles and text inside Cursor, see the result, and put it in your code**. A deterministic engine does the write-back, with no AI involved. When the engine can't write a change, it drafts a prompt and prefills a new Agent chat; you review it and press Enter to send.
+It does one job: **adjust styles, text and order inside Cursor, see the result, and put it in your code**. A deterministic engine does the write-back, with no AI involved. When the engine can't write a change, it drafts a prompt and prefills a new Agent chat; you review it and press Enter to send.
 
 ## Features
 
 - **Pick elements**: hover to highlight, click to select. The panel shows a breadcrumb and the component tree, and marks every instance rendered by the same JSX.
 - **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, radius, effects and CSS variables. Drag or scrub numbers, pick colors, and snap to your theme scale and CSS variables; hold Alt for exact values.
 - **Edit text**: the Content section lists the selected element's text, split into runs around inline tags such as `<b>`. Edit a run there, or double-click text inside the selected element on the page and type in place. Enter adds the change to the list; Esc undoes it.
+- **Reorder siblings**: drag the handle next to the selected element's tag on the page, drag its row in the Structure tree, or use the move buttons in the header. The page previews the new order with CSS `order` (flex and grid) or transforms instead of moving DOM nodes, so the change is marked as a simulated preview until you apply it.
 - **Live preview**: changes only touch the page until you apply them.
 - **Deterministic write-back**: clicking Apply writes each change to where the style comes from:
   - Tailwind 4 classes: string and template literals in JSX, `clsx` / `cn` / `twMerge` arguments, `cva` base classes and variants, class-name constants, and the `className` passed in at a component's call site. Only the responsive variant that is currently active is changed (for example `md:px-5` at desktop width). Off-scale values become arbitrary-value classes, or go to the Agent if you prefer.
   - Plain CSS: the declaration in the matching rule. Shorthands are edited by position (`padding: 16px 20px` → `24px 20px 16px`). Nesting with `&`, `@import`ed files and CSS Modules are supported; hashed class names map back to the class in your source. When no rule sets the property, it is added to the element's own rule.
   - CSS variables: the definition (`:root`, Tailwind's `@theme`), so everything that uses the variable changes together. Built-in Tailwind variables such as `--spacing` are written into `@theme`.
   - Text: the text in the JSX. When a component renders text it receives as a prop, the string at the call site is changed instead (`<Card title="…">` or its children), so only that use changes. Messages from `t('key')` (react-i18next, next-intl) are edited in the JSON file of the language shown on the page, picked from the route (`/zh/…`) and then `<html lang>`. In plain HTML, the text in the HTML file, with characters such as `&` and `<` escaped again.
-- **Verified after apply**: after writing, it waits for the dev server's hot reload and checks that the page's computed styles and text match the preview. If hot reload is slow, or editing a message file makes the page reload, it keeps waiting in the background.
+  - Order: siblings written out in JSX are moved within the parent's JSX children; a comment on its own line above an item moves with it. For a list rendered with `.map()` over a constant array literal (in the same file, or imported through relative paths), the array items are reordered instead. In plain HTML, the child elements in the HTML file; `<script>`, `<style>` and similar elements stay where they are.
+- **Verified after apply**: after writing, it waits for the dev server's hot reload and checks that the page's computed styles, text and order match the preview. If hot reload is slow, or editing a message file makes the page reload, it keeps waiting in the background.
 - **Revert one change at a time**: if the file hasn't changed since, it is restored byte for byte from a snapshot. If it has, only this change is rolled back; when the original text can't be found, it stops and shows a diff instead of overwriting your later edits.
 - **Scope**: *Instance* changes only the element you picked (when the component merges classes with `cn` / `twMerge`, an override class is added at the call site). *Source* changes the component definition and its variants, so every place that uses it changes.
-- **Hand off to Agent**: changes that can't be written back (for example classes built from variables, or text produced by code such as `{count} items`) become a structured prompt in a new Agent chat, together with the code they come from. Nothing is sent automatically.
+- **Hand off to Agent**: changes that can't be written back (for example classes built from variables, text produced by code such as `{count} items`, or lists that come from props or an API) become a structured prompt in a new Agent chat, together with the code they come from. Nothing is sent automatically.
 - **English and Simplified Chinese**: the panel, notifications and Agent prompts follow Cursor's display language.
 
 ![The panel next to the page, with two pending changes and where each one will be written](https://raw.githubusercontent.com/WYCM9527/Cursor-CSS-Tuner/main/docs/media/overview.png)
@@ -35,7 +37,7 @@ It does one job: **adjust styles and text inside Cursor, see the result, and put
 | React + Vite, plain CSS / CSS Modules | Tested |
 | Next.js 16 App Router, `next dev` (Turbopack), server and client components | Tested |
 | react-i18next, next-intl with JSON message files | Text editing, tested |
-| Plain HTML + CSS (opened with the built-in static server) | CSS rules and text |
+| Plain HTML + CSS (opened with the built-in static server) | CSS rules, text and order |
 
 The page must run in development mode: locating an element's source relies on React's development build and the dev server's source maps.
 
@@ -48,7 +50,7 @@ Search for **Cursor CSS Tuner** in Cursor's Extensions view and install it. You 
 1. Start your project's dev server (for example `npm run dev`).
 2. Click the CSS Tuner icon in the activity bar, enter the page address in the Tuner panel and open it. The page opens in a tab of Cursor's built-in browser. You don't need to change your project or install anything.
 3. Click **Pick Element**, then click an element on the page.
-4. Drag the values in the panel; the page updates as you go, and each change appears in the list below. To change text, edit it in the Content section or double-click it on the page.
+4. Drag the values in the panel; the page updates as you go, and each change appears in the list below. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in the Structure tree.
 5. Click **Apply** to write back to the source. Afterwards, **Revert** or **Compare** any single change.
 
 For plain HTML projects, right-click an HTML file or folder in the Explorer and choose "CSS Tuner: Open HTML with Built-in Static Server".
@@ -80,7 +82,8 @@ For plain HTML projects, right-click an HTML file or folder in the Explorer and 
 ## Limitations
 
 - **Cursor only**: the extension injects its script through internal commands of Cursor's built-in browser (`cursor.browserView.*`). They are not a public API and may change when Cursor updates. The extension checks for them at startup and tells you if any are missing; you can also run "CSS Tuner: Self-Check" at any time.
-- **No structural changes**: it edits styles and text, but doesn't add, remove or move elements.
+- **Reordering stays within one parent**: it doesn't add or remove elements or move them to another parent. Lists built from props, state, API data, `filter()` / `sort()` results or `let` variables can't be reordered in the source and go to the Agent.
+- **The order preview is simulated**: flex and grid use `order`; other layouts shift elements with transforms, so with floats, absolute positioning or wrapping inline content the preview can differ slightly from the result.
 - **Text is edited as plain text on one line**: line breaks become spaces, and inline tags such as `<b>` stay where they are, so each run around them is edited on its own. Only the message file of the current language changes; other languages are left as they are. Text produced by code (expressions, template strings, custom translation helpers, `t.rich`) and messages with placeholders go to the Agent.
 - **Next.js source locations** come from `/__nextjs_original-stack-frames`, an internal dev server endpoint used by the error overlay, which is not a public API either. Only Turbopack dev mode is tested; `next dev --webpack` is not. Hot reload of server components can take a few seconds, and verification waits for it.
 - **Hot reload edge cases**: an element rendered before a hot reload and selected for the first time after it may point to an old line number. If a location looks wrong, reload the page.

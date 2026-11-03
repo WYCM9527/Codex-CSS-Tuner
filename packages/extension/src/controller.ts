@@ -12,6 +12,7 @@ import {
   type ElementSnapshot,
   type ExtToPanel,
   type Notice,
+  type OrderView,
   type PageInfo,
   type PanelState,
   type PanelToExt,
@@ -29,9 +30,25 @@ import { BrowserAdapter } from './browser';
 import { prefill, type PrefillResult } from './handoff';
 import { Journal, type ChangeRecord } from './journal';
 import { MessageFiles } from './messages';
-import { oneLine, plan, planText, planVar, sourceKeyOf, tailwindEntry, textKey, type Plan, type TextContext, type TextPlan, type WriteSpec } from './planner';
+import {
+  oneLine,
+  plan,
+  planOrder,
+  planText,
+  planVar,
+  sourceKeyOf,
+  tailwindEntry,
+  textKey,
+  type OrderContext,
+  type OrderPlan,
+  type Plan,
+  type TextContext,
+  type TextPlan,
+  type WriteSpec,
+} from './planner';
 import { ProjectResolver } from './project';
 import { buildPrompt } from './prompt';
+import { samePage } from './records';
 import { cssScales } from './scales';
 import { commandCheck, liveCheck, type CheckItem } from './selfcheck';
 import { BridgeServer } from './server';
@@ -75,7 +92,6 @@ export function targetKey(p: Plan, el: ElementSnapshot): string {
 function htmlSelector(path: number[]): string {
   return `:root${path.map((i) => ` > :nth-child(${i + 1})`).join('')}`;
 }
-
 export class Controller implements vscode.Disposable {
   readonly browser = new BrowserAdapter();
   readonly server = new BridgeServer();
@@ -102,6 +118,10 @@ export class Controller implements vscode.Disposable {
   private plans = new Map<string, Plan>();
   /** 选中元素每段文字的写回规划，键是段序号 */
   private textPlans = new Map<number, TextPlan>();
+  /** 选中元素所在兄弟组的换序规划，没有可换序的兄弟时为 null */
+  private orderPlan: OrderPlan | null = null;
+  /** 还没提交的实时换序预览：重建选中状态时按它显示，和页面上看到的一致 */
+  private liveOrder: { key: string; order: number[] } | null = null;
   /** 当前页面 Tailwind 入口的设计系统，不是 Tailwind 页面时为 null */
   private design: TwDesign | null = null;
   private editChain: Promise<unknown> = Promise.resolve();
@@ -263,6 +283,9 @@ export class Controller implements vscode.Disposable {
         return;
       case 'editText':
         await this.editText(msg.segment, msg.value, msg.phase);
+        return;
+      case 'reorder':
+        await this.reorder(msg.uid, msg.to, msg.phase);
         return;
     }
   }
@@ -473,6 +496,10 @@ export class Controller implements vscode.Disposable {
         if (this.state.selection?.el.uid !== ev.uid) await this.refreshSelection();
         if (this.state.selection?.el.uid === ev.uid) await this.editText(ev.segment, ev.value, ev.phase);
         return;
+      case 'reorder':
+        // 页面上拖的是选中元素的把手
+        if (this.state.selection?.el.uid === ev.uid) await this.reorder(ev.uid, ev.to, 'commit');
+        return;
       case 'log':
         return;
     }
@@ -482,7 +509,11 @@ export class Controller implements vscode.Disposable {
     this.page = page;
     this.project.learnFromSheets(page.url, page.sheets.map((s) => s.devId).filter((d): d is string => !!d));
     this.state.page = { url: page.url, title: page.title };
-    this.state.scales = await this.loadScales(page);
+    const { design, scales } = await this.loadScales(page);
+    // 等设计系统的时候又来了新的页面信息（热更新连着换样式表、换了页面）：以后来的那次为准
+    if (this.page !== page) return;
+    this.design = design;
+    this.state.scales = scales;
     // 样式表变了（懒加载的 CSS、热更新），写回目标要按新的样式表和设计系统重新判断
     if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
     this.push();
@@ -491,9 +522,8 @@ export class Controller implements vscode.Disposable {
   /** 刻度：Tailwind 项目从项目自己的设计系统读，普通 CSS 用页面上的 CSS 变量 */
   protected async loadScales(page: PageInfo) {
     const entry = tailwindEntry(page, this.project);
-    this.design = entry ? await this.tailwind.designFor(entry, this.remBase) : null;
-    if (this.design) return tailwindScales(this.design, this.remBase);
-    return cssScales(page, this.remBase);
+    const design = entry ? await this.tailwind.designFor(entry, this.remBase) : null;
+    return { design, scales: design ? tailwindScales(design, this.remBase) : cssScales(page, this.remBase) };
   }
 
   /** 页面（重新）连上：刷新后按源码位置找回之前选中的元素，并把未应用的改动重新挂上预览 */
@@ -506,13 +536,7 @@ export class Controller implements vscode.Disposable {
   }
 
   samePage(a: string, b: string): boolean {
-    try {
-      const ua = new URL(a);
-      const ub = new URL(b);
-      return ua.origin === ub.origin && ua.pathname === ub.pathname;
-    } catch {
-      return a === b;
-    }
+    return samePage(a, b);
   }
 
   private async restorePreviews() {
@@ -521,12 +545,16 @@ export class Controller implements vscode.Disposable {
     for (const rec of this.journal.pending()) {
       if (!this.samePage(rec.pageUrl, this.page.url)) continue;
       const src = rec.element.source;
-      const htmlPath = rec.preview.kind === 'text' ? rec.preview.htmlPath : undefined;
-      const query = src
-        ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
-        : htmlPath
-          ? { selector: htmlSelector(htmlPath) }
-          : null;
+      // 换序记的是挪动的那一项，按选中时的元素（anchor）找回这一组
+      const anchor = rec.preview.kind === 'order' ? rec.preview.anchor : undefined;
+      const htmlPath = rec.preview.kind === 'text' || rec.preview.kind === 'order' ? rec.preview.htmlPath : undefined;
+      const query = anchor
+        ? { source: anchor }
+        : src && rec.preview.kind !== 'order'
+          ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
+          : htmlPath
+            ? { selector: htmlSelector(htmlPath) }
+            : null;
       const uid = query ? await session.call('resolve', { ...query, waitMs: 3000 }, 6000).catch(() => null) : null;
       // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
       if (!uid && rec.preview.kind !== 'rule') continue;
@@ -594,7 +622,40 @@ export class Controller implements vscode.Disposable {
         targets[v.name] = p.view;
       }
     }
-    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el) };
+    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el) };
+  }
+
+  private orderContext(page: PageInfo): OrderContext {
+    return {
+      page,
+      project: this.project,
+      jsxOrder: (f, sites) => this.classSites.jsxOrder(f, sites),
+      arraySite: (f, line, column, count) => this.classSites.arraySite(f, line, column, count),
+    };
+  }
+
+  /** 兄弟组的顺序：有未应用的换序时按换过之后的顺序 */
+  private orderFor(el: ElementSnapshot): OrderView | undefined {
+    const p = this.page ? planOrder(el, this.orderContext(this.page)) : null;
+    this.orderPlan = p;
+    if (!p || !el.order) return undefined;
+    const rec = this.journal.findPending(p.key);
+    const live = this.liveOrder?.key === p.key && this.liveOrder.order.length === p.units.length ? this.liveOrder.order : null;
+    return this.orderView(p, live ?? this.currentOrder(p, rec), el.order.index, el.order.axis, !!rec);
+  }
+
+  private currentOrder(p: OrderPlan, rec: ChangeRecord | undefined): number[] {
+    const n = p.units.length;
+    const perm = rec ? (JSON.parse(rec.value) as number[]) : [];
+    return perm.length === n ? perm : [...Array(n).keys()];
+  }
+
+  private orderView(p: OrderPlan, perm: number[], self: number, axis: 'x' | 'y', pending: boolean): OrderView {
+    const items = perm.map((i) => {
+      const u = p.units[i];
+      return { uid: u.uids[0], label: u.label, component: /^[a-z]/.test(u.name) ? null : u.name || null };
+    });
+    return { items, index: perm.indexOf(self), axis, pending, target: p.view };
   }
 
   private textContext(page: PageInfo): TextContext {
@@ -689,7 +750,8 @@ export class Controller implements vscode.Disposable {
       const previewId = existing?.previewId ?? key;
       const decls = { ...(await this.companions(g.plan.write, props, req.value, req.token ?? null)), ...Object.fromEntries(props.map((p) => [p, req.value])) };
       const res = await session.call('preview', { id: previewId, target: g.plan.preview, decls });
-      for (const p of props) sel.pending[p] = req.value;
+      const live = this.selectionOf(el);
+      if (live) for (const p of props) live.pending[p] = req.value;
       if (req.phase !== 'commit') continue;
 
       const original = Object.fromEntries(props.map((p) => [p, existing?.original[p] ?? el.computed[p] ?? '']));
@@ -697,7 +759,8 @@ export class Controller implements vscode.Disposable {
       if (backToOriginal) {
         if (existing) this.journal.remove(existing.id);
         await session.call('clearPreview', { id: previewId });
-        for (const p of props) delete sel.pending[p];
+        const now = this.selectionOf(el);
+        if (now) for (const p of props) delete now.pending[p];
         continue;
       }
       const to = this.describeTo(g.plan, req);
@@ -731,8 +794,16 @@ export class Controller implements vscode.Disposable {
           write,
         });
       }
+      const now = this.selectionOf(el);
+      if (now) for (const p of props) now.pending[p] = req.value;
     }
     this.push();
+  }
+
+  /** 编辑等预览的时候选中可能已经重建过（热更新换了样式表、刚连上还在读刻度）：改现在这份，换了元素就不改 */
+  private selectionOf(el: ElementSnapshot): SelectionView | null {
+    const s = this.state.selection;
+    return s?.el.uid === el.uid ? s : null;
   }
 
   /** 改选中元素的第 segment 段文字：live 只预览，commit 记进改动清单；改回原文或清空就撤掉这条改动 */
@@ -755,9 +826,9 @@ export class Controller implements vscode.Disposable {
     const original = existing?.original.text ?? seg.value;
     const value = oneLine(raw);
     const back = !value || value === oneLine(original);
-    const view = sel.texts?.find((x) => x.segment === segment);
     if (back) await session.call('clearPreview', { id: previewId });
     else await session.call('preview', { id: previewId, target: p.preview, text: value });
+    const view = this.selectionOf(el)?.texts?.find((x) => x.segment === segment);
     if (view) view.value = back ? oneLine(original) : value;
     if (phase === 'commit') {
       if (back) {
@@ -792,6 +863,79 @@ export class Controller implements vscode.Disposable {
         });
       }
       if (view) view.pending = !back;
+    }
+    this.push();
+  }
+
+  /**
+   * 把选中元素兄弟组里 uid 所在的那项挪到第 to 个（按现在的顺序）：live 只预览，commit 记进改动清单；
+   * 同一组上的换序合并成一条，挪回原来的顺序就撤掉这条改动
+   */
+  reorder(uid: string, to: number, phase: 'live' | 'commit'): Promise<void> {
+    const run = this.editChain.then(() => this.doReorder(uid, to, phase));
+    this.editChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async doReorder(uid: string, to: number, phase: 'live' | 'commit') {
+    const sel = this.state.selection;
+    const session = this.session;
+    const p = this.orderPlan;
+    const info = sel?.el.order;
+    if (!sel || !session || !this.page || !p || !info) return;
+    const existing = this.journal.findPending(p.key);
+    const previewId = existing?.previewId ?? p.key;
+    // to 是相对现在显示的顺序（可能是还没提交的实时预览）
+    const shown = (sel.order?.items ?? []).map((it) => p.units.findIndex((u) => u.uids[0] === it.uid));
+    const current = shown.length === p.units.length && shown.every((i) => i >= 0) ? shown : this.currentOrder(p, existing);
+    const unit = p.units.findIndex((u) => u.uids.includes(uid));
+    if (unit < 0) return;
+    const next = current.filter((i) => i !== unit);
+    next.splice(Math.max(0, Math.min(next.length, Math.round(to))), 0, unit);
+    const back = next.every((v, i) => v === i);
+    this.liveOrder = phase === 'live' && !back ? { key: p.key, order: next } : null;
+    let affects = 1;
+    if (back) await session.call('clearPreview', { id: previewId });
+    else affects = (await session.call('preview', { id: previewId, target: p.preview(next) })).count || 1;
+    const now = this.selectionOf(sel.el);
+    if (now) now.order = this.orderView(p, next, info.index, info.axis, phase === 'commit' ? !back : !!existing);
+    if (phase === 'commit') {
+      if (back) {
+        if (existing) this.journal.remove(existing.id);
+      } else {
+        const u = p.units[unit];
+        const fields = {
+          element: {
+            label: u.label,
+            source: u.source,
+            sourceIndex: 0,
+            sameSource: 1,
+            path: [...sel.el.breadcrumb.slice(0, -1).map((b) => b.label), u.label].join(' > '),
+          },
+          from: String(unit + 1),
+          to: String(next.indexOf(unit) + 1),
+          value: JSON.stringify(next),
+          expected: { order: next.map((i) => p.units[i].sig).join('\n') },
+          view: affects > 1 ? { ...p.view, affects } : p.view,
+          preview: p.preview(next),
+          write: p.write(next),
+          detail: { order: next.map((i) => p.units[i].label) },
+        };
+        if (existing) this.journal.update(existing.id, fields);
+        else {
+          this.journal.add({
+            kind: 'reorder',
+            key: p.key,
+            pageUrl: this.page.url,
+            props: [],
+            propLabel: t('panel.change.order'),
+            token: null,
+            original: { order: p.units.map((x) => x.sig).join('\n') },
+            previewId,
+            ...fields,
+          });
+        }
+      }
     }
     this.push();
   }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setLocale, type RuleRef } from '@css-tuner/protocol';
 import { buildPrompt } from '../src/prompt';
-import { recordView, upgradeRecord, type ChangeRecord, type StoredRecord } from '../src/records';
+import { applyFirst, recordView, samePage, upgradeRecord, type ChangeRecord, type StoredRecord } from '../src/records';
 
 const project = { label: (f: string) => f.replace('/repo/', '') };
 
@@ -39,6 +39,29 @@ describe('改动记录', () => {
 
   it('改动清单的视图带上类型', () => {
     expect(recordView(rec({ kind: 'reorder', from: '2', to: '1' }))).toMatchObject({ id: 'a1', kind: 'reorder', from: '2', to: '1', target: { kind: 'agent' } });
+  });
+
+  it('同一批里样式和文字先改，换序按里层先、外层后', () => {
+    const site = (line: number) => ({ line, column: 7, name: 'section' });
+    const recs = [
+      rec({ id: 'outer', kind: 'reorder', write: { kind: 'jsxOrder', file: 'f', sites: [site(10), site(30)], order: [1, 0] } }),
+      rec({ id: 'style' }),
+      rec({ id: 'inner', kind: 'reorder', write: { kind: 'arrayOrder', file: 'f', line: 34, column: 9, count: 3, order: [2, 0, 1] } }),
+      rec({ id: 'html-outer', kind: 'reorder', write: { kind: 'htmlOrder', file: 'h', path: [1], tags: ['nav', 'main'], order: [1, 0] } }),
+      rec({ id: 'html-inner', kind: 'reorder', write: { kind: 'htmlOrder', file: 'h', path: [1, 0], tags: ['a', 'a'], order: [1, 0] } }),
+      rec({ id: 'text', kind: 'text' }),
+    ];
+    expect(recs.sort(applyFirst).map((r) => r.id)).toEqual(['style', 'text', 'inner', 'outer', 'html-inner', 'html-outer']);
+  });
+
+  it('同一个页面：查询参数和普通锚点不算，hash 路由算', () => {
+    const home = 'http://127.0.0.1:5178/';
+    expect(samePage(home, 'http://127.0.0.1:5178/?x=1#faq')).toBe(true);
+    expect(samePage(home, 'http://127.0.0.1:5178/#/')).toBe(true);
+    expect(samePage(home, 'http://127.0.0.1:5178/#/effects')).toBe(false);
+    expect(samePage('http://127.0.0.1:5178/#/effects/', 'http://127.0.0.1:5178/#/effects?tag=a')).toBe(true);
+    expect(samePage('http://127.0.0.1:5178/#!/a', 'http://127.0.0.1:5178/#/a')).toBe(true);
+    expect(samePage(home, 'http://127.0.0.1:5178/zh')).toBe(false);
   });
 });
 

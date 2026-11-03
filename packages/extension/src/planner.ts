@@ -1,5 +1,5 @@
-import { t, type ElementSnapshot, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
-import type { MessageRef, TextSite } from '@css-tuner/engine';
+import { t, type ElementSnapshot, type OrderUnit, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
+import type { MessageRef, OrderSite, TextSite } from '@css-tuner/engine';
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
 
@@ -39,11 +39,14 @@ export type WriteSpec =
   | { kind: 'jsxAttr'; file: string; line: number; column: number; name: string }
   /** 多语言 JSON 文件里的一条消息 */
   | { kind: 'message'; file: string; keyPath: string[] }
-  /** 换序：jsxOrder 的 (line, column) 是父元素，arrayOrder 的是 .map() 用的数组字面量 */
-  | { kind: 'jsxOrder' | 'arrayOrder'; file: string; line: number; column: number; from: number; to: number }
+  /** 同一个父元素下的兄弟换序：sites 是各项在 JSX 里的位置（按页面上原来的顺序），新顺序第 k 个位置放原来的第 order[k] 项 */
+  | { kind: 'jsxOrder'; file: string; sites: OrderSite[]; order: number[] }
+  /** .map() 渲染的列表换序：(line, column) 是 map 回调里那一项的 JSX，引擎顺着找到数组字面量；count 是页面上的项数 */
+  | { kind: 'arrayOrder'; file: string; line: number; column: number; count: number; order: number[] }
   /** 纯 HTML：path 是元素从 <html> 起逐层的子元素下标，tag 用来确认文件和页面对得上 */
   | { kind: 'htmlText'; file: string; path: number[]; tag: string; segment: number }
-  | { kind: 'htmlOrder'; file: string; path: number[]; from: number; to: number }
+  /** 纯 HTML 换序：path 是父元素的，tags 是参与换序的子元素标签（按页面上原来的顺序） */
+  | { kind: 'htmlOrder'; file: string; path: number[]; tags: string[]; order: number[] }
   | { kind: 'agent'; reason: string };
 
 export interface Plan {
@@ -428,6 +431,99 @@ export function textKey(p: Plan, el: ElementSnapshot, segment: number): string {
 
 /** 文字折成一行：面板和改动清单里都按一行显示和比较 */
 export const oneLine = (s: string) => s.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+
+export interface OrderContext {
+  page: PageInfo;
+  project: ProjectResolver;
+  /** 这几处 JSX 是不是同一个父元素下的几项；文件读不到时为 null */
+  jsxOrder: (file: string, sites: OrderSite[]) => { ok: true; parent: string; line: number; column: number } | { error: string } | null;
+  /** .map() 列表对应的数组字面量在哪；文件读不到时为 null */
+  arraySite: (file: string, line: number, column: number, count: number) => { file: string; line: number; column: number; name: string } | { error: string } | null;
+}
+
+export interface OrderPlan {
+  view: Target;
+  /** 改动的标识：同一组兄弟上的换序合并成一条 */
+  key: string;
+  units: OrderUnit[];
+  preview: (order: number[]) => PreviewTarget;
+  write: (order: number[]) => WriteSpec;
+}
+
+const locOf = (s: SourceLoc) => `${s.path}:${s.line}:${s.column}`;
+
+/**
+ * 选中元素所在兄弟组的换序写到哪：纯 HTML 改 HTML 文件，.map() 渲染的列表改数组字面量，
+ * 写死的兄弟改 JSX；都不行就交给 Agent，并说明原因
+ */
+export function planOrder(el: ElementSnapshot, ctx: OrderContext): OrderPlan | null {
+  const info = el.order;
+  if (!info || info.units.length < 2) return null;
+  const { page, project } = ctx;
+  const anchor = el.source ? { path: el.source.path, line: el.source.line, column: el.source.column, index: el.sourceIndex } : undefined;
+  const preview = (order: number[]): PreviewTarget => ({
+    kind: 'order',
+    uid: el.uid,
+    order,
+    mapped: info.mapped,
+    ...(anchor ? { anchor } : {}),
+    ...(info.htmlPath ? { htmlPath: info.htmlPath } : {}),
+  });
+  const units = info.units;
+  const agent = (reason: string, key: string): OrderPlan => ({
+    key,
+    units,
+    preview,
+    view: { kind: 'agent', label: t('plan.agent'), affects: 1, reason },
+    write: () => ({ kind: 'agent', reason }),
+  });
+  const parentLabel = el.breadcrumb[el.breadcrumb.length - 2]?.label ?? 'body';
+
+  if (info.htmlPath) {
+    const path = info.htmlPath.slice(0, -1);
+    const file = project.htmlFileFor(page.url);
+    if (!file) return agent(t('plan.text.noHtmlFile'), `order|html|?|${path.join('.')}`);
+    const tags = units.map((u) => u.name);
+    return {
+      key: `order|html|${file}|${path.join('.')}`,
+      units,
+      preview,
+      view: { kind: 'source', label: `${project.label(file)} <${parentLabel}>`, file, affects: 1 },
+      write: (order) => ({ kind: 'htmlOrder', file, path, tags, order }),
+    };
+  }
+
+  const fallbackKey = `order|agent|${units.map((u) => (u.source ? locOf(u.source) : u.uids[0])).join(',')}`;
+  if (info.mapped) {
+    const src = units[0].source;
+    const file = src ? project.fileFor(page.url, src.path, src.file) : null;
+    if (!src || !file) return agent(t('plan.order.noSource'), `order|map|${info.mapped}`);
+    const a = ctx.arraySite(file, src.line, src.column, units.length);
+    if (!a || 'error' in a) return agent(a ? a.error : t('engine.readFailed', { file }), `order|map|${info.mapped}`);
+    return {
+      key: `order|array|${a.file}|${a.line}|${a.column}`,
+      units,
+      preview,
+      view: { kind: 'source', label: `${project.label(a.file)}:${a.line} ${a.name}`, file: a.file, line: a.line, column: a.column, affects: 1 },
+      write: (order) => ({ kind: 'arrayOrder', file, line: src.line, column: src.column, count: units.length, order }),
+    };
+  }
+
+  const files = units.map((u) => (u.source ? project.fileFor(page.url, u.source.path, u.source.file) : null));
+  if (files.some((f) => !f)) return agent(t('plan.order.noSource'), fallbackKey);
+  const file = files[0]!;
+  if (files.some((f) => f !== file)) return agent(t('plan.order.files'), fallbackKey);
+  const sites: OrderSite[] = units.map((u) => ({ line: u.source!.line, column: u.source!.column, name: u.name }));
+  const check = ctx.jsxOrder(file, sites);
+  if (!check || 'error' in check) return agent(check ? check.error : t('engine.readFailed', { file }), fallbackKey);
+  return {
+    key: `order|jsx|${file}|${sites.map((s) => `${s.line}:${s.column}`).join(',')}`,
+    units,
+    preview,
+    view: { kind: 'source', label: `${project.label(file)}:${check.line} ${check.parent}`, file, line: check.line, column: check.column, affects: 1 },
+    write: (order) => ({ kind: 'jsxOrder', file, sites, order }),
+  };
+}
 
 /** 加声明用的规则：优先级最高、且最后一段选择器写着元素自己的类名或 id 的作者规则 */
 function ownRule(el: ElementSnapshot, page: PageInfo, writable: (r: RuleRef) => boolean): RuleRef | null {

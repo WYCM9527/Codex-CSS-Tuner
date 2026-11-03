@@ -1,9 +1,10 @@
 import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
 import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
-import { setHover, setSelected } from './overlay';
+import { visibleBoxes } from './order';
+import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './overlay';
 import { pageInfo } from './page';
 import { pickOn, setPick } from './pick';
-import { clearAll, clearPreview, preview, prune } from './preview';
+import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders } from './preview';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
@@ -189,6 +190,7 @@ class Bridge {
   }
 
   private textTimer = 0;
+  private orderTimer = 0;
 
   private watch() {
     this.observer = new MutationObserver((records) => {
@@ -211,6 +213,10 @@ class Bridge {
       if (nodes && hasTextPreviews()) {
         clearTimeout(this.textTimer);
         this.textTimer = window.setTimeout(reapplyTexts, 30);
+      }
+      if (nodes && hasOrderPreviews()) {
+        clearTimeout(this.orderTimer);
+        this.orderTimer = window.setTimeout(() => void reapplyOrders().then(redraw), 30);
       }
     });
     // 观察 document 而不是 documentElement：启动时 <html> 可能还没建出来
@@ -247,9 +253,32 @@ class Bridge {
     const same = snap.source ? await sameSourceElements(el) : [el];
     const note = snap.source ? `${snap.source.path.split('/').pop()}:${snap.source.line}` : '';
     setSelected(el, note, same);
+    this.setDrag(el, snap);
     if (snap.source) this.selectedLoc = { ...snap.source, index: Math.max(0, same.indexOf(el)) };
     this.send({ t: 'select', el: snap });
     return snap;
+  }
+
+  /** 选中元素有可以换序的兄弟时，覆盖层上显示把手；放下时把位置（按页面上看到的顺序）发给扩展 */
+  private setDrag(el: Element, snap: ElementSnapshot) {
+    const info = snap.order;
+    if (!info) {
+      setDragModel(null);
+      return;
+    }
+    const units = info.units.map((u) => u.uids);
+    setDragModel({
+      axis: info.axis,
+      boxes: () => {
+        const p = el.parentElement;
+        if (!p || !el.isConnected) return null;
+        const order = activeOrder(p) ?? units.map((_, i) => i);
+        if (order.length !== units.length) return null;
+        const boxes = visibleBoxes(units, order);
+        return boxes.every(Boolean) ? { boxes: boxes as DOMRect[], index: order.indexOf(info.index) } : null;
+      },
+      drop: (to) => this.send({ t: 'reorder', uid: uidOf(el), to }),
+    });
   }
 
   private async select(el: Element | null): Promise<ElementSnapshot | null> {
@@ -289,8 +318,12 @@ class Bridge {
       setPick(
         on,
         (el) => void this.select(el),
-        () => this.send({ t: 'pick', on: false }),
+        () => {
+          setGripHidden(false);
+          this.send({ t: 'pick', on: false });
+        },
       );
+      setGripHidden(pickOn());
       this.send({ t: 'pick', on: pickOn() });
       return pickOn();
     },
@@ -308,9 +341,14 @@ class Bridge {
         const cs = getComputedStyle(el);
         for (const p of Object.keys(decls)) computed[p] = cs.getPropertyValue(p).trim();
       }
+      redraw();
       return { computed, count };
     },
-    clearPreview: ({ id }) => clearPreview(id),
+    clearPreview: ({ id }) => {
+      const had = clearPreview(id);
+      redraw();
+      return had;
+    },
     clearAllPreviews: () => clearAll(),
     hover: ({ uid }) => {
       const el = uid ? elOf(uid) : null;

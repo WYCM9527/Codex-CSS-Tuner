@@ -136,17 +136,30 @@ export interface TextInfo {
   lang: string | null;
 }
 
+/** 兄弟组里的一项：父元素 JSX children 里的一个元素、组件调用或 {…} 表达式，页面上可能对应几个元素 */
+export interface OrderUnit {
+  /** 这一项渲染出的元素，按页面顺序（多数只有一个） */
+  uids: string[];
+  label: string;
+  /** 这一项在 JSX 里的位置（元素自己或组件的调用处）；.map() 渲染的各项共用一个 */
+  source: SourceLoc | null;
+  /** 宿主元素的标签名或组件名，写回前和源码里这一项的 JSX 名字核对 */
+  name: string;
+  /** 页面上的样子（标签和文字开头），按新顺序排出来就是校验时期望看到的 */
+  sig: string;
+}
+
 export interface OrderInfo {
-  /** 同一个 JSX 父元素下的兄弟元素（含自己），按页面顺序 */
-  siblings: Crumb[];
-  /** 自己在 siblings 里的下标 */
+  /** 同一个父元素下可以互换位置的兄弟（含自己），按页面顺序 */
+  units: OrderUnit[];
+  /** 自己在 units 里的下标 */
   index: number;
   /** 父元素的排列方式：flex / grid 预览时写 order，其余按位移量做 transform */
   layout: 'flex' | 'grid' | 'flow';
   axis: 'x' | 'y';
-  /** 兄弟由 .map() 渲染（共用一个源码位置），写回改数组顺序 */
-  mapped: boolean;
-  /** 纯 HTML 页面：父元素从 <html> 起逐层的子元素下标 */
+  /** 兄弟由 .map() 渲染时它们共用的 JSX 位置（path:line:column），写回改数组顺序；写死的兄弟为 null */
+  mapped: string | null;
+  /** 纯 HTML 页面：元素自己从 <html> 起逐层的子元素下标 */
   htmlPath: number[] | null;
 }
 
@@ -200,6 +213,8 @@ export type BridgeEvent =
   | { t: 'pick'; on: boolean }
   /** 在页面上双击改文字：live 是输入过程中，commit 是回车或失焦；按 Esc 时把开始编辑时的文字作为 commit 发回来 */
   | { t: 'editText'; uid: string; segment: number; value: string; phase: 'live' | 'commit' }
+  /** 在页面上拖动选中元素的把手换位置：to 是放下处在兄弟组里的位置（按页面上现在看到的顺序，0 起） */
+  | { t: 'reorder'; uid: string; to: number }
   | { t: 'log'; level: 'info' | 'warn' | 'error'; msg: string };
 
 export type PreviewTarget =
@@ -211,8 +226,12 @@ export type PreviewTarget =
   | { kind: 'rule'; rule: RuleRef; uid: string }
   /** 元素第 segment 段直接子文本；sourceKey、depth 的含义同 inline，同源实例一起改；纯 HTML 页面带 htmlPath，写回后重新取页面 HTML 校验 */
   | { kind: 'text'; uid: string; sourceKey: string | null; segment: number; depth?: number; htmlPath?: number[] }
-  /** 把元素挪到兄弟组里第 to 个：不动真实 DOM，用 order 或 transform 模拟 */
-  | { kind: 'order'; uid: string; to: number }
+  /**
+   * 兄弟组换序：新顺序第 k 个位置放原来的第 order[k] 项。不动真实 DOM，flex / grid 父元素写 order，其余按位移量做 transform。
+   * uid 是组里的一个元素，mapped 同 OrderInfo；anchor 是这个元素的源码位置（刷新、热更新后按它找回这一组）；
+   * 纯 HTML 页面带 htmlPath（元素自己的），写回后重新取页面 HTML 校验
+   */
+  | { kind: 'order'; uid: string; order: number[]; mapped: string | null; anchor?: { path: string; line: number; column: number; index: number }; htmlPath?: number[] }
   /** 用 React 开发构建的 overrideProps 改渲染这个元素的组件的一个 prop */
   | { kind: 'props'; uid: string; name: string };
 
@@ -244,7 +263,7 @@ export interface BridgeMethods {
   hover: { p: { uid: string | null }; r: boolean };
   verify: {
     /**
-     * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"（兄弟的源码位置按新顺序排），props 是属性名（值为 JSON）。
+     * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"（兄弟的 sig 按期望的顺序排，一行一项），props 是属性名（值为 JSON）。
      * source：热更新后元素可能被重建，按源码位置重新找回（不能用当前选中的元素）
      */
     p: { id: string; target: PreviewTarget; expected: Record<string, string>; timeoutMs: number; source?: { path: string; line: number; column: number; index: number } };
@@ -304,6 +323,18 @@ export interface SelectionView {
   pending: Record<string, string>;
   /** 元素的每段文字和它的写回目标 */
   texts?: TextView[];
+  /** 选中元素所在的兄弟组（少于两项时缺省） */
+  order?: OrderView;
+}
+
+export interface OrderView {
+  /** 兄弟按现在的顺序（有未应用的换序时是换过之后的） */
+  items: Array<{ uid: string; label: string; component?: string | null }>;
+  /** 选中元素在 items 里的位置 */
+  index: number;
+  axis: 'x' | 'y';
+  pending: boolean;
+  target: Target;
 }
 
 export type TextOrigin = 'jsx' | 'prop' | 'message' | 'html' | 'dynamic';
@@ -359,6 +390,8 @@ export interface ChangeView {
   target: Target;
   /** 写回细节（如 "p-4 → p-5"）或失败原因 */
   note?: string;
+  /** 页面上的预览是模拟出来的（换序用 order / transform 摆出来，真实 DOM 没动） */
+  simulated?: boolean;
   pageUrl: string;
   createdAt: number;
 }
@@ -396,7 +429,7 @@ export type PanelToExt =
   | { t: 'edit'; edit: EditRequest }
   /** 改选中元素第 segment 段文字 */
   | { t: 'editText'; segment: number; value: string; phase: 'live' | 'commit' }
-  /** 把选中元素兄弟组里的 uid 挪到第 to 个 */
+  /** 把选中元素兄弟组里 uid 所在的那项挪到第 to 个（按现在的顺序，0 起）：live 只预览（结构树拖动中），commit 记进改动清单 */
   | { t: 'reorder'; uid: string; to: number; phase: 'live' | 'commit' }
   /** 改渲染选中元素的组件的一个 prop */
   | { t: 'editProp'; name: string; value: PropValue; phase: 'live' | 'commit' }

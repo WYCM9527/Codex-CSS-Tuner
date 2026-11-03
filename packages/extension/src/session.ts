@@ -166,6 +166,8 @@ export class PageSession implements vscode.Disposable {
         else p.reject(new Error(msg.error ?? t('session.callFailed')));
         return;
       }
+      // 换了新连接（页面刷新、换了地址）以后旧连接上还没处理的事件说的是旧页面
+      if (this.socket !== ws) return;
       this.dispatch(msg);
     });
     ws.on('close', () => {

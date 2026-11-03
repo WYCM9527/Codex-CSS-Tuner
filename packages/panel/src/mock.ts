@@ -1,4 +1,4 @@
-import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type PanelState, type PanelToExt, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
 /** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
@@ -195,10 +195,39 @@ export function createMockHost(): Host {
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
   const textByEl: Record<string, Record<number, string>> = {};
+  const app = (line: number, parent: string): Target => ({ kind: 'source', label: `src/App.tsx:${line} ${parent}`, file: '/proj/src/App.tsx', line, column: 5, affects: 1 });
+  const orders: Record<string, OrderView & { start: string[] }> = {
+    e1: {
+      items: [
+        { uid: 'e1', label: 'header.flex.items-center…' },
+        { uid: 'e5', label: 'section.grid.gap-4…' },
+        { uid: 'e6', label: 'ul.space-y-2 ×3' },
+        { uid: 'e7', label: 'footer.text-sm', component: 'Footer' },
+      ],
+      index: 0,
+      axis: 'y',
+      pending: false,
+      target: app(12, '<main>'),
+      start: ['e1', 'e5', 'e6', 'e7'],
+    },
+    e2: {
+      items: [
+        { uid: 'e2', label: 'h1.text-2xl.font-bold…' },
+        { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge' },
+      ],
+      index: 0,
+      axis: 'x',
+      pending: false,
+      target: app(14, '<header>'),
+      start: ['e2', 'e3'],
+    },
+  };
   const select = (uid: string) => {
     const e = els[uid] ?? els.e1;
     const edited = (textByEl[e.uid] ??= {});
+    const o = orders[e.uid];
     state.selection = {
+      order: o ? { items: o.items, index: o.items.findIndex((i) => i.uid === e.uid), axis: o.axis, pending: o.pending, target: o.target } : undefined,
       texts: e.text?.segments.map((s, i) => ({
         segment: i,
         value: edited[i] ?? s.value.trim(),
@@ -320,6 +349,36 @@ export function createMockHost(): Host {
           } satisfies ChangeView);
         }
         select(sel.el.uid);
+        break;
+      }
+      case 'reorder': {
+        const uid = state.selection!.el.uid;
+        const o = orders[uid];
+        const from = o?.items.findIndex((i) => i.uid === m.uid) ?? -1;
+        if (!o || from < 0) break;
+        const [it] = o.items.splice(from, 1);
+        o.items.splice(m.to, 0, it);
+        const now = o.items.map((i) => i.uid);
+        o.pending = now.join() !== o.start.join();
+        if (m.phase !== 'commit') break;
+        const id = `${uid}|order`;
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === id));
+        if (o.pending)
+          state.changes.unshift({
+            id,
+            kind: 'reorder',
+            status: 'pending',
+            element: it.label,
+            props: [],
+            propLabel: t('panel.change.order'),
+            from: String(o.start.indexOf(it.uid) + 1),
+            to: String(m.to + 1),
+            target: o.target,
+            simulated: true,
+            pageUrl: state.page!.url,
+            createdAt: Date.now(),
+          } satisfies ChangeView);
+        select(uid);
         break;
       }
       case 'apply': {

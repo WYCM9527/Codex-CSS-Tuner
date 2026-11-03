@@ -232,7 +232,7 @@ function matching(chain: Array<{ depth: number; props: Record<string, unknown> }
 }
 
 /** 纯 HTML：元素从 <html> 起逐层在父元素里的下标（不算扩展自己插进去的节点） */
-function htmlPathOf(el: Element): number[] | null {
+export function htmlPathOf(el: Element): number[] | null {
   const path: number[] = [];
   for (let e: Element = el; e !== document.documentElement; ) {
     const parent = e.parentElement;

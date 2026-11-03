@@ -1,8 +1,9 @@
 import type { PreviewTarget, RuleRef } from '@css-tuner/protocol';
 import { collectRules, type Reader } from './cascade';
+import { movableKids, orderDecls } from './order';
 import { sameSourceElements } from './source';
 import { clearAllTexts, clearTextPreview, hasTextPreview, previewText } from './text';
-import { elOf, isOwnSheet, sheetDevId } from './util';
+import { elOf, isOwnSheet, sheetDevId, uidOf } from './util';
 
 type Holder = { kind: 'inline'; el: HTMLElement } | { kind: 'rule'; style: CSSStyleDeclaration };
 
@@ -18,6 +19,11 @@ interface Entry {
   target: PreviewTarget;
   decls: Record<string, string>;
   holders: Holder[];
+  /** 换序：每个元素各自的 order / transform，和换序涉及的父元素 */
+  per?: Map<HTMLElement, Record<string, string>>;
+  parents?: Element[];
+  /** 换序时各父元素下子元素的组成，React 把节点换掉了就重新摆 */
+  shape?: string;
 }
 
 const entries = new Map<string, Entry>();
@@ -139,7 +145,7 @@ function reapply(k: HTMLElement | CSSStyleDeclaration) {
   for (const e of entries.values()) {
     for (const h of e.holders) {
       if (keyOf(h) === k) {
-        write(h, e.decls);
+        write(h, (h.kind === 'inline' && e.per?.get(h.el)) || e.decls);
         any = true;
       }
     }
@@ -151,9 +157,48 @@ let chain: Promise<unknown> = Promise.resolve();
 
 /** 拖动时预览请求很密，串行处理，避免同一 id 并发建出两条记录 */
 export function preview(id: string, target: PreviewTarget, decls: Record<string, string>, text = ''): Promise<number> {
-  const run = chain.then(() => (target.kind === 'text' ? previewText(id, target, text) : doPreview(id, target, decls)));
+  const run = chain.then(() => (target.kind === 'text' ? previewText(id, target, text) : target.kind === 'order' ? previewOrder(id, target) : doPreview(id, target, decls)));
   chain = run.catch(() => undefined);
   return run;
+}
+
+const shapeOf = (parents: Element[]) => parents.map((p) => (p.isConnected ? movableKids(p).map(uidOf).join(',') : '-')).join('|');
+
+/** 换序预览：每次按目标重新量、重新摆（先撤掉上一次的，量到的才是页面原本的位置） */
+async function previewOrder(id: string, target: Extract<PreviewTarget, { kind: 'order' }>, hint?: Element): Promise<number> {
+  const old = entries.get(id);
+  if (old) clearPreview(id);
+  const { decls, parents } = await orderDecls(target, hint ?? old?.parents?.[0]);
+  if (!parents.length) return 0;
+  const holders: Holder[] = [...decls.keys()].map((el) => ({ kind: 'inline', el }));
+  for (const h of holders) save(h);
+  entries.set(id, { id, target, decls: {}, holders, per: decls, parents, shape: shapeOf(parents) });
+  for (const h of holders) reapply(keyOf(h));
+  return parents.length;
+}
+
+/** 父元素下正在预览的新顺序（拖动时按页面上看到的顺序算位置） */
+export function activeOrder(p: Element): number[] | null {
+  let found: number[] | null = null;
+  for (const e of entries.values()) if (e.target.kind === 'order' && e.parents?.includes(p)) found = e.target.order;
+  return found;
+}
+
+/** React 重渲染换掉了子元素：按原来的目标在新节点上重新摆 */
+export function reapplyOrders(): Promise<unknown> {
+  const run = chain.then(async () => {
+    for (const e of Array.from(entries.values())) {
+      if (e.target.kind !== 'order' || !e.parents || shapeOf(e.parents) === e.shape) continue;
+      await previewOrder(e.id, e.target, e.parents.find((p) => p.isConnected));
+    }
+  });
+  chain = run.catch(() => undefined);
+  return run;
+}
+
+export function hasOrderPreviews(): boolean {
+  for (const e of entries.values()) if (e.target.kind === 'order') return true;
+  return false;
 }
 
 async function doPreview(id: string, target: PreviewTarget, decls: Record<string, string>): Promise<number> {

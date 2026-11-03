@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { t, type ChangeView, type PanelState, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
+import { t, type ChangeView, type OrderView, type PanelState, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
 import { displayValue, shortFile } from '../lib/format';
-import { IconToggle } from './controls';
+import { IconToggle, targetHint } from './controls';
 import { Icon } from './icons';
 
 type Send = (m: PanelToExt) => void;
@@ -68,6 +68,7 @@ export function ElementHeader({ state, sel, send }: { state: PanelState; sel: Se
             {t('panel.sameSource', { n: el.sameSource })}
           </span>
         )}
+        {sel.order && <OrderButtons uid={el.uid} order={sel.order} send={send} />}
         {state.scales?.mode === 'tailwind' && el.source && (
           <div className="scope seg" role="radiogroup" aria-label={t('panel.scope')}>
             <button
@@ -157,6 +158,31 @@ export function ChangeList({ state, send }: { state: PanelState; send: Send }) {
 }
 
 /** 改动前后的值：文字加引号，换序显示位置，样式按颜色、变量缩写 */
+/** 在兄弟之间挪一位：竖排是上移 / 下移，横排是左移 / 右移 */
+function OrderButtons({ uid, order, send }: { uid: string; order: OrderView; send: Send }) {
+  const n = order.items.length;
+  const move = (d: -1 | 1) => send({ t: 'reorder', uid, to: order.index + d, phase: 'commit' });
+  const hint = targetHint(order.target);
+  const btn = (d: -1 | 1) => {
+    const action = t(`panel.order.${d < 0 ? 'prev' : 'next'}.${order.axis}`);
+    const title = t('panel.order.title', { action, i: order.index + 1, n });
+    return (
+      <button className="icon-btn" disabled={d < 0 ? order.index <= 0 : order.index >= n - 1} title={hint ? `${title}\n${hint}` : title} aria-label={action} onClick={() => move(d)}>
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" style={order.axis === 'x' ? { transform: 'rotate(-90deg)' } : undefined}>
+          <path d={d < 0 ? 'M8 13V3M4 7l4-4 4 4' : 'M8 3v10M4 9l4 4 4-4'} />
+        </svg>
+      </button>
+    );
+  };
+  return (
+    <div className="order-btns">
+      {btn(-1)}
+      {btn(1)}
+      {order.target.kind === 'agent' && <span className="nf-agent" title={order.target.reason ?? t('field.agent')} />}
+    </div>
+  );
+}
+
 function changeValues(c: ChangeView): [string, string] {
   if (c.kind === 'text') return [`“${c.from}”`, `“${c.to}”`];
   if (c.kind === 'reorder') return [t('panel.change.position', { n: c.from }), t('panel.change.position', { n: c.to })];
@@ -183,6 +209,11 @@ function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Sen
           {c.element} · {c.target.kind === 'agent' ? t('panel.change.toAgent') : c.target.label}
           {c.target.affects > 1 ? ` · ${t('panel.change.affects', { n: c.target.affects })}` : ''}
         </span>
+        {c.simulated && (
+          <span className="change-tag" title={t('panel.change.simulated.title')}>
+            {t('panel.change.simulated')}
+          </span>
+        )}
       </div>
       {c.note && <div className={`change-note${c.status === 'failed' || c.status === 'conflict' ? ' is-error' : ''}`}>{c.note}</div>}
       <div className="change-actions">

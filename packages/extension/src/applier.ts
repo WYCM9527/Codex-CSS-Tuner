@@ -5,7 +5,8 @@ import { t } from '@css-tuner/protocol';
 import { applyEdits, overlapping, revertTailwind, type TextEdit } from '@css-tuner/engine';
 import type { Controller } from './controller';
 import type { AppliedPatch, ChangeRecord, PatchEdit } from './journal';
-import { computeWrite, isDirty, readDisk, type Reader } from './writer';
+import { applyFirst } from './records';
+import { computeWrite, isDirty, readDisk, writeDisk, type Reader } from './writer';
 
 export const SCHEME = 'css-tuner';
 const CONTEXT = 40;
@@ -169,7 +170,8 @@ export class Applier {
     const t0 = Date.now();
     const recs = (ids ? ids.map((id) => c.journal.get(id)).filter((r): r is ChangeRecord => !!r) : c.journal.pending())
       .filter((r) => (r.status === 'pending' || r.status === 'failed') && r.write.kind !== 'agent')
-      .sort((a, b) => a.createdAt - b.createdAt);
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .sort(applyFirst);
     const report: ApplyReport = { applied: 0, failed: 0, unverified: 0, ms: 0, writeMs: 0 };
     if (!recs.length) return report;
     c.state.busy = true;
@@ -223,7 +225,7 @@ export class Applier {
       const changed: string[] = [];
       for (const [file, text] of texts) {
         if (text === originals.get(file)) continue;
-        await vscode.workspace.fs.writeFile(vscode.Uri.file(file), Buffer.from(text, 'utf8'));
+        writeDisk(file, text);
         this.lastWritten.set(file, hash(text));
         changed.push(file);
       }
@@ -374,7 +376,7 @@ export class Applier {
           : !c.journal.all().some((r) => r.id !== id && r.patch?.file === p.file && (r.status === 'applied' || r.status === 'unverified'));
       const next = applyEdits(cur, edits);
       if (next !== cur) {
-        await vscode.workspace.fs.writeFile(vscode.Uri.file(p.file), Buffer.from(next, 'utf8'));
+        writeDisk(p.file, next);
         this.lastWritten.set(p.file, hash(next));
         await this.reloadSheets([p.file]);
       }

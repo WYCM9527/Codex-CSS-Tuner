@@ -238,6 +238,83 @@ defineStep('pageEdit', async (c, s) => {
   return { hit, typed, live, after: await pageTexts(c, s.read), editorsLeft: left, texts: textLines(c.state.selection), changes: changeLines(c) };
 });
 
+/** 选中元素所在兄弟组：现在的顺序、选中的是第几个、写回目标 */
+const orderLine = (sel: SelectionView | null) => {
+  const o = sel?.order;
+  if (!o) return null;
+  const target = `${o.target.kind}:${o.target.label}${o.target.affects > 1 ? ` affects=${o.target.affects}` : ''}${o.target.reason ? ` (${o.target.reason})` : ''}`;
+  return { items: o.items.map((i) => (i.component ? `${i.label} <${i.component}>` : i.label)), index: o.index, axis: o.axis, pending: o.pending, target };
+};
+
+/** 页面上一组元素按显示出来的位置（从上到下，同一行里从左到右）排的文字，看换序预览摆得对不对 */
+const visualOrder = (c: Controller, selector: unknown) =>
+  typeof selector === 'string'
+    ? c.browser.exec<string[]>(
+        c.session!.browserId,
+        `(() => {
+          const xs = [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => ({ t: e.textContent.replace(/\\s+/g, ' ').trim().slice(0, 40), r: e.getBoundingClientRect() }));
+          const sameRow = (a, b) => Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top) > Math.min(a.r.height, b.r.height) / 2;
+          return xs.sort((a, b) => (sameRow(a, b) ? a.r.left - b.r.left : a.r.top - b.r.top)).map((x) => x.t);
+        })()`,
+      )
+    : Promise.resolve(undefined);
+
+defineStep('order', async (c, s) => ({
+  order: orderLine(c.state.selection),
+  page: await visualOrder(c, s.read),
+  ...(s.sigs ? { sigs: c.state.selection?.el.order?.units.map((u) => `${u.label} = ${u.sig}`) } : {}),
+}));
+
+/** 在面板上把兄弟组里第 item 项（按现在的顺序，缺省是选中元素）挪到第 to 个 */
+defineStep('reorder', async (c, s) => {
+  const o = c.state.selection?.order;
+  if (!o) return { error: 'no order group' };
+  const item = o.items[s.item !== undefined ? Number(s.item) : o.index];
+  await c.reorder(item.uid, Number(s.to), (s.phase as 'live' | 'commit') ?? 'commit');
+  await new Promise((r) => setTimeout(r, 150));
+  return { order: orderLine(c.state.selection), page: await visualOrder(c, s.read), changes: changeLines(c) };
+});
+
+/**
+ * 模拟在页面上拖选中元素的把手：按下把手，移到 over 选中的那个元素（selector 的第 index 个）的前半或后半（side），松开。
+ * 返回拖动中有没有画出插入线
+ */
+defineStep('pageDrag', async (c, s) => {
+  const id = c.session!.browserId;
+  const before = JSON.stringify(c.state.changes.map((ch) => [ch.id, ch.to]));
+  const over = `document.querySelectorAll(${JSON.stringify(String(s.over))})[${Number(s.index) || 0}]`;
+  // 窗口在后台时页面的定时器被节流，覆盖层可能还没画出把手
+  const shown = `!!document.querySelector('css-tuner-overlay')?.shadowRoot?.querySelector('.grip:not(.hidden)')`;
+  for (let i = 0; i < 30 && !(await c.browser.exec<boolean>(id, shown)); i++) await new Promise((r) => setTimeout(r, 100));
+  const drag = await c.browser.exec(
+    id,
+    `(() => {
+      const root = document.querySelector('css-tuner-overlay')?.shadowRoot;
+      const grip = root?.querySelector('.grip');
+      const el = ${over};
+      if (!grip || grip.classList.contains('hidden') || !el) return { grip: !!grip && !grip.classList.contains('hidden'), over: !!el };
+      const g = grip.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const axis = ${JSON.stringify(s.axis ?? 'y')};
+      const after = ${JSON.stringify(s.side ?? 'after')} === 'after';
+      const x = axis === 'x' ? r.left + r.width * (after ? 0.8 : 0.2) : r.left + r.width / 2;
+      const y = axis === 'y' ? r.top + r.height * (after ? 0.8 : 0.2) : r.top + r.height / 2;
+      const ev = (type, cx, cy) => grip.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: cx, clientY: cy, pointerId: 7, button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true }));
+      ev('pointerdown', g.left + g.width / 2, g.top + g.height / 2);
+      ev('pointermove', (g.left + x) / 2, (g.top + y) / 2);
+      ev('pointermove', x, y);
+      const line = !root.querySelector('.line').classList.contains('hidden');
+      const ghost = !root.querySelector('.ghost').classList.contains('hidden');
+      ev('pointerup', x, y);
+      return { grip: true, line, ghost, at: [Math.round(x), Math.round(y)] };
+    })()`,
+  );
+  const deadline = Date.now() + 3000;
+  while (JSON.stringify(c.state.changes.map((ch) => [ch.id, ch.to])) === before && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  await new Promise((r) => setTimeout(r, 200));
+  return { drag, order: orderLine(c.state.selection), page: await visualOrder(c, s.read), changes: changeLines(c) };
+});
+
 defineStep('discard', async (c, s) => {
   const ch = c.state.changes[Number(s.index) || 0];
   if (!ch) return 'no change';

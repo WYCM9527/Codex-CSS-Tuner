@@ -75,7 +75,47 @@ export function recordView(r: ChangeRecord): ChangeView {
     to: r.to,
     target: r.view,
     note: r.note,
+    ...(r.kind === 'reorder' && r.status === 'pending' ? { simulated: true } : {}),
     pageUrl: r.pageUrl,
     createdAt: r.createdAt,
   };
+}
+
+/** hash 路由（`#/effects`、`#!/a`）是页面的一部分；普通锚点（`#faq`）和没有 hash 都算根路由 */
+const hashRoute = (u: URL) => /^#!?(\/[^?]*)/.exec(u.hash)?.[1].replace(/(.)\/$/, '$1') ?? '/';
+
+/** 两个地址是不是同一个页面：查询参数和普通锚点不算 */
+export function samePage(a: string, b: string): boolean {
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    return ua.origin === ub.origin && ua.pathname === ub.pathname && hashRoute(ua) === hashRoute(ub);
+  } catch {
+    return a === b;
+  }
+}
+
+/** 换序记下的位置：JSX 和数组是第一项的行列，HTML 是父元素的路径（前面加上深度） */
+function orderPos(r: ChangeRecord): number[] | null {
+  const w = r.write;
+  if (w.kind === 'jsxOrder') return [w.sites[0].line, w.sites[0].column];
+  if (w.kind === 'arrayOrder') return [w.line, w.column];
+  if (w.kind === 'htmlOrder') return [w.path.length, ...w.path];
+  return null;
+}
+
+/**
+ * 同一批里应用的先后：样式和文字先改，换序后改；换序之间位置靠后（HTML 是更深）的先改。
+ * 每条记下的位置都是改之前的文件里的：换序只是把几块原样挪动，块里的内容和整段的长度不变，
+ * 所以先改里层再挪外层，里层的位置就不会过期；互不相交的两段谁先改都一样
+ */
+export function applyFirst(a: ChangeRecord, b: ChangeRecord): number {
+  const pa = orderPos(a);
+  const pb = orderPos(b);
+  if (!pa || !pb) return pa ? 1 : pb ? -1 : 0;
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pb[i] ?? -1) - (pa[i] ?? -1);
+    if (d) return d;
+  }
+  return 0;
 }

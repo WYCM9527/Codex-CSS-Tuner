@@ -1,5 +1,6 @@
 import { PROP_NAMES, propMeta, type Crumb, type DeclWinner, type ElementSnapshot, type RuleRef, type UsedVar } from '@css-tuner/protocol';
 import { collectRules, matchRules, pickWinner, type FlatRule, type Matched, type RuleIndex } from './cascade';
+import { orderInfo } from './order';
 import { kindOf } from './page';
 import { originalReader } from './preview';
 import { callersOf, ownerName, sameSourceElements, sourceOf } from './source';
@@ -173,5 +174,6 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
     fontSizePx: parseFloat(cs.fontSize) || 16,
     rootFontSizePx: parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
     text: await textInfo(el, source),
+    order: await orderInfo(el),
   };
 }

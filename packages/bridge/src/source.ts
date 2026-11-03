@@ -5,6 +5,8 @@ import { stripQuery } from './util';
 
 /** fiber，或服务端组件的调试信息（React Server Components 渲染的元素，owner 不是 fiber） */
 export interface DebugNode {
+  /** fiber 的种类：7 是片段（.map() 和别的子节点混在一起时 React 把数组包在片段里） */
+  tag?: number;
   type?: unknown;
   name?: unknown;
   /** fiber 的 props；服务端组件的调试信息里叫 props */
@@ -13,6 +15,9 @@ export interface DebugNode {
   index?: number;
   return?: DebugNode | null;
   alternate?: DebugNode | null;
+  child?: DebugNode | null;
+  /** 宿主 fiber 是 DOM 节点；根和 portal 的 fiber 带着 containerInfo（挂载到的容器） */
+  stateNode?: unknown;
   _debugStack?: { stack?: string } | null;
   debugStack?: { stack?: string } | null;
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number } | null;
@@ -61,9 +66,9 @@ export function hasReact(): boolean {
 }
 
 const stackOf = (n: DebugNode) => n._debugStack?.stack ?? n.debugStack?.stack;
-const ownerOf = (n: DebugNode) => n._debugOwner ?? n.owner ?? null;
+export const ownerOf = (n: DebugNode) => n._debugOwner ?? n.owner ?? null;
 
-function nameOf(n: DebugNode | null | undefined): string | null {
+export function nameOf(n: DebugNode | null | undefined): string | null {
   if (!n) return null;
   if (n.type === undefined) return typeof n.name === 'string' && n.name ? n.name : null;
   const t = n.type as { displayName?: string; name?: string } | string | null;
@@ -300,6 +305,12 @@ function toLoc(p: Picked): SourceLoc {
 
 export async function sourceOf(el: Element): Promise<SourceLoc | null> {
   const p = await pick(el);
+  return p ? toLoc(p) : null;
+}
+
+/** fiber 自己的 JSX 位置（不沿 owner 往外找） */
+export async function fiberSource(n: DebugNode): Promise<SourceLoc | null> {
+  const p = await ownFrame(n, 0);
   return p ? toLoc(p) : null;
 }
 

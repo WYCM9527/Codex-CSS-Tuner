@@ -9,4 +9,5 @@ export { editThemeVar, type ThemeVarInput } from './css/theme';
 export { editJsxAttr, editJsxText, jsxAttrSite, jsxChildSite, type JsxAttrEditInput, type JsxTextEditInput, type TextSite } from './structure/text';
 export type { MessageRef } from './structure/jsx';
 export { editMessage, matchMessage, messageKeyPaths, readMessage, type MessageEditInput, type MessageMatch } from './structure/messages';
-export { editHtmlText, type HtmlTextEditInput } from './structure/html';
+export { editHtmlOrder, editHtmlText, type HtmlOrderInput, type HtmlTextEditInput } from './structure/html';
+export { arrayOrderSite, editArrayOrder, editJsxOrder, jsxOrderCheck, orderSummary, type ArrayOrderInput, type JsxOrderInput, type OrderSite } from './structure/reorder';

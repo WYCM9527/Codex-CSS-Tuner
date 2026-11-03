@@ -1,13 +1,16 @@
 import { readFileSync, statSync } from 'node:fs';
 import {
+  arrayOrderSite,
   classLiteralSites,
   indexCssRules,
   jsxAttrSite,
   jsxChildSite,
+  jsxOrderCheck,
   locateClassSite,
   lookupCssRule,
   type CssRuleIndex,
   type CssRuleSpec,
+  type OrderSite,
   type TextSite,
 } from '@css-tuner/engine';
 
@@ -40,6 +43,7 @@ interface FileEntry {
   sites: Map<string, SiteInfo | null>;
   literals?: LiteralInfo[] | null;
   texts?: Map<string, TextSite | { error: string }>;
+  orders?: Map<string, ReturnType<typeof jsxOrderCheck>>;
 }
 
 const MAX_FILES = 64;
@@ -105,6 +109,27 @@ export class ClassSiteReader {
   /** (line, column) 处 JSX 元素上 name 属性的值是什么文字 */
   textAttr(file: string, line: number, column: number, name: string): TextSite | { error: string } | null {
     return this.text(file, `a${line}:${column}:${name}`, (source) => jsxAttrSite(source, file, line, column, name));
+  }
+
+  /** 这几处 JSX 是不是同一个父元素下的几项（换序写回前的检查） */
+  jsxOrder(file: string, sites: OrderSite[]): ReturnType<typeof jsxOrderCheck> | null {
+    const f = this.entry(file);
+    if (!f) return null;
+    f.orders ??= new Map();
+    const key = sites.map((s) => `${s.line}:${s.column}:${s.name ?? ''}`).join(',');
+    let r = f.orders.get(key);
+    if (!r) {
+      r = jsxOrderCheck(f.source, file, sites);
+      f.orders.set(key, r);
+    }
+    return r;
+  }
+
+  /** .map() 列表对应的数组字面量在哪（数组可能在别的文件里，每次重新找） */
+  arraySite(file: string, line: number, column: number, count: number): ReturnType<typeof arrayOrderSite> | null {
+    const f = this.entry(file);
+    if (!f) return null;
+    return arrayOrderSite({ file, source: f.source, line, column, count, read: readOrNull });
   }
 
   private text(file: string, key: string, read: (source: string) => TextSite | { error: string }): TextSite | { error: string } | null {

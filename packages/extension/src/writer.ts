@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { t } from '@css-tuner/protocol';
-import { editCssRule, editHtmlText, editJsxAttr, editJsxText, editMessage, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
+import { editArrayOrder, editCssRule, editHtmlOrder, editHtmlText, editJsxAttr, editJsxOrder, editJsxText, editMessage, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
 import type { ChangeRecord } from './journal';
 import type { TailwindService } from './tailwind';
 
@@ -15,6 +15,14 @@ export const readDisk: Reader = (file) => {
     return null;
   }
 };
+
+/**
+ * 原地同步写盘：截断和写入连在一起。异步写在两步之间要让出事件循环，扩展忙的时候文件会空上一阵，
+ * 开发服务器这时读到空文件会把空模块缓存下来（Vite 只等 100ms），页面就白了
+ */
+export function writeDisk(file: string, text: string) {
+  writeFileSync(file, text, 'utf8');
+}
 
 /** 文件在编辑器里有未保存的修改（写盘会和它冲突） */
 export function isDirty(file: string): boolean {
@@ -64,6 +72,13 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
     if (w.kind === 'jsxAttr') return editJsxAttr({ file: w.file, source, line: w.line, column: w.column, name: w.name, from, value: full });
     if (w.kind === 'message') return editMessage({ file: w.file, source, keyPath: w.keyPath, from, value: rec.value });
     return editHtmlText({ file: w.file, source, path: w.path, tag: w.tag, segment: w.segment, from, value: rec.value });
+  }
+  if (w.kind === 'jsxOrder' || w.kind === 'arrayOrder' || w.kind === 'htmlOrder') {
+    const source = read(w.file);
+    if (source === null) return { ok: false, reason: t('engine.readFailed', { file: w.file }) };
+    if (w.kind === 'jsxOrder') return editJsxOrder({ file: w.file, source, sites: w.sites, order: w.order });
+    if (w.kind === 'arrayOrder') return editArrayOrder({ file: w.file, source, line: w.line, column: w.column, count: w.count, order: w.order, read });
+    return editHtmlOrder({ file: w.file, source, path: w.path, tags: w.tags, order: w.order });
   }
   return { ok: false, reason: t('ext.write.unsupported') };
 }
