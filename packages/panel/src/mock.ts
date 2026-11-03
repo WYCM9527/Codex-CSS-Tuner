@@ -1,4 +1,4 @@
-import { groupLabel, type ChangeView, type ElementSnapshot, type PanelState, type PanelToExt, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type PanelState, type PanelToExt, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
 /** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
@@ -190,6 +190,7 @@ export function createMockHost(): Host {
     defaultUrl: 'http://localhost:5173/',
     busy: false,
     snap: true,
+    locale: getLocale(),
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
   const select = (uid: string) => {
@@ -210,7 +211,7 @@ export function createMockHost(): Host {
               line: e.source?.line,
               column: e.source?.column,
               affects: e.sameSource,
-              reason: agent ? '演示：className 是变量，无法确定性写回' : undefined,
+              reason: agent ? t('mock.agentReason') : undefined,
             },
           ];
         }),
@@ -311,10 +312,16 @@ export function createMockHost(): Host {
       case 'clearDone':
         state.changes = state.changes.filter((c) => c.status === 'pending' || c.status === 'failed' || c.status === 'conflict');
         break;
-      case 'handoff':
-        for (const c of state.changes) if (!m.ids || m.ids.includes(c.id)) if (c.status === 'pending' || c.status === 'failed') c.status = 'handoff';
-        state.notice = { level: 'info', text: '已在新的 Agent 对话里预填提示词，确认后按回车发送（提示词也已复制到剪贴板）。' };
+      case 'handoff': {
+        let n = 0;
+        for (const c of state.changes) {
+          if ((m.ids && !m.ids.includes(c.id)) || (c.status !== 'pending' && c.status !== 'failed')) continue;
+          c.status = 'handoff';
+          n++;
+        }
+        state.notice = { level: 'info', text: t('ext.handoff.prefilled', { n }) };
         break;
+      }
       case 'dismissNotice':
         state.notice = null;
         break;
@@ -330,7 +337,7 @@ export function createMockHost(): Host {
     void fetch(src)
       .then((r) => r.json() as Promise<PanelState>)
       .then((s) => {
-        Object.assign(state, s);
+        Object.assign(state, s, { locale: getLocale() });
         emit();
       });
   }

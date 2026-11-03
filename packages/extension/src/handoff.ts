@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { t } from '@css-tuner/protocol';
 import type { ChangeRecord } from './journal';
 import type { ProjectResolver } from './project';
 
@@ -7,6 +8,8 @@ export interface HandoffContext {
   project: ProjectResolver;
   /** Tailwind 项目的 CSS 入口（设计令牌所在文件），普通 CSS 项目为 null */
   tailwindEntry: string | null;
+  /** 项目装的 tailwindcss 版本号 */
+  tailwindVersion?: string | null;
 }
 
 function where(rec: ChangeRecord, project: ProjectResolver): string {
@@ -15,14 +18,14 @@ function where(rec: ChangeRecord, project: ProjectResolver): string {
   const parts: string[] = [];
   if (file && src) parts.push(`${project.label(file)}:${src.line}:${src.column}`);
   else if (src) parts.push(`${src.path}:${src.line}:${src.column}`);
-  if (src?.component) parts.push(`组件 ${src.component}`);
-  if (!src && rec.element.path) parts.push(`页面位置 ${rec.element.path}`);
-  return parts.join('，');
+  if (src?.component) parts.push(t('handoff.component', { name: src.component }));
+  if (!src && rec.element.path) parts.push(t('handoff.pagePath', { path: rec.element.path }));
+  return parts.join(t('common.comma'));
 }
 
-function valueText(v: string, token: string | null, tailwind: boolean): string {
-  if (!token || token === v) return v;
-  return tailwind ? `${v}（Tailwind 令牌 ${token}）` : `${v}（${token}）`;
+function valueText(value: string, token: string | null, tailwind: boolean): string {
+  if (!token || token === value) return value;
+  return t(tailwind ? 'handoff.twToken' : 'handoff.token', { value, token });
 }
 
 function ruleText(rec: ChangeRecord): string | null {
@@ -39,33 +42,44 @@ function ruleText(rec: ChangeRecord): string | null {
 export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
   const tw = !!ctx.tailwindEntry;
   const lines: string[] = [];
-  lines.push(`请帮我把下面 ${recs.length} 处样式改动写进源码。这些值是我在页面上用 CSS Tuner 实时预览确认过的；扩展没法安全地自动写回，原因附在每一条后面。`);
+  lines.push(t('handoff.intro', { n: recs.length }));
   lines.push('');
-  if (ctx.pageUrl) lines.push(`页面：${ctx.pageUrl}`);
-  if (ctx.tailwindEntry) lines.push(`项目用 Tailwind 4，设计令牌在 ${ctx.project.label(ctx.tailwindEntry)} 里。`);
+  if (ctx.pageUrl) lines.push(t('handoff.page', { url: ctx.pageUrl }));
+  if (ctx.tailwindEntry) {
+    const tailwind = ctx.tailwindVersion ? `Tailwind ${ctx.tailwindVersion}` : 'Tailwind';
+    lines.push(t('handoff.tailwind', { tailwind, file: ctx.project.label(ctx.tailwindEntry) }));
+  }
   lines.push('');
   recs.forEach((rec, i) => {
     const loc = where(rec, ctx.project);
-    lines.push(`${i + 1}. 元素 \`${rec.element.label}\`${loc ? `（${loc}）` : ''}${rec.element.sameSource > 1 ? `，同一处代码渲染了 ${rec.element.sameSource} 个元素` : ''}`);
+    lines.push(
+      t('handoff.element', {
+        i: i + 1,
+        label: rec.element.label,
+        loc: loc ? t('common.paren', { text: loc }) : '',
+        same: rec.element.sameSource > 1 ? t('handoff.sameSource', { n: rec.element.sameSource }) : '',
+      }),
+    );
     const props = rec.props.join(' / ');
+    const value = valueText(rec.value, rec.token, tw);
     if (rec.status === 'conflict') {
-      lines.push(`   - 请改回原值：${props} 现在是 ${valueText(rec.value, rec.token, tw)}，改回 ${rec.from}`);
-      if (rec.patch) lines.push(`   - 当初写入的是：${rec.patch.summary}（${ctx.project.label(rec.patch.file)}）`);
+      lines.push(t('handoff.revertTo', { props, value, from: rec.from }));
+      if (rec.patch) lines.push(t('handoff.written', { summary: rec.patch.summary, file: ctx.project.label(rec.patch.file) }));
     } else {
-      lines.push(`   - ${props}：${rec.from} → ${valueText(rec.value, rec.token, tw)}`);
+      lines.push(t('handoff.change', { props, from: rec.from, to: value }));
     }
     const rule = ruleText(rec);
-    if (rule) lines.push(`   - 当前生效的规则：\`${rule}\``);
-    else if (rec.view.label && rec.view.kind !== 'agent') lines.push(`   - 写回位置：${rec.view.label}`);
+    if (rule) lines.push(t('handoff.rule', { rule }));
+    else if (rec.view.label && rec.view.kind !== 'agent') lines.push(t('handoff.target', { label: rec.view.label }));
     const why = rec.note ?? (rec.write.kind === 'agent' ? rec.write.reason : null);
-    if (why) lines.push(`   - 没能自动写回：${why}`);
+    if (why) lines.push(t('handoff.why', { why }));
   });
   lines.push('');
-  lines.push('要求：');
-  lines.push('- 只改上面列出的属性，不要动其他样式和逻辑；');
-  lines.push(tw ? '- 优先用项目已有的 Tailwind 令牌（已在条目里给出），不要写任意值，除非没有对应令牌；' : '- 优先用项目已有的 CSS 变量（已在条目里给出）；');
-  lines.push('- 一处代码渲染了多个元素时，按条目说明决定只改这一处还是改源头，拿不准就先问我；');
-  lines.push('- 改完列出改了哪些文件的哪几行。');
+  lines.push(t('handoff.requirements'));
+  lines.push(t('handoff.req.only'));
+  lines.push(t(tw ? 'handoff.req.twTokens' : 'handoff.req.cssVars'));
+  lines.push(t('handoff.req.scope'));
+  lines.push(t('handoff.req.report'));
   return lines.join('\n');
 }
 

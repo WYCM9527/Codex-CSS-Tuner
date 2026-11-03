@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import {
+  getLocale,
   groupLabel,
   PROP_NAMES,
   sameValue,
+  t,
   type BridgeEvent,
   type EditRequest,
   type ElementSnapshot,
@@ -111,6 +113,7 @@ export class Controller implements vscode.Disposable {
       defaultUrl: cfg.get<string>('defaultUrl', 'http://localhost:5173/'),
       busy: false,
       snap: cfg.get<boolean>('snap', true),
+      locale: getLocale(),
     };
     this.disposables.push(
       this.journal,
@@ -161,7 +164,7 @@ export class Controller implements vscode.Disposable {
   notify(level: Notice['level'], text: string) {
     this.state.notice = { level, text };
     this.push();
-    if (level === 'error') this.log(`错误：${text}`);
+    if (level === 'error') this.log(t('ext.log.error', { text }));
   }
 
   /** 面板最近一次报告就绪的时间（自测用） */
@@ -177,7 +180,7 @@ export class Controller implements vscode.Disposable {
           return;
         case 'error':
           this.panelErrors.push(msg.message);
-          this.log(`面板异常：${msg.message}`);
+          this.log(t('ext.log.panelError', { message: msg.message }));
           return;
         case 'openPage':
           await this.openPage(msg.url);
@@ -233,7 +236,7 @@ export class Controller implements vscode.Disposable {
     switch (msg.t) {
       case 'apply': {
         const r = await this.applier.apply(msg.ids);
-        if (r.failed && !r.applied && !r.unverified) this.notify('warn', '改动没能写回，原因见清单里每一条的说明；可以交给 Agent 处理。');
+        if (r.failed && !r.applied && !r.unverified) this.notify('warn', t('ext.apply.allFailed'));
         return;
       }
       case 'revert':
@@ -259,13 +262,15 @@ export class Controller implements vscode.Disposable {
   async handoff(ids?: string[]): Promise<{ how: PrefillResult; prompt: string } | null> {
     const recs = (ids ? ids.map((id) => this.journal.get(id)) : this.journal.all()).filter((r): r is ChangeRecord => !!r && Controller.agentable(r));
     if (!recs.length) {
-      this.notify('info', '没有需要交给 Agent 的改动。');
+      this.notify('info', t('ext.handoff.none'));
       return null;
     }
+    const entry = this.page ? tailwindEntry(this.page, this.project) : null;
     const prompt = buildPrompt([...recs].reverse(), {
       pageUrl: this.page?.url ?? recs[0].pageUrl,
       project: this.project,
-      tailwindEntry: this.page ? tailwindEntry(this.page, this.project) : null,
+      tailwindEntry: entry,
+      tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
     });
     const how = await prefill(prompt);
     for (const r of recs) {
@@ -275,9 +280,7 @@ export class Controller implements vscode.Disposable {
     }
     this.notify(
       'info',
-      how === 'clipboard'
-        ? `${recs.length} 条改动的提示词已复制到剪贴板，粘贴到新的 Agent 对话里发送。`
-        : `已把 ${recs.length} 条改动预填进新的 Agent 对话，检查后按回车发送（提示词也复制到了剪贴板）。`,
+      t(how === 'clipboard' ? 'ext.handoff.clipboard' : 'ext.handoff.prefilled', { n: recs.length }),
     );
     await this.refreshSelection();
     return { how, prompt };
@@ -299,7 +302,7 @@ export class Controller implements vscode.Disposable {
         canSelectMany: false,
         defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
         filters: { HTML: ['html', 'htm'] },
-        openLabel: '用静态服务打开',
+        openLabel: t('ext.static.openLabel'),
       });
       uri = picked?.[0];
     }
@@ -316,7 +319,7 @@ export class Controller implements vscode.Disposable {
     const origin = await this.staticServer.serve(root);
     this.project.register(origin, root);
     const url = isDir ? `${origin}/` : this.staticServer.urlFor(root, path) ?? `${origin}/`;
-    this.log(`静态服务：${root} → ${origin}`);
+    this.log(t('ext.log.static', { root, origin }));
     return this.openPage(url);
   }
 
@@ -350,10 +353,10 @@ export class Controller implements vscode.Disposable {
     // 本地 HTML 文件或文件夹：交给内置静态服务
     if (target.startsWith('file://')) return this.serveStatic(vscode.Uri.parse(target));
     if (isAbsolute(target) && existsSync(target)) return this.serveStatic(vscode.Uri.file(target));
-    if (!/^https?:\/\//.test(target)) throw new Error(`只支持 http(s) 地址或本地 HTML 文件：${target}`);
+    if (!/^https?:\/\//.test(target)) throw new Error(t('ext.open.badUrl', { target }));
     const cap = await this.browser.check();
     if (!cap.ok) {
-      this.notify('error', `当前 Cursor 缺少内置浏览器命令：${cap.missing.join(', ')}。请升级 Cursor，或运行“CSS Tuner: 自检”查看详情。`);
+      this.notify('error', t('ext.open.missingCommands', { missing: cap.missing.join(', ') }));
       return false;
     }
     this.state.connection = 'opening';
@@ -386,14 +389,14 @@ export class Controller implements vscode.Disposable {
 
     const href = await this.browser.waitReady(browserId);
     if (!href || href.startsWith('chrome-error://')) {
-      this.notify('error', `页面打不开：${target}。确认开发服务器已经启动。`);
+      this.notify('error', t('ext.open.unreachable', { target }));
       this.state.connection = 'lost';
       this.push();
       return false;
     }
     await this.session.inject();
     const ok = await this.session.waitConnected(10000);
-    if (!ok) this.notify('error', '调参脚本没有连上扩展，请刷新页面后重试。');
+    if (!ok) this.notify('error', t('ext.open.notConnected'));
     // 会话一直连着（同一个标签页换地址）时不会再发状态变化，这里补上
     this.state.connection = ok ? 'connected' : 'lost';
     this.push();
@@ -410,7 +413,7 @@ export class Controller implements vscode.Disposable {
 
   async setPick(on: boolean) {
     if (!this.session?.connected) {
-      if (on) this.notify('warn', '先打开页面再选取元素。');
+      if (on) this.notify('warn', t('ext.pick.noPage'));
       return;
     }
     await this.session.call('setPick', { on });
@@ -507,7 +510,7 @@ export class Controller implements vscode.Disposable {
         this.journal.update(rec.id, { preview: target });
       }
       const decls = { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) };
-      await session.call('preview', { id: rec.previewId, target, decls }).catch((e) => this.log(`恢复预览失败：${(e as Error).message}`));
+      await session.call('preview', { id: rec.previewId, target, decls }).catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
     }
   }
 
@@ -672,7 +675,7 @@ export class Controller implements vscode.Disposable {
     if (vscode.workspace.getConfiguration('cssTuner').get<string>('tailwind.arbitraryValues', 'allow') !== 'agent') return p;
     const res = await computeWrite({ write: p.write, props, value: req.value, token: null } as ChangeRecord, this.tailwind, this.remBase);
     if (!res.ok || !hasArbitraryValue(res.edits.map((e) => e.text).join(' '))) return p;
-    const reason = `${req.value} 不在主题刻度上，按设置不写任意值类名`;
+    const reason = t('ext.plan.offScale', { value: req.value });
     return { view: { ...p.view, kind: 'agent', reason }, write: { kind: 'agent', reason } };
   }
 

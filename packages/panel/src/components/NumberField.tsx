@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { formatNumber, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { formatNumber, t, type ScaleStep, type Target } from '@css-tuner/protocol';
 import { nearest, ordered, valuePx, walk, type Ctx } from '../lib/scale';
 import type { Edit } from './types';
 
@@ -165,7 +165,7 @@ export function NumberField(p: NumberFieldProps) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        aria-label={`拖动调整${p.title}`}
+        aria-label={t('field.drag', { title: p.title })}
       >
         {p.label}
       </span>
@@ -173,7 +173,7 @@ export function NumberField(p: NumberFieldProps) {
         ref={inputRef}
         className="nf-input"
         value={drag ? fmt(drag.px, stepSize) : shown}
-        placeholder={mixed ? '混合' : ''}
+        placeholder={mixed ? t('field.mixed') : ''}
         spellCheck={false}
         onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setText(e.target.value)}
@@ -182,7 +182,7 @@ export function NumberField(p: NumberFieldProps) {
         aria-label={p.title}
       />
       {(drag?.label ?? token) && !drag?.exact && <span className="nf-token">{drag?.label ?? token}</span>}
-      {agent && <span className="nf-agent" title={p.target?.reason ?? '无法直接写回，会交给 Agent'} />}
+      {agent && <span className="nf-agent" title={p.target?.reason ?? t('field.agent')} />}
       {drag && <Ruler seq={seq} px={drag.px} exact={drag.exact} unit={unit} stepSize={stepSize} />}
     </div>
   );
@@ -191,10 +191,10 @@ export function NumberField(p: NumberFieldProps) {
 function hint(p: NumberFieldProps): string {
   const lines = [p.title];
   if (p.target) {
-    lines.push(`写入：${p.target.label}`);
-    if (p.target.affects > 1) lines.push(`影响 ${p.target.affects} 处`);
+    lines.push(t('field.writeTo', { label: p.target.label }));
+    if (p.target.affects > 1) lines.push(t('field.affects', { n: p.target.affects }));
   }
-  lines.push(p.snap ? '拖动左侧标签按刻度调整，按住 Alt 调精确值' : '拖动左侧标签调整');
+  lines.push(p.snap ? t('field.dragHint.snap') : t('field.dragHint'));
   return lines.join('\n');
 }
 
@@ -202,7 +202,7 @@ function Ruler({ seq, px, exact, unit, stepSize }: { seq: Array<ScaleStep & { px
   if (exact || !seq.length) {
     return (
       <div className="ruler is-exact">
-        <span>精确</span>
+        <span>{t('field.exact')}</span>
         <b>
           {fmt(px, stepSize)}
           {unit}

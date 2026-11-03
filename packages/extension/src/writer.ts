@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { readFileSync } from 'node:fs';
+import { t } from '@css-tuner/protocol';
 import { editCssRule, editTailwind, editThemeVar, type EditResult } from '@css-tuner/engine';
 import type { ChangeRecord } from './journal';
 import type { TailwindService } from './tailwind';
@@ -25,11 +26,11 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
   const w = rec.write;
   if (w.kind === 'agent') return { ok: false, reason: w.reason };
   if (w.kind === 'tailwind') {
-    if (!w.entry) return { ok: false, reason: '找不到 Tailwind 的 CSS 入口文件，无法确定设计系统' };
+    if (!w.entry) return { ok: false, reason: t('ext.write.noTwEntry') };
     const design = await tailwind.designFor(w.entry, rem);
-    if (!design) return { ok: false, reason: '加载项目的 Tailwind 设计系统失败（详见输出面板）' };
+    if (!design) return { ok: false, reason: t('ext.write.twLoadFailed') };
     const source = read(w.file);
-    if (source === null) return { ok: false, reason: `读不到 ${w.file}` };
+    if (source === null) return { ok: false, reason: t('engine.readFailed', { file: w.file }) };
     return editTailwind(design, {
       file: w.file,
       source,

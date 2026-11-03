@@ -1,7 +1,7 @@
 {
   "name": "cursor-css-tuner",
   "displayName": "Cursor CSS Tuner",
-  "description": "在 Cursor 内置浏览器里点选元素、可视化调 CSS、实时预览，确定性写回源码并可逐条还原。",
+  "description": "Pick elements in Cursor's built-in browser, tune their CSS visually with live preview, and write the changes back to your source code, with one-click revert for each change.",
   "version": "0.1.0",
   "publisher": "WYCM9527",
   "license": "MIT",
@@ -53,17 +53,17 @@
         {
           "type": "webview",
           "id": "cssTuner.panel",
-          "name": "调参"
+          "name": "%view.panel%"
         }
       ]
     },
     "commands": [
-      { "command": "cssTuner.openPage", "title": "打开页面", "category": "CSS Tuner" },
-      { "command": "cssTuner.togglePick", "title": "选取元素", "category": "CSS Tuner" },
-      { "command": "cssTuner.applyAll", "title": "应用全部改动", "category": "CSS Tuner" },
-      { "command": "cssTuner.serveStatic", "title": "用内置静态服务打开 HTML", "category": "CSS Tuner" },
-      { "command": "cssTuner.handoff", "title": "把未处理的改动交给 Agent", "category": "CSS Tuner" },
-      { "command": "cssTuner.selfCheck", "title": "自检", "category": "CSS Tuner" }
+      { "command": "cssTuner.openPage", "title": "%command.openPage%", "category": "CSS Tuner" },
+      { "command": "cssTuner.togglePick", "title": "%command.togglePick%", "category": "CSS Tuner" },
+      { "command": "cssTuner.applyAll", "title": "%command.applyAll%", "category": "CSS Tuner" },
+      { "command": "cssTuner.serveStatic", "title": "%command.serveStatic%", "category": "CSS Tuner" },
+      { "command": "cssTuner.handoff", "title": "%command.handoff%", "category": "CSS Tuner" },
+      { "command": "cssTuner.selfCheck", "title": "%command.selfCheck%", "category": "CSS Tuner" }
     ],
     "menus": {
       "explorer/context": [
@@ -76,51 +76,51 @@
         "cssTuner.defaultUrl": {
           "type": "string",
           "default": "http://localhost:5173/",
-          "description": "打开页面时的默认地址。"
+          "description": "%config.defaultUrl%"
         },
         "cssTuner.remBase": {
           "type": "number",
           "default": 16,
-          "description": "rem 与 px 换算的基准字号。"
+          "description": "%config.remBase%"
         },
         "cssTuner.tailwind.scope": {
           "type": "string",
           "enum": ["instance", "source"],
-          "enumDescriptions": ["只改当前 JSX 调用位置的 className", "改类名的源头（组件定义处），影响所有使用它的地方"],
+          "enumDescriptions": ["%config.tailwind.scope.instance%", "%config.tailwind.scope.source%"],
           "default": "instance",
-          "description": "Tailwind 改动默认的作用范围。"
+          "description": "%config.tailwind.scope%"
         },
         "cssTuner.tailwind.arbitraryValues": {
           "type": "string",
           "enum": ["allow", "agent"],
-          "enumDescriptions": ["刻度外的值写成任意值类名（如 px-[13.5px]）", "刻度外的值不写任意值类名，交给 Agent"],
+          "enumDescriptions": ["%config.tailwind.arbitraryValues.allow%", "%config.tailwind.arbitraryValues.agent%"],
           "default": "allow",
-          "description": "Tailwind 改动的值不在主题刻度上时怎么写回。"
+          "description": "%config.tailwind.arbitraryValues%"
         },
         "cssTuner.css.strategy": {
           "type": "string",
           "enum": ["editRule", "agent"],
-          "enumDescriptions": ["直接改命中的 CSS 规则", "不直接写回，交给 Agent"],
+          "enumDescriptions": ["%config.css.strategy.editRule%", "%config.css.strategy.agent%"],
           "default": "editRule",
-          "description": "语义 CSS 改动的写回策略。"
+          "description": "%config.css.strategy%"
         },
         "cssTuner.vars.strategy": {
           "type": "string",
           "enum": ["editDefinition", "agent"],
-          "enumDescriptions": ["直接改变量的定义处（Tailwind 改 @theme），用到它的地方一起变", "不直接写回，交给 Agent"],
+          "enumDescriptions": ["%config.vars.strategy.editDefinition%", "%config.vars.strategy.agent%"],
           "default": "editDefinition",
-          "description": "CSS 变量改动的写回策略。"
+          "description": "%config.vars.strategy%"
         },
         "cssTuner.snap": {
           "type": "boolean",
           "default": true,
-          "description": "数值吸附到主题刻度和 CSS 变量（按住 Alt 写精确值）。"
+          "description": "%config.snap%"
         },
         "cssTuner.verifyTimeoutMs": {
           "type": "number",
           "default": 8000,
           "minimum": 1000,
-          "description": "应用后等待热更新并校验计算样式的超时时间（毫秒）。超时的改动会在后台再等一轮，热更新晚到时自动改成已生效。"
+          "description": "%config.verifyTimeoutMs%"
         }
       }
     }

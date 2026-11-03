@@ -1,5 +1,7 @@
 import { statSync } from 'node:fs';
-import { editTailwind, loadTailwindDesign, type TwDesign } from '@css-tuner/engine';
+import { dirname } from 'node:path';
+import { t } from '@css-tuner/protocol';
+import { editTailwind, loadTailwindDesign, tailwindVersion, type TwDesign } from '@css-tuner/engine';
 
 /** 首次解析 TSX、首次生成工具类 CSS 都要预热几百毫秒，加载完设计系统就先跑一遍，应用时才能 1 秒内生效 */
 function warmUp(d: TwDesign) {
@@ -10,8 +12,16 @@ function warmUp(d: TwDesign) {
 /** 按 CSS 入口文件缓存设计系统；入口文件改过（比如改了 @theme）就重新加载 */
 export class TailwindService {
   private cache = new Map<string, { mtime: number; rem: number; design: Promise<TwDesign> }>();
+  private versions = new Map<string, string | null>();
 
   constructor(private readonly log: (msg: string) => void) {}
+
+  /** 入口文件所在项目装的 tailwindcss 版本号 */
+  versionFor(entry: string): string | null {
+    const dir = dirname(entry);
+    if (!this.versions.has(dir)) this.versions.set(dir, tailwindVersion(dir));
+    return this.versions.get(dir) ?? null;
+  }
 
   designFor(entry: string, rem: number): Promise<TwDesign | null> {
     let mtime = 0;
@@ -27,7 +37,7 @@ export class TailwindService {
     this.cache.set(entry, { mtime, rem, design });
     return design.then(
       (d) => {
-        this.log(`已加载 Tailwind 设计系统：${entry}（${Date.now() - t0}ms）`);
+        this.log(t('ext.log.twLoaded', { entry, ms: Date.now() - t0 }));
         setTimeout(() => {
           try {
             warmUp(d);
@@ -38,7 +48,7 @@ export class TailwindService {
         return d;
       },
       (e) => {
-        this.log(`加载 Tailwind 设计系统失败：${(e as Error).message}`);
+        this.log(t('ext.log.twFailed', { error: (e as Error).message }));
         this.cache.delete(entry);
         return null;
       },

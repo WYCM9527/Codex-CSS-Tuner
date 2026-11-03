@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { t } from '@css-tuner/protocol';
 import { physical } from '../physical';
 
 /** @tailwindcss/node 的 __unstable__loadDesignSystem 返回值里用到的部分 */
@@ -122,15 +123,37 @@ export function resolveTailwindNode(fromDir: string): string | null {
   return null;
 }
 
+/** 项目装的 tailwindcss 版本号（从包入口往上找它的 package.json），找不到返回 null */
+export function tailwindVersion(fromDir: string): string | null {
+  let dir: string;
+  try {
+    dir = dirname(createRequire(join(fromDir, '__css_tuner__.js')).resolve('tailwindcss'));
+  } catch {
+    return null;
+  }
+  for (let i = 0; i < 6; i++) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: string; version?: string };
+      if (pkg.name === 'tailwindcss') return pkg.version ?? null;
+    } catch {
+      /* 继续往上找 */
+    }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
 /** 用项目自己的 Tailwind 版本加载设计系统；entryFile 是含 @import "tailwindcss" 的 CSS 入口 */
 export async function loadTailwindDesign(entryFile: string, opts: { rem?: number; css?: string } = {}): Promise<TwDesign> {
   const base = dirname(entryFile);
   const nodePath = resolveTailwindNode(base);
-  if (!nodePath) throw new Error('项目里找不到 @tailwindcss/node（需要安装 @tailwindcss/vite、@tailwindcss/postcss 或 @tailwindcss/cli）');
+  if (!nodePath) throw new Error(t('engine.tw.noNode'));
   const mod = (await import(pathToFileURL(nodePath).href)) as {
     __unstable__loadDesignSystem?: (css: string, o: { base: string }) => Promise<RawDesignSystem>;
   };
-  if (typeof mod.__unstable__loadDesignSystem !== 'function') throw new Error('当前 Tailwind 版本没有提供设计系统接口（需要 Tailwind 4）');
+  if (typeof mod.__unstable__loadDesignSystem !== 'function') throw new Error(t('engine.tw.noDesignApi'));
   const css = opts.css ?? readFileSync(entryFile, 'utf8');
   const ds = await mod.__unstable__loadDesignSystem(css, { base });
   return new TwDesign(ds, opts.rem ?? 16);

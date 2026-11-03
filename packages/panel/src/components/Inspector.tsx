@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { MARGIN, PADDING, RADIUS, type PanelState, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
+import { MARGIN, PADDING, RADIUS, t, type PanelState, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
 import { currentValue, declaredVar, isPending } from '../lib/format';
 import { ctxOf, scaleKeyOf, type Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
@@ -71,41 +71,41 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
 
   return (
     <div className="inspector">
-      <Section id="layout" title="布局" open={open('layout')} onToggle={toggle}>
-        <Row label="排列">
+      <Section id="layout" title={t('insp.layout')} open={open('layout')} onToggle={toggle}>
+        <Row label={t('insp.display')}>
           <Segmented
             {...kw('display')}
             value={isFlex ? 'flex' : isGrid ? 'grid' : display}
             options={[
-              { value: 'block', label: '块', title: 'block：独占一行' },
-              { value: 'flex', label: 'Flex', title: 'flex：子元素按一条轴排列' },
-              { value: 'grid', label: 'Grid', title: 'grid：子元素排成网格' },
-              { value: 'inline-block', label: '行内', title: 'inline-block：和文字排在一行' },
-              { value: 'none', label: '隐藏', title: 'none：不显示' },
+              { value: 'block', label: t('insp.display.block'), title: t('insp.display.block.title') },
+              { value: 'flex', label: 'Flex', title: t('insp.display.flex.title') },
+              { value: 'grid', label: 'Grid', title: t('insp.display.grid.title') },
+              { value: 'inline-block', label: t('insp.display.inline'), title: t('insp.display.inline.title') },
+              { value: 'none', label: t('insp.display.none'), title: t('insp.display.none.title') },
             ]}
           />
         </Row>
         {isFlex && (
-          <Row label="方向">
+          <Row label={t('insp.direction')}>
             <Segmented
               {...kw('flex-direction')}
               options={[
-                { value: 'row', label: <b className="glyph">→</b>, title: '横向（row）' },
-                { value: 'column', label: <b className="glyph">↓</b>, title: '纵向（column）' },
-                { value: 'row-reverse', label: <b className="glyph">←</b>, title: '横向反转（row-reverse）' },
-                { value: 'column-reverse', label: <b className="glyph">↑</b>, title: '纵向反转（column-reverse）' },
+                { value: 'row', label: <b className="glyph">→</b>, title: t('insp.dir.row') },
+                { value: 'column', label: <b className="glyph">↓</b>, title: t('insp.dir.column') },
+                { value: 'row-reverse', label: <b className="glyph">←</b>, title: t('insp.dir.rowReverse') },
+                { value: 'column-reverse', label: <b className="glyph">↑</b>, title: t('insp.dir.columnReverse') },
               ]}
             />
-            <IconToggle on={wraps} title={wraps ? '换行：开（flex-wrap: wrap）' : '换行：关（nowrap）'} onClick={() => edit(['flex-wrap'], { props: [], value: wraps ? 'nowrap' : 'wrap', token: null, phase: 'commit' })}>
+            <IconToggle on={wraps} title={wraps ? t('insp.wrap.on') : t('insp.wrap.off')} onClick={() => edit(['flex-wrap'], { props: [], value: wraps ? 'nowrap' : 'wrap', token: null, phase: 'commit' })}>
               <Icon.wrap />
             </IconToggle>
           </Row>
         )}
         {isGrid && (
-          <Row label="列数">
+          <Row label={t('insp.columns')}>
             <NumberField
               label={<b className="glyph">#</b>}
-              title="网格列数（等宽）"
+              title={t('insp.columns.title')}
               prop="grid-template-columns"
               values={[trackCount(currentValue(sel, 'grid-template-columns'))]}
               steps={null}
@@ -122,45 +122,45 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
         )}
         {(isFlex || isGrid) && (
           <>
-            <Row label="分布">
+            <Row label={t('insp.justify')}>
               <Segmented
                 {...kw('justify-content')}
                 value={justifyOf(currentValue(sel, 'justify-content'))}
                 className={vertical ? 'rot' : undefined}
                 options={[
-                  { value: 'flex-start', label: <Icon.jStart />, title: '靠起点（start）' },
-                  { value: 'center', label: <Icon.jCenter />, title: '居中（center）' },
-                  { value: 'flex-end', label: <Icon.jEnd />, title: '靠终点（end）' },
-                  { value: 'space-between', label: <Icon.jBetween />, title: '两端对齐（space-between）' },
-                  { value: 'space-around', label: <Icon.jAround />, title: '环绕（space-around）' },
-                  { value: 'space-evenly', label: <Icon.jEvenly />, title: '均分（space-evenly）' },
+                  { value: 'flex-start', label: <Icon.jStart />, title: t('insp.at.start') },
+                  { value: 'center', label: <Icon.jCenter />, title: t('insp.at.center') },
+                  { value: 'flex-end', label: <Icon.jEnd />, title: t('insp.at.end') },
+                  { value: 'space-between', label: <Icon.jBetween />, title: t('insp.at.between') },
+                  { value: 'space-around', label: <Icon.jAround />, title: t('insp.at.around') },
+                  { value: 'space-evenly', label: <Icon.jEvenly />, title: t('insp.at.evenly') },
                 ]}
               />
             </Row>
-            <Row label="对齐">
+            <Row label={t('insp.align')}>
               <Segmented
                 {...kw('align-items')}
                 value={alignItemsOf(currentValue(sel, 'align-items'))}
                 className={vertical ? 'rot-ccw' : undefined}
                 options={[
-                  { value: 'flex-start', label: <Icon.aStart />, title: '靠起点（start）' },
-                  { value: 'center', label: <Icon.aCenter />, title: '居中（center）' },
-                  { value: 'flex-end', label: <Icon.aEnd />, title: '靠终点（end）' },
-                  { value: 'stretch', label: <Icon.aStretch />, title: '拉伸（stretch）' },
-                  { value: 'baseline', label: <Icon.aBaseline />, title: '文字基线（baseline）' },
+                  { value: 'flex-start', label: <Icon.aStart />, title: t('insp.at.start') },
+                  { value: 'center', label: <Icon.aCenter />, title: t('insp.at.center') },
+                  { value: 'flex-end', label: <Icon.aEnd />, title: t('insp.at.end') },
+                  { value: 'stretch', label: <Icon.aStretch />, title: t('insp.at.stretch') },
+                  { value: 'baseline', label: <Icon.aBaseline />, title: t('insp.at.baseline') },
                 ]}
               />
             </Row>
-            <Row label="间隙">
+            <Row label={t('insp.gap')}>
               {split('gap') ? (
                 <>
-                  {num(['row-gap'], <b className="glyph">行</b>, '行间隙')}
-                  {num(['column-gap'], <b className="glyph">列</b>, '列间隙')}
+                  {num(['row-gap'], <b className="glyph">{t('insp.gap.rowGlyph')}</b>, t('insp.gap.row'))}
+                  {num(['column-gap'], <b className="glyph">{t('insp.gap.columnGlyph')}</b>, t('insp.gap.column'))}
                 </>
               ) : (
-                num(['row-gap', 'column-gap'], <Icon.padX />, '子元素间隙')
+                num(['row-gap', 'column-gap'], <Icon.padX />, t('insp.gap.both'))
               )}
-              <IconToggle on={split('gap')} title="分别调整行、列间隙" onClick={() => toggleSplit('gap')}>
+              <IconToggle on={split('gap')} title={t('insp.gap.split')} onClick={() => toggleSplit('gap')}>
                 <Icon.sides />
               </IconToggle>
             </Row>
@@ -168,75 +168,85 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
         )}
       </Section>
 
-      <Section id="spacing" title="间距" open={open('spacing')} onToggle={toggle}>
+      <Section id="spacing" title={t('insp.spacing')} open={open('spacing')} onToggle={toggle}>
         <BoxRow
-          label="内边距"
+          label={t('insp.padding')}
           id="padding"
           split={split('padding')}
           onSplit={toggleSplit}
-          pair={[num([PL, PR], <Icon.padX />, '左右内边距'), num([PT, PB], <Icon.padY />, '上下内边距')]}
-          sides={[num([PT], <Icon.top />, '上内边距'), num([PR], <Icon.right />, '右内边距'), num([PB], <Icon.bottom />, '下内边距'), num([PL], <Icon.left />, '左内边距')]}
+          pair={[num([PL, PR], <Icon.padX />, t('insp.padding.x')), num([PT, PB], <Icon.padY />, t('insp.padding.y'))]}
+          sides={[
+            num([PT], <Icon.top />, t('insp.padding.top')),
+            num([PR], <Icon.right />, t('insp.padding.right')),
+            num([PB], <Icon.bottom />, t('insp.padding.bottom')),
+            num([PL], <Icon.left />, t('insp.padding.left')),
+          ]}
         />
         <BoxRow
-          label="外边距"
+          label={t('insp.margin')}
           id="margin"
           split={split('margin')}
           onSplit={toggleSplit}
-          pair={[num([ML, MR], <Icon.padX />, '左右外边距'), num([MT, MB], <Icon.padY />, '上下外边距')]}
-          sides={[num([MT], <Icon.top />, '上外边距'), num([MR], <Icon.right />, '右外边距'), num([MB], <Icon.bottom />, '下外边距'), num([ML], <Icon.left />, '左外边距')]}
+          pair={[num([ML, MR], <Icon.padX />, t('insp.margin.x')), num([MT, MB], <Icon.padY />, t('insp.margin.y'))]}
+          sides={[
+            num([MT], <Icon.top />, t('insp.margin.top')),
+            num([MR], <Icon.right />, t('insp.margin.right')),
+            num([MB], <Icon.bottom />, t('insp.margin.bottom')),
+            num([ML], <Icon.left />, t('insp.margin.left')),
+          ]}
         />
       </Section>
 
-      <Section id="size" title="尺寸" open={open('size')} onToggle={toggle} aside={<MoreToggle on={split('size-more')} onClick={() => toggleSplit('size-more')} />}>
-        <Row label="宽 / 高">
-          {num(['width'], <Icon.w />, '宽度')}
-          {num(['height'], <Icon.h />, '高度')}
+      <Section id="size" title={t('insp.size')} open={open('size')} onToggle={toggle} aside={<MoreToggle on={split('size-more')} onClick={() => toggleSplit('size-more')} />}>
+        <Row label={t('insp.size.wh')}>
+          {num(['width'], <Icon.w />, t('insp.width'))}
+          {num(['height'], <Icon.h />, t('insp.height'))}
         </Row>
         {split('size-more') && (
           <>
-            <Row label="最小">
-              {num(['min-width'], <Icon.w />, '最小宽度')}
-              {num(['min-height'], <Icon.h />, '最小高度')}
+            <Row label={t('insp.size.min')}>
+              {num(['min-width'], <Icon.w />, t('insp.minWidth'))}
+              {num(['min-height'], <Icon.h />, t('insp.minHeight'))}
             </Row>
-            <Row label="最大">
-              {num(['max-width'], <Icon.w />, '最大宽度')}
-              {num(['max-height'], <Icon.h />, '最大高度')}
+            <Row label={t('insp.size.max')}>
+              {num(['max-width'], <Icon.w />, t('insp.maxWidth'))}
+              {num(['max-height'], <Icon.h />, t('insp.maxHeight'))}
             </Row>
           </>
         )}
       </Section>
 
-      <Section id="position" title="定位" open={open('position')} onToggle={toggle}>
-        <Row label="方式">
+      <Section id="position" title={t('insp.position')} open={open('position')} onToggle={toggle}>
+        <Row label={t('insp.pos.mode')}>
           <Segmented
             {...kw('position')}
             options={[
-              { value: 'static', label: '默认', title: 'static：跟随文档流' },
-              { value: 'relative', label: '相对', title: 'relative：相对自身原位置偏移' },
-              { value: 'absolute', label: '绝对', title: 'absolute：相对最近的定位祖先' },
-              { value: 'fixed', label: '固定', title: 'fixed：相对视口' },
-              { value: 'sticky', label: '粘性', title: 'sticky：滚动到边缘时吸住' },
+              { value: 'static', label: t('insp.pos.static'), title: t('insp.pos.static.title') },
+              { value: 'relative', label: t('insp.pos.relative'), title: t('insp.pos.relative.title') },
+              { value: 'absolute', label: t('insp.pos.absolute'), title: t('insp.pos.absolute.title') },
+              { value: 'fixed', label: t('insp.pos.fixed'), title: t('insp.pos.fixed.title') },
+              { value: 'sticky', label: t('insp.pos.sticky'), title: t('insp.pos.sticky.title') },
             ]}
           />
         </Row>
         {position !== 'static' && (
-          <Row label="偏移">
+          <Row label={t('insp.offset')}>
             <div className="quad">
-              {num(['top'], <Icon.top />, '上偏移（top）')}
-              {num(['right'], <Icon.right />, '右偏移（right）')}
-              {num(['bottom'], <Icon.bottom />, '下偏移（bottom）')}
-              {num(['left'], <Icon.left />, '左偏移（left）')}
+              {num(['top'], <Icon.top />, t('insp.offset.top'))}
+              {num(['right'], <Icon.right />, t('insp.offset.right'))}
+              {num(['bottom'], <Icon.bottom />, t('insp.offset.bottom'))}
+              {num(['left'], <Icon.left />, t('insp.offset.left'))}
             </div>
           </Row>
         )}
-        <Row label="层级">{num(['z-index'], <Icon.layers />, '层级（z-index）', { unit: '' })}</Row>
+        <Row label={t('insp.zIndex')}>{num(['z-index'], <Icon.layers />, t('insp.zIndex.title'), { unit: '' })}</Row>
       </Section>
 
-      <Section id="typography" title="文字" open={open('typography')} onToggle={toggle}>
-        <Row label="字号 / 字重">
-          {num(['font-size'], <b className="glyph">T</b>, '字号', { min: 0 })}
+      <Section id="typography" title={t('insp.typography')} open={open('typography')} onToggle={toggle}>
+        <Row label={t('insp.sizeWeight')}>
+          {num(['font-size'], <b className="glyph">T</b>, t('insp.fontSize'), { min: 0 })}
           <SelectField
-            title="字重"
+            title={t('insp.fontWeight')}
             value={currentValue(sel, 'font-weight')}
             display={weightLabel(currentValue(sel, 'font-weight'), scales?.fontWeight)}
             steps={scales?.fontWeight ?? []}
@@ -246,26 +256,26 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
             onEdit={(e) => edit(['font-weight'], e)}
           />
         </Row>
-        <Row label="行高 / 字距">
-          {num(['line-height'], <b className="glyph">↕</b>, '行高', { min: 0 })}
-          {num(['letter-spacing'], <b className="glyph">↔</b>, '字距', { stepSize: 0.1 })}
+        <Row label={t('insp.lineLetter')}>
+          {num(['line-height'], <b className="glyph">↕</b>, t('insp.lineHeight'), { min: 0 })}
+          {num(['letter-spacing'], <b className="glyph">↔</b>, t('insp.letterSpacing'), { stepSize: 0.1 })}
         </Row>
-        <Row label="对齐">
+        <Row label={t('insp.align')}>
           <Segmented
             value={alignOf(currentValue(sel, 'text-align'))}
             pending={isPending(sel, ['text-align'])}
             options={[
-              { value: 'left', label: <Icon.alignLeft />, title: '左对齐' },
-              { value: 'center', label: <Icon.alignCenter />, title: '居中' },
-              { value: 'right', label: <Icon.alignRight />, title: '右对齐' },
-              { value: 'justify', label: <Icon.alignJustify />, title: '两端对齐' },
+              { value: 'left', label: <Icon.alignLeft />, title: t('insp.ta.left') },
+              { value: 'center', label: <Icon.alignCenter />, title: t('insp.ta.center') },
+              { value: 'right', label: <Icon.alignRight />, title: t('insp.ta.right') },
+              { value: 'justify', label: <Icon.alignJustify />, title: t('insp.ta.justify') },
             ]}
             onPick={(v) => edit(['text-align'], { props: [], value: v, token: null, phase: 'commit' })}
           />
         </Row>
-        <Row label="颜色">
+        <Row label={t('insp.color')}>
           <ColorField
-            title="文字颜色"
+            title={t('insp.textColor')}
             prop="color"
             value={currentValue(sel, 'color')}
             steps={scales?.colors ?? null}
@@ -277,10 +287,10 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
         </Row>
       </Section>
 
-      <Section id="fill" title="填充" open={open('fill')} onToggle={toggle}>
-        <Row label="背景">
+      <Section id="fill" title={t('insp.fill')} open={open('fill')} onToggle={toggle}>
+        <Row label={t('insp.background')}>
           <ColorField
-            title="背景色"
+            title={t('insp.bgColor')}
             prop="background-color"
             value={currentValue(sel, 'background-color')}
             steps={scales?.colors ?? null}
@@ -292,25 +302,27 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
         </Row>
       </Section>
 
-      <Section id="radius" title="圆角" open={open('radius')} onToggle={toggle}>
-        <Row label="圆角">
+      <Section id="radius" title={t('insp.radius')} open={open('radius')} onToggle={toggle}>
+        <Row label={t('insp.radius')}>
           {split('radius') ? (
             <div className="quad">
-              {RADIUS.map((p, i) => num([p], <b className="glyph">{['↖', '↗', '↘', '↙'][i]}</b>, ['左上圆角', '右上圆角', '右下圆角', '左下圆角'][i], { min: 0 }))}
+              {RADIUS.map((p, i) =>
+                num([p], <b className="glyph">{['↖', '↗', '↘', '↙'][i]}</b>, t((['insp.radius.tl', 'insp.radius.tr', 'insp.radius.br', 'insp.radius.bl'] as const)[i]), { min: 0 }),
+              )}
             </div>
           ) : (
-            num(RADIUS, <Icon.radius />, '圆角', { min: 0 })
+            num(RADIUS, <Icon.radius />, t('insp.radius'), { min: 0 })
           )}
-          <IconToggle on={split('radius')} title="分别调整四个角" onClick={() => toggleSplit('radius')}>
+          <IconToggle on={split('radius')} title={t('insp.radius.split')} onClick={() => toggleSplit('radius')}>
             <Icon.corners />
           </IconToggle>
         </Row>
       </Section>
 
-      <Section id="effects" title="效果" open={open('effects')} onToggle={toggle}>
-        <Row label="不透明度">
+      <Section id="effects" title={t('insp.effects')} open={open('effects')} onToggle={toggle}>
+        <Row label={t('insp.opacity')}>
           <SliderField
-            title="不透明度"
+            title={t('insp.opacity')}
             value={Math.round(parseFloat(currentValue(sel, 'opacity') || '1') * 100)}
             min={0}
             max={100}
@@ -320,9 +332,9 @@ export function Inspector({ state, sel, prefs, setPrefs, edit }: Props) {
             onEdit={(n, phase) => edit(['opacity'], { props: [], value: String(n / 100), token: opacityToken(n, scales?.opacity), phase })}
           />
         </Row>
-        <Row label="阴影">
+        <Row label={t('insp.shadow')}>
           <SelectField
-            title="阴影"
+            title={t('insp.shadow')}
             value={currentValue(sel, 'box-shadow')}
             display={shadowLabel(sel, scales?.shadow)}
             steps={scales?.shadow ?? []}
@@ -343,7 +355,7 @@ function BoxRow(props: { label: string; id: string; split: boolean; onSplit: (id
   return (
     <Row label={props.label}>
       {props.split ? <div className="quad">{props.sides}</div> : props.pair}
-      <IconToggle on={props.split} title="分别调整四边" onClick={() => props.onSplit(props.id)}>
+      <IconToggle on={props.split} title={t('insp.sides.split')} onClick={() => props.onSplit(props.id)}>
         <Icon.sides />
       </IconToggle>
     </Row>
@@ -353,7 +365,7 @@ function BoxRow(props: { label: string; id: string; split: boolean; onSplit: (id
 function MoreToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button className="link-btn" onClick={onClick}>
-      {on ? '收起' : '最小 / 最大'}
+      {on ? t('insp.size.less') : t('insp.size.more')}
     </button>
   );
 }
@@ -399,12 +411,12 @@ function opacityToken(n: number, steps: ScaleStep[] | undefined): string | null 
 
 function shadowLabel(sel: SelectionView, steps: ScaleStep[] | undefined): string {
   const pending = sel.pending['box-shadow'];
-  if (pending) return steps?.find((s) => s.value === pending)?.label ?? '自定义';
+  if (pending) return steps?.find((s) => s.value === pending)?.label ?? t('insp.custom');
   const w = sel.el.winners['box-shadow'];
   if (w?.rule?.utility) return w.rule.utility.replace(/^.*:/, '');
   const v = declaredVar(sel.el, 'box-shadow');
   if (v) return v;
   const computed = sel.el.computed['box-shadow'];
-  if (!computed || computed === 'none') return '无';
-  return steps?.find((s) => s.value === computed)?.label ?? '自定义';
+  if (!computed || computed === 'none') return t('insp.none');
+  return steps?.find((s) => s.value === computed)?.label ?? t('insp.custom');
 }

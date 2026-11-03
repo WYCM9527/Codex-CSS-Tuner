@@ -1,4 +1,5 @@
 import { parse } from '@babel/parser';
+import { t as msg } from '@css-tuner/protocol';
 
 /** className 里一段可以直接改写的字面量文本 */
 export interface Segment {
@@ -97,7 +98,7 @@ export function locateClassSite(source: string, filename: string, line: number, 
     if (sameLine.length === 1) el = sameLine[0];
     else if (sameLine.length > 1) el = sameLine.reduce((a, b) => (Math.abs(b.loc.start.column - (column - 1)) < Math.abs(a.loc.start.column - (column - 1)) ? b : a));
   }
-  if (!el) return { error: `源码第 ${line} 行找不到 JSX 元素` };
+  if (!el) return { error: msg('engine.jsx.noElement', { line }) };
   return sites(el);
 }
 
@@ -217,7 +218,7 @@ export function classLiteralSites(source: string, filename: string): ClassSite[]
   try {
     ast = parseModule(source, filename);
   } catch (e) {
-    return { error: `解析源码失败：${(e as Error).message}` };
+    return { error: msg('engine.jsx.parseFailed', { error: (e as Error).message }) };
   }
   const out: ClassSite[] = [];
   const stack: Node[] = [];
@@ -255,7 +256,7 @@ export function locateLiteralSite(source: string, filename: string, line: number
   const exact = all.find((s) => s.line === line && s.column === column);
   if (exact && has(exact)) return exact;
   const near = all.filter(has).sort((a, b) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
-  return near ?? { error: `源码第 ${line} 行附近找不到${token ? `包含 ${token} 的` : ''}类名字符串` };
+  return near ?? { error: token ? msg('engine.jsx.noClassStringWith', { line, token }) : msg('engine.jsx.noClassString', { line }) };
 }
 
 function tokenize(source: string, site: ClassSite) {
@@ -276,7 +277,7 @@ function classSites(source: string, filename: string): { opens: Node[]; sites: (
   try {
     ast = parseModule(source, filename);
   } catch (e) {
-    return { error: `解析源码失败：${(e as Error).message}` };
+    return { error: msg('engine.jsx.parseFailed', { error: (e as Error).message }) };
   }
   const opens: Node[] = [];
   const declarators = new Map<string, Node[]>();

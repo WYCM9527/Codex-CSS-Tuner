@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { hsvToRgb, parseColor, rgbToHsv, sameColor, toHex, type Hsva, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { hsvToRgb, parseColor, rgbToHsv, sameColor, t, toHex, type Hsva, type ScaleStep, type Target } from '@css-tuner/protocol';
 import { varName } from '../lib/format';
 import type { Edit } from './types';
 
@@ -21,7 +21,7 @@ function matchStep(steps: ScaleStep[] | null, value: string): ScaleStep | null {
 
 function hexOf(value: string): string {
   const c = parseColor(value);
-  if (c && c.a === 0) return '透明';
+  if (c && c.a === 0) return t('color.transparent');
   return c ? toHex(c) : value;
 }
 
@@ -45,7 +45,7 @@ export function ColorField(p: ColorFieldProps) {
         <span className="swatch" style={{ ['--c' as string]: shown }} />
         <span className="cf-label">{label}</span>
         {label !== hexOf(shown) && parseColor(shown) && <span className="cf-hex">{hexOf(shown)}</span>}
-        {agent && <span className="nf-agent" title={p.target?.reason ?? '无法直接写回，会交给 Agent'} />}
+        {agent && <span className="nf-agent" title={p.target?.reason ?? t('field.agent')} />}
       </button>
       {open && <ColorPicker value={shown} steps={p.steps} onEdit={p.onEdit} onClose={() => setOpen(false)} />}
     </div>
@@ -54,7 +54,10 @@ export function ColorField(p: ColorFieldProps) {
 
 function tip(p: ColorFieldProps): string {
   const lines = [p.title];
-  if (p.target) lines.push(`写入：${p.target.label}${p.target.affects > 1 ? `（影响 ${p.target.affects} 处）` : ''}`);
+  if (p.target) {
+    const affects = p.target.affects > 1 ? t('common.paren', { text: t('field.affects', { n: p.target.affects }) }) : '';
+    lines.push(`${t('field.writeTo', { label: p.target.label })}${affects}`);
+  }
   return lines.join('\n');
 }
 
@@ -158,7 +161,7 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
         onChange={(e) => setFromHsva({ ...hsva, h: +e.target.value }, 'live')}
         onPointerUp={() => send(cur, null, 'commit')}
         onKeyUp={() => send(cur, null, 'commit')}
-        aria-label="色相"
+        aria-label={t('color.hue')}
       />
       <input
         className="alpha"
@@ -170,7 +173,7 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
         onChange={(e) => setFromHsva({ ...hsva, a: +e.target.value / 100 }, 'live')}
         onPointerUp={() => send(cur, null, 'commit')}
         onKeyUp={() => send(cur, null, 'commit')}
-        aria-label="不透明度"
+        aria-label={t('insp.opacity')}
       />
       <div className="picker-row">
         <input
@@ -188,12 +191,12 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
             }
           }}
           onBlur={() => setHex(null)}
-          aria-label="十六进制颜色"
+          aria-label={t('color.hex')}
         />
         {hasEyeDropper && (
           <button
             className="icon-btn"
-            title="从屏幕取色"
+            title={t('color.eyedropper')}
             onClick={async () => {
               try {
                 const Ctor = (window as unknown as { EyeDropper: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
@@ -270,7 +273,7 @@ function groupSteps(steps: ScaleStep[]): Group[] {
     } else custom.push(s);
   }
   const out: Group[] = [];
-  if (custom.length) out.push({ name: steps.some((s) => s.label.startsWith('--')) ? '页面变量' : '主题', grid: false, items: custom });
-  if (families.size) out.push({ name: '调色板', grid: true, items: [...families.values()].flat() });
+  if (custom.length) out.push({ name: steps.some((s) => s.label.startsWith('--')) ? t('color.pageVars') : t('color.theme'), grid: false, items: custom });
+  if (families.size) out.push({ name: t('color.palette'), grid: true, items: [...families.values()].flat() });
   return out;
 }

@@ -638,6 +638,11 @@ select {
   gap: 6px;
 }
 
+/* 英文标签比中文长 */
+:root:lang(en) .row:not(.var-row) {
+  grid-template-columns: 74px 1fr;
+}
+
 .row-label {
   line-height: var(--row);
   color: var(--muted);

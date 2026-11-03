@@ -1,6 +1,6 @@
 import postcss, { type AtRule, type ChildNode, type Container, type Declaration, type Rule } from 'postcss';
 import { dirname, isAbsolute, resolve } from 'node:path';
-import { aliasesOf, normalizeCondition, normalizeSelector, resolveNested, shorthandsOf, splitTopLevel } from '@css-tuner/protocol';
+import { aliasesOf, normalizeCondition, normalizeSelector, resolveNested, shorthandsOf, splitTopLevel, t } from '@css-tuner/protocol';
 import type { EditResult, TextEdit } from '../types';
 import { physical, physicalSet } from '../physical';
 import { isCssModule, localClasses, localizeSelector } from './modules';
@@ -59,14 +59,14 @@ function collect(entry: string, read: (f: string) => string | null): { rules: Fo
     const source = read(file);
     if (!files.includes(file)) files.push(file);
     if (source === null) {
-      errors.push(`读不到 ${file}`);
+      errors.push(t('engine.readFailed', { file }));
       return;
     }
     let root: postcss.Root;
     try {
       root = postcss.parse(source, { from: file });
     } catch (e) {
-      errors.push(`解析 ${file} 失败：${(e as Error).message}`);
+      errors.push(t('engine.parseFailed', { file, error: (e as Error).message }));
       return;
     }
     const nextSeen = new Set(seen).add(file);
@@ -125,8 +125,8 @@ function pick(rules: FoundRule[], errors: string[], spec: RuleKey): FoundRule | 
     const local = localized(rules, spec.fullSelector);
     if (local) same = rules.filter((r) => r.key === keyOf(local));
   }
-  if (!same.length) return { error: `源文件里找不到规则 ${spec.selector}（可能已被修改，或由预处理器生成）` };
-  return same[spec.ordinal] ?? (same.length === 1 ? same[0] : { error: `规则 ${spec.selector} 在源文件里出现了 ${same.length} 次，无法确定是哪一条` });
+  if (!same.length) return { error: t('engine.css.ruleNotFound', { selector: spec.selector }) };
+  return same[spec.ordinal] ?? (same.length === 1 ? same[0] : { error: t('engine.css.ruleAmbiguous', { selector: spec.selector, n: same.length }) });
 }
 
 function findRule(input: CssEditInput): FoundRule | { error: string } {
@@ -323,7 +323,7 @@ export function editCssRule(input: CssEditInput): EditResult {
     edits.push(...appendDecls(rule, source, list));
     notes.push(...list.map(([p, val]) => `+ ${p}: ${val}`));
   }
-  if (!edits.length) return { ok: false, reason: '没有生成任何修改' };
+  if (!edits.length) return { ok: false, reason: t('engine.noEdits') };
   return { ok: true, file, edits, summary: `${sel} { ${notes.join('; ')} }` };
 }
 

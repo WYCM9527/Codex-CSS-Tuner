@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PanelState, PanelToExt } from '@css-tuner/protocol';
+import { getLocale, setLocale, t, type PanelState, type PanelToExt } from '@css-tuner/protocol';
 import type { Host } from './host';
 import { ChangeList, ElementHeader, NoticeBar, Toolbar } from './components/Chrome';
 import { Inspector, type UiPrefs } from './components/Inspector';
@@ -11,7 +11,10 @@ export function App({ host }: { host: Host }) {
   const [prefs, setPrefsState] = useState<UiPrefs>(() => host.load<UiPrefs>('prefs', { closed: ['position'], split: [] }));
 
   useEffect(() => {
-    const off = host.subscribe(setState);
+    const off = host.subscribe((s) => {
+      if (s.locale && s.locale !== getLocale()) setLocale(s.locale);
+      setState(s);
+    });
     host.send({ t: 'ready' });
     return off;
   }, [host]);
@@ -26,7 +29,7 @@ export function App({ host }: { host: Host }) {
   );
   const edit = useCallback((props: string[], e: Edit) => host.send({ t: 'edit', edit: { ...e, props } }), [host]);
 
-  if (!state) return <div className="boot">正在连接扩展…</div>;
+  if (!state) return <div className="boot">{t('panel.boot')}</div>;
   const sel = state.selection;
   const connected = state.connection === 'connected';
 
@@ -37,15 +40,15 @@ export function App({ host }: { host: Host }) {
       <main className="main">
         {!connected && state.connection !== 'opening' && (
           <div className="empty">
-            <p>填入开发服务器地址后点「打开」，页面会在 Cursor 内置浏览器里打开。</p>
-            <p className="muted">支持 Vite + React（Tailwind 4 或普通 CSS）；静态 HTML 可在资源管理器里右键 .html 选「用内置静态服务打开 HTML」。</p>
+            <p>{t('panel.empty.open')}</p>
+            <p className="muted">{t('panel.empty.support')}</p>
           </div>
         )}
-        {state.connection === 'opening' && <div className="empty muted">正在打开页面并注入调参脚本…</div>}
+        {state.connection === 'opening' && <div className="empty muted">{t('panel.opening')}</div>}
         {connected && !sel && (
           <div className="empty">
-            <p>点「选取元素」，再点页面上想调整的元素。</p>
-            <p className="muted">按 Esc 退出选取。</p>
+            <p>{t('panel.empty.pick')}</p>
+            <p className="muted">{t('panel.empty.esc')}</p>
           </div>
         )}
         {connected && sel && (

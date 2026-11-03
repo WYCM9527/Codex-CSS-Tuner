@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import type { WebSocket } from 'ws';
-import type { BridgeEvent, BridgeMethod, BridgeMethods, BridgeReply, PageInfo } from '@css-tuner/protocol';
+import { t, type BridgeEvent, type BridgeMethod, type BridgeMethods, type BridgeReply, type PageInfo } from '@css-tuner/protocol';
 import type { BrowserAdapter } from './browser';
 import type { BridgeServer } from './server';
 
@@ -17,7 +17,7 @@ interface Pending {
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${what} 超时`)), ms);
+    const timer = setTimeout(() => reject(new Error(t('session.timeout', { what }))), ms);
     p.then(
       (v) => {
         clearTimeout(timer);
@@ -81,7 +81,7 @@ export class PageSession implements vscode.Disposable {
     const source = this.bootScript();
     const reg = await b.cdp<{ identifier?: string }>(id, 'Page.addScriptToEvaluateOnNewDocument', { source });
     this.scriptId = reg?.identifier ?? null;
-    await withTimeout(b.exec(id, `${source};true`), 10000, '注入桥接脚本');
+    await withTimeout(b.exec(id, `${source};true`), 10000, t('session.inject'));
     if (this.socket && this.socket.readyState === this.socket.OPEN) this.setState('connected');
     else this.armWatchdog();
   }
@@ -96,7 +96,7 @@ export class PageSession implements vscode.Disposable {
         const alive = await withTimeout(
           this.browser.exec<boolean>(this.browserId, '!!(window.__CSS_TUNER__ && window.__CSS_TUNER__.call)'),
           3000,
-          '检查桥接脚本',
+          t('session.checkBridge'),
         );
         if (alive) this.startExecMode();
         else this.setState('lost');
@@ -109,7 +109,7 @@ export class PageSession implements vscode.Disposable {
   private startExecMode() {
     if (this.poll || this.disposed) return;
     this.mode = 'exec';
-    this.log('WebSocket 未连上（可能被页面 CSP 拦截），改用 executeJavaScript 通道');
+    this.log(t('session.wsFallback'));
     let failures = 0;
     let instance: string | null = null;
     const tick = async () => {
@@ -121,7 +121,7 @@ export class PageSession implements vscode.Disposable {
             'window.__CSS_TUNER__ ? { i: window.__CSS_TUNER__.instance, e: window.__CSS_TUNER__.drain() } : null',
           ),
           3000,
-          '拉取事件',
+          t('session.poll'),
         );
         if (batch === null) {
           if (++failures > 6) this.setState('lost');
@@ -163,7 +163,7 @@ export class PageSession implements vscode.Disposable {
         this.pending.delete(msg.id);
         clearTimeout(p.timer);
         if (msg.ok) p.resolve(msg.data);
-        else p.reject(new Error(msg.error ?? '桥接调用失败'));
+        else p.reject(new Error(msg.error ?? t('session.callFailed')));
         return;
       }
       this.dispatch(msg);
@@ -173,7 +173,7 @@ export class PageSession implements vscode.Disposable {
       this.socket = null;
       for (const [id, p] of this.pending) {
         clearTimeout(p.timer);
-        p.reject(new Error('页面连接已断开'));
+        p.reject(new Error(t('session.lost')));
         this.pending.delete(id);
       }
       if (!this.disposed) {
@@ -211,7 +211,7 @@ export class PageSession implements vscode.Disposable {
       return new Promise<Result<M>>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pending.delete(id);
-          reject(new Error(`${m} 超时`));
+          reject(new Error(t('session.timeout', { what: m })));
         }, timeoutMs);
         this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
         this.socket!.send(JSON.stringify({ t: 'req', id, m, p }));
@@ -221,7 +221,7 @@ export class PageSession implements vscode.Disposable {
       const script = `window.__CSS_TUNER__ ? window.__CSS_TUNER__.call(${JSON.stringify(m)}, ${JSON.stringify(p)}) : Promise.reject(new Error('bridge missing'))`;
       return withTimeout(this.browser.exec<Result<M>>(this.browserId, script), timeoutMs, m);
     }
-    throw new Error('页面未连接');
+    throw new Error(t('session.notConnected'));
   }
 
   /** 等 WebSocket 或 exec 通道握手完成 */

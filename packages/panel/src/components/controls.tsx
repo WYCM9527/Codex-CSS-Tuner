@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { ScaleStep, Target } from '@css-tuner/protocol';
+import { t, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Edit } from './types';
 
 export function Section(props: { id: string; title: string; open: boolean; onToggle: (id: string) => void; aside?: ReactNode; children: ReactNode }) {
@@ -49,14 +49,15 @@ export function Segmented(props: { value: string; options: SegOption[]; pending?
           {o.label}
         </button>
       ))}
-      {agent && <span className="nf-agent" title={props.target?.reason ?? '无法直接写回，会交给 Agent'} />}
+      {agent && <span className="nf-agent" title={props.target?.reason ?? t('field.agent')} />}
     </div>
   );
 }
 
-function targetHint(t: Target | undefined): string | undefined {
-  if (!t) return undefined;
-  return t.affects > 1 ? `写入：${t.label}\n影响 ${t.affects} 处` : `写入：${t.label}`;
+function targetHint(target: Target | undefined): string | undefined {
+  if (!target) return undefined;
+  const to = t('field.writeTo', { label: target.label });
+  return target.affects > 1 ? `${to}\n${t('field.affects', { n: target.affects })}` : to;
 }
 
 /** 下拉选择：悬停选项即预览，点选提交，Esc 或点外面恢复打开前的值 */
@@ -101,7 +102,7 @@ export function SelectField(props: {
     <div className={`sel${props.pending ? ' is-pending' : ''}`} ref={box}>
       <button className="sel-btn" onClick={() => (open ? close(true) : setOpen(true))} title={props.title} aria-expanded={open}>
         <span className="sel-value">{props.display}</span>
-        {agent && <span className="nf-agent" title={props.target?.reason ?? '无法直接写回，会交给 Agent'} />}
+        {agent && <span className="nf-agent" title={props.target?.reason ?? t('field.agent')} />}
         <Chevron open={open} />
       </button>
       {open && (
@@ -194,7 +195,7 @@ export function TextField(props: { title: string; value: string; pending: boolea
           }
         }}
       />
-      {agent && <span className="nf-agent" title={props.target?.reason ?? '无法直接写回，会交给 Agent'} />}
+      {agent && <span className="nf-agent" title={props.target?.reason ?? t('field.agent')} />}
     </div>
   );
 }

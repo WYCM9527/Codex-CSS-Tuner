@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Crumb, PanelToExt, SelectionView } from '@css-tuner/protocol';
+import { t, type Crumb, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
 import { IconToggle, Section } from './controls';
 
 type Send = (m: PanelToExt) => void;
@@ -40,7 +40,7 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
       <button
         className={`tree-row${on ? ' on' : ''}`}
         style={{ paddingLeft: 6 + depth * 11 }}
-        title={comp ? `${c.label}\n组件 <${comp}>` : c.label}
+        title={comp ? t('tree.component', { label: c.label, name: comp }) : c.label}
         onClick={() => !on && send({ t: 'select', uid: c.uid })}
         onPointerEnter={() => send({ t: 'hover', uid: c.uid })}
         onPointerLeave={() => send({ t: 'hover', uid: null })}
@@ -56,11 +56,11 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
   return (
     <Section
       id="tree"
-      title="结构"
+      title={t('tree.title')}
       open={props.open}
       onToggle={props.onToggle}
       aside={
-        <IconToggle on={onlyComponents} title={onlyComponents ? '只看组件：开' : '只看组件：关'} onClick={() => props.setOnlyComponents(!onlyComponents)}>
+        <IconToggle on={onlyComponents} title={onlyComponents ? t('tree.onlyComponents.on') : t('tree.onlyComponents.off')} onClick={() => props.setOnlyComponents(!onlyComponents)}>
           <b className="glyph">&lt;/&gt;</b>
         </IconToggle>
       }
@@ -69,7 +69,7 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
         {hiddenUp > 0 && (
           <li>
             <button className="tree-more" onClick={() => setAllUp(true)}>
-              ↑ 还有 {hiddenUp} 层
+              {t('tree.moreUp', { n: hiddenUp })}
             </button>
           </li>
         )}
@@ -78,11 +78,11 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
         {hiddenKids > 0 && (
           <li>
             <button className="tree-more" style={{ paddingLeft: 6 + (selfDepth + 1) * 11 }} onClick={() => setAllKids(true)}>
-              还有 {hiddenKids} 个子元素
+              {t('tree.moreKids', { n: hiddenKids })}
             </button>
           </li>
         )}
-        {!shownKids.length && !sel.el.children.length && <li className="tree-empty muted">（没有子元素）</li>}
+        {!shownKids.length && !sel.el.children.length && <li className="tree-empty muted">{t('tree.noKids')}</li>}
       </ul>
     </Section>
   );

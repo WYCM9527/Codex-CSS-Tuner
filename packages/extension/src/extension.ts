@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { localeFrom, setLocale, t } from '@css-tuner/protocol';
 import { SCHEME } from './applier';
 import { Controller } from './controller';
 import { PanelProvider } from './panel';
@@ -8,6 +9,7 @@ import { maybeRunSelfTest } from './selftest';
 let controller: Controller | null = null;
 
 export function activate(ctx: vscode.ExtensionContext) {
+  setLocale(localeFrom(vscode.env.language));
   const out = vscode.window.createOutputChannel('CSS Tuner');
   const log = (msg: string) => out.appendLine(`[${new Date().toLocaleTimeString()}] ${msg}`);
   const c = new Controller(ctx, log);
@@ -25,7 +27,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       const target =
         typeof url === 'string'
           ? url
-          : await vscode.window.showInputBox({ prompt: '要调参的页面地址', value: c.state.defaultUrl, ignoreFocusOut: true });
+          : await vscode.window.showInputBox({ prompt: t('ext.open.prompt'), value: c.state.defaultUrl, ignoreFocusOut: true });
       if (!target) return;
       panel.reveal();
       await c.handle({ t: 'openPage', url: target });
@@ -54,25 +56,25 @@ async function startupCheck(c: Controller, out: vscode.OutputChannel) {
   const items = await c.selfCheck(false);
   const { ok, text } = summarizeCheck(items);
   if (ok) return;
-  out.appendLine(`启动自检：\n${text}`);
-  const missing = items.filter((i) => i.required && !i.ok).map((i) => i.name.replace(/^内置浏览器命令 /, ''));
-  c.notify('error', `当前 Cursor 缺少内置浏览器命令（${missing.join('、')}），调参功能暂不可用。可以运行“CSS Tuner: 自检”查看详情，或升级插件。`);
-  const pick = await vscode.window.showWarningMessage(`CSS Tuner：当前 Cursor（${vscode.version}）缺少内置浏览器命令，调参功能暂不可用。`, '查看详情');
+  out.appendLine(t('check.startupLog', { text }));
+  const missing = items.filter((i) => i.required && !i.ok).map((i) => i.command ?? i.name);
+  c.notify('error', t('check.startupMissing', { missing: missing.join(t('common.listSep')) }));
+  const pick = await vscode.window.showWarningMessage(t('check.startupWarn', { version: vscode.version }), t('common.details'));
   if (pick) out.show(true);
 }
 
 async function runSelfCheck(c: Controller, out: vscode.OutputChannel, live: boolean) {
-  const items = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'CSS Tuner 自检中…' }, () => c.selfCheck(live));
+  const items = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('check.progress') }, () => c.selfCheck(live));
   const { ok, degraded, text } = summarizeCheck(items);
-  out.appendLine(`自检（Cursor ${vscode.version}）：\n${text}`);
+  out.appendLine(t('check.log', { version: vscode.version, text }));
   if (!ok) {
-    const pick = await vscode.window.showErrorMessage('CSS Tuner 自检没通过，调参功能暂不可用。', '查看详情');
+    const pick = await vscode.window.showErrorMessage(t('check.failed'), t('common.details'));
     if (pick) out.show(true);
   } else if (degraded) {
-    const pick = await vscode.window.showWarningMessage('CSS Tuner 自检通过，但有部分可选能力不可用。', '查看详情');
+    const pick = await vscode.window.showWarningMessage(t('check.degraded'), t('common.details'));
     if (pick) out.show(true);
   } else {
-    void vscode.window.showInformationMessage(`CSS Tuner 自检通过（${items.length} 项）。`);
+    void vscode.window.showInformationMessage(t('check.passed', { n: items.length }));
   }
   return items;
 }

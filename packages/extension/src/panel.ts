@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import type { PanelToExt } from '@css-tuner/protocol';
+import { getLocale, t, type PanelToExt } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 
 export class PanelProvider implements vscode.WebviewViewProvider {
@@ -36,7 +36,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
   private html(webview: vscode.Webview, media: vscode.Uri): string {
     const nonce = randomBytes(16).toString('base64');
     if (!existsSync(join(media.fsPath, 'index.js'))) {
-      return `<!doctype html><html><body style="font-family:var(--vscode-font-family);padding:12px;color:var(--vscode-foreground)">面板资源缺失，请先运行 <code>pnpm build</code>。</body></html>`;
+      return `<!doctype html><html lang="${getLocale()}"><body style="font-family:var(--vscode-font-family);padding:12px;color:var(--vscode-foreground)">${t('ext.panel.missing')}</body></html>`;
     }
     const js = webview.asWebviewUri(vscode.Uri.joinPath(media, 'index.js'));
     const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'index.css'));
@@ -48,7 +48,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
       `script-src 'nonce-${nonce}' ${webview.cspSource}`,
     ].join('; ');
     return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${getLocale()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">

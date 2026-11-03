@@ -1,5 +1,6 @@
 import postcss, { type AtRule, type Declaration } from 'postcss';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { t } from '@css-tuner/protocol';
 import type { EditResult } from '../types';
 import { appendDecls, importPath, valueRange } from './edit';
 
@@ -43,14 +44,14 @@ function scan(input: ThemeVarInput): Scan {
     if (depth > MAX_IMPORT_DEPTH || seen.has(file)) return;
     const source = input.read(file);
     if (source === null) {
-      errors.push(`读不到 ${file}`);
+      errors.push(t('engine.readFailed', { file }));
       return;
     }
     let root: postcss.Root;
     try {
       root = postcss.parse(source, { from: file });
     } catch (e) {
-      errors.push(`解析 ${file} 失败：${(e as Error).message}`);
+      errors.push(t('engine.parseFailed', { file, error: (e as Error).message }));
       return;
     }
     if (depth === 0) {
@@ -85,16 +86,16 @@ function scan(input: ThemeVarInput): Scan {
  */
 export function editThemeVar(input: ThemeVarInput): EditResult {
   const v = input.value.trim();
-  if (!input.name.startsWith('--')) return { ok: false, reason: `${input.name} 不是 CSS 变量` };
-  if (!v || /[;{}]/.test(v)) return { ok: false, reason: `变量值 ${v || '（空）'} 不合法` };
+  if (!input.name.startsWith('--')) return { ok: false, reason: t('engine.vars.notVar', { name: input.name }) };
+  if (!v || /[;{}]/.test(v)) return { ok: false, reason: t('engine.vars.badValue', { value: v || t('engine.vars.empty') }) };
   const { found, blocks, entry, importsEnd, errors } = scan(input);
-  if (entry === null) return { ok: false, reason: errors[0] ?? `读不到 ${input.file}` };
+  if (entry === null) return { ok: false, reason: errors[0] ?? t('engine.readFailed', { file: input.file }) };
 
   const last = found[found.length - 1];
   if (last) {
     const range = valueRange(last.source, last.decl);
-    if (!range) return { ok: false, reason: `定位不到 ${input.name} 的声明` };
-    if (last.decl.value.trim() === v) return { ok: false, reason: '值没有变化' };
+    if (!range) return { ok: false, reason: t('engine.vars.declNotFound', { name: input.name }) };
+    if (last.decl.value.trim() === v) return { ok: false, reason: t('engine.unchanged') };
     return {
       ok: true,
       file: last.file,
@@ -106,7 +107,7 @@ export function editThemeVar(input: ThemeVarInput): EditResult {
   const own = blocks.find((b) => b.file === input.file && !/\breference\b/.test(b.at.params));
   if (own) {
     const edits = appendDecls(own.at, own.source, [[input.name, v]]);
-    if (!edits.length) return { ok: false, reason: '没法往 @theme 块里加声明' };
+    if (!edits.length) return { ok: false, reason: t('engine.vars.themeAppendFailed') };
     return { ok: true, file: own.file, edits, summary: `@theme { + ${input.name}: ${v} }` };
   }
   const lineEnd = entry.indexOf('\n', importsEnd);

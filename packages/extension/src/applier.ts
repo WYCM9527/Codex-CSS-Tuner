@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
+import { t } from '@css-tuner/protocol';
 import { applyEdits, overlapping, revertTailwind, type TextEdit } from '@css-tuner/engine';
 import type { Controller } from './controller';
 import type { AppliedPatch, ChangeRecord, PatchEdit } from './journal';
@@ -71,7 +72,7 @@ export class SnapshotStore implements vscode.TextDocumentContentProvider {
     const v = this.virtual.get(uri.toString());
     if (v !== undefined) return v;
     const [, kind, id] = uri.path.split('/');
-    if (kind === 'before') return (await this.load(id)) ?? '（写回前的内容已不存在）';
+    if (kind === 'before') return (await this.load(id)) ?? t('apply.snapshotGone');
     return '';
   }
 
@@ -187,13 +188,13 @@ export class Applier {
           continue;
         }
         if (isDirty(r.file)) {
-          c.journal.update(rec.id, { status: 'failed', note: `${basename(r.file)} 在编辑器里有未保存的修改，先保存再应用` });
+          c.journal.update(rec.id, { status: 'failed', note: t('apply.unsaved', { file: basename(r.file) }) });
           report.failed++;
           continue;
         }
         const before = read(r.file);
         if (before === null) {
-          c.journal.update(rec.id, { status: 'failed', note: `读不到 ${r.file}` });
+          c.journal.update(rec.id, { status: 'failed', note: t('engine.readFailed', { file: r.file }) });
           report.failed++;
           continue;
         }
@@ -239,7 +240,7 @@ export class Applier {
       written.forEach(({ rec, patch }, i) => {
         const v = results[i];
         if (v === 'skip') {
-          c.journal.update(rec.id, { status: 'applied', note: `${patch.summary}（不在当前页面，未校验）` });
+          c.journal.update(rec.id, { status: 'applied', note: t('apply.notOnPage', { summary: patch.summary }) });
           report.applied++;
         } else if (v && v.ok) {
           c.journal.update(rec.id, { status: 'applied', note: patch.summary });
@@ -248,13 +249,13 @@ export class Applier {
           const actual = v ? shortValues(v.actual) : '';
           c.journal.update(rec.id, {
             status: 'unverified',
-            note: `${patch.summary} · 已写入，但页面上${actual ? `仍是 ${actual}` : '没有看到变化'}（开发服务器没热更新，或被别的样式覆盖）`,
+            note: actual ? t('apply.unverifiedStill', { summary: patch.summary, actual }) : t('apply.unverifiedNoChange', { summary: patch.summary }),
           });
           report.unverified++;
         }
       });
       report.ms = Date.now() - t0;
-      c.log(`应用 ${written.length} 条改动：写盘 ${report.writeMs}ms，页面生效 ${report.ms}ms`);
+      c.log(t('apply.log', { n: written.length, writeMs: report.writeMs, ms: report.ms }));
       const late = written.filter((_, i) => results[i] !== 'skip' && !(results[i] as { ok?: boolean } | null)?.ok);
       if (late.length) void this.verifyLate(late.map(({ rec }) => rec.id));
       return report;
@@ -281,7 +282,7 @@ export class Applier {
         if (!now || now.status !== 'unverified' || now.patch?.hashAfter !== hashAfter || !now.patch) return;
         if (v === 'skip' || !v?.ok) return;
         c.journal.update(id, { status: 'applied', note: now.patch.summary });
-        c.log(`热更新晚到，已确认生效：${now.patch.summary}`);
+        c.log(t('apply.lateVerified', { summary: now.patch.summary }));
         c.push();
       }),
     );
@@ -329,12 +330,12 @@ export class Applier {
     const p = rec?.patch;
     if (!rec || !p) return null;
     if (isDirty(p.file)) {
-      c.notify('warn', `${basename(p.file)} 在编辑器里有未保存的修改，先保存再还原。`);
+      c.notify('warn', t('revert.unsaved', { file: basename(p.file) }));
       return null;
     }
     const cur = readDisk(p.file);
     if (cur === null) {
-      c.journal.update(id, { status: 'conflict', note: `读不到 ${p.file}，无法还原` });
+      c.journal.update(id, { status: 'conflict', note: t('revert.readFailed', { file: p.file }) });
       return 'conflict';
     }
     c.state.busy = true;
@@ -359,7 +360,7 @@ export class Applier {
       if (!edits) {
         c.journal.update(id, {
           status: 'conflict',
-          note: `应用之后源码又被改过，写入的内容已经找不到原样${reason ? `（${reason}）` : ''}，为免覆盖别的修改已停止还原。点“对比”查看写回前的内容。`,
+          note: t('revert.conflict', { reason: reason ? t('common.paren', { text: reason }) : '' }),
         });
         return 'conflict';
       }
@@ -376,10 +377,10 @@ export class Applier {
         await this.reloadSheets([p.file]);
       }
       const v = await check;
-      const kept = exact || !external ? '' : '（文件在应用后又被改过，只回退了这一处，其他内容不动）';
+      const kept = exact || !external ? '' : t('revert.partial');
       const actual = v && v !== 'skip' && !v.ok ? shortValues(v.actual) : '';
-      const stale = v && v !== 'skip' && !v.ok ? ` · 但页面上${actual ? `仍是 ${actual}` : '还没变回去'}（开发服务器没热更新，或被别的样式覆盖）` : '';
-      c.journal.update(id, { status: 'reverted', note: `已还原：${p.summary}${kept}${stale}` });
+      const stale = v && v !== 'skip' && !v.ok ? (actual ? t('revert.staleStill', { actual }) : t('revert.staleNoChange')) : '';
+      c.journal.update(id, { status: 'reverted', note: t('revert.done', { summary: p.summary, kept, stale }) });
       return exact ? 'exact' : 'partial';
     } finally {
       c.state.busy = false;
@@ -395,17 +396,17 @@ export class Applier {
     if (!rec) return;
     if (rec.patch) {
       const left = this.snapshots.uri('before', id, rec.patch.file);
-      const title = `${basename(rec.patch.file)}：写回前 ↔ 现在`;
+      const title = t('diff.beforeNow', { file: basename(rec.patch.file) });
       await vscode.commands.executeCommand('vscode.diff', left, vscode.Uri.file(rec.patch.file), title, { preview: true });
       return;
     }
     const r = await computeWrite(rec, c.tailwind, c.remBase);
     if (!r.ok) {
-      c.notify('warn', `无法生成写回结果：${r.reason}`);
+      c.notify('warn', t('diff.failed', { reason: r.reason }));
       return;
     }
     const cur = readDisk(r.file) ?? '';
     const right = this.snapshots.uri('proposed', id, r.file, applyEdits(cur, r.edits));
-    await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(r.file), right, `${basename(r.file)}：现在 ↔ 应用后（${r.summary}）`, { preview: true });
+    await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(r.file), right, t('diff.nowAfter', { file: basename(r.file), summary: r.summary }), { preview: true });
   }
 }

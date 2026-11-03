@@ -1,4 +1,4 @@
-import type { ElementSnapshot, PageInfo, PreviewTarget, RuleRef, Scope, SheetInfo, Target } from '@css-tuner/protocol';
+import { t, type ElementSnapshot, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type Target } from '@css-tuner/protocol';
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
 
@@ -120,7 +120,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
   const twPage = page.sheets.some((s) => s.tailwind);
 
   const agent = (reason: string, preview: PreviewTarget = { kind: 'inline', uid: el.uid, sourceKey: null }): Plan => ({
-    view: { kind: 'agent', label: '交给 Agent', affects: preview.kind === 'inline' && preview.sourceKey ? instanceAffects : 1, reason },
+    view: { kind: 'agent', label: t('plan.agent'), affects: preview.kind === 'inline' && preview.sourceKey ? instanceAffects : 1, reason },
     preview,
     write: { kind: 'agent', reason },
   });
@@ -144,7 +144,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
       column: x.c.source.column,
       affects: x.c.same,
       depth: x.depth,
-      label: `${project.label(x.file)}:${x.c.source.line} <${x.c.component ?? '组件'}> className${override ? '（覆盖）' : ''}`,
+      label: `${project.label(x.file)}:${x.c.source.line} <${x.c.component ?? t('plan.component')}> className${override ? t('plan.override') : ''}`,
       literal: false,
       override,
     });
@@ -165,7 +165,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
         column: best.column,
         affects: el.classCounts?.[token] ?? instanceAffects,
         depth,
-        label: `${project.label(file)}:${best.line} ${best.name || '类名字符串'}`,
+        label: `${project.label(file)}:${best.line} ${best.name || t('plan.classString')}`,
         literal: true,
         override: false,
         withClass: token,
@@ -175,7 +175,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
       const r = ownInfo?.recipe;
       if (!r) return null;
       const lit = ctx.classLiterals(own.file)?.find((l) => l.line === r.line && l.column === r.column);
-      return { ...own, line: r.line, column: r.column, label: `${project.label(own.file)}:${r.line} ${lit?.name || '组件基础类'}`, literal: true };
+      return { ...own, line: r.line, column: r.column, label: `${project.label(own.file)}:${r.line} ${lit?.name || t('plan.componentBase')}`, literal: true };
     };
 
     if (!utility) {
@@ -195,7 +195,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
     }
     where ??= literalIn(own.file, 0, utility);
     for (const x of callers) where ??= literalIn(x.file, x.depth, utility);
-    if (!where) return { reason: `生效的类名 ${utility} 不在这个元素 className 的字面量里，也不在外层组件调用处和变体字符串里（可能来自变量或 @apply）` };
+    if (!where) return { reason: t('plan.utilityNowhere', { cls: utility }) };
 
     if (ctx.scope === 'instance' && where.depth === 0 && where.affects > 1 && ownInfo?.merges) {
       const narrower = callers.find((x) => passes(x) && x.c.same < where!.affects);
@@ -205,7 +205,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
   };
 
   const tailwind = (utility: string | null): Plan => {
-    if (!srcFile || !el.source) return agent('找不到这个元素的 JSX 源码位置');
+    if (!srcFile || !el.source) return agent(t('plan.noJsxSource'));
     const site = classSite(utility);
     if ('reason' in site) return agent(site.reason);
     const preview: PreviewTarget =
@@ -228,8 +228,8 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
 
   const css = (ref: RuleRef, mode: 'edit' | 'add', via: string | null): Plan => {
     const file = project.sheetFile(pageUrl, ref.sheet);
-    if (!file) return agent('找不到这条样式规则对应的源文件', { kind: 'rule', rule: ref, uid: el.uid });
-    if (ctx.strategy === 'agent') return agent('设置为语义 CSS 交给 Agent 处理', { kind: 'rule', rule: ref, uid: el.uid });
+    if (!file) return agent(t('plan.noRuleFile'), { kind: 'rule', rule: ref, uid: el.uid });
+    if (ctx.strategy === 'agent') return agent(t('plan.cssToAgent'), { kind: 'rule', rule: ref, uid: el.uid });
     const src = ctx.ruleSource(file, ref);
     const real = src?.file ?? file;
     return {
@@ -239,13 +239,13 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
     };
   };
 
-  if (w?.origin === 'inline') return agent('值来自元素的内联 style，暂不直接改写');
+  if (w?.origin === 'inline') return agent(t('plan.inlineStyle'));
 
   if (w?.origin === 'rule' && w.rule && !isFramework(page, w.rule)) {
     const utility = utilityOf(w.rule, ctx);
     if (utility) return tailwind(utility);
     if (/^\s*>|:has\(|:hover|:focus/.test(w.rule.selector) && w.rule.matchCount > 1 && sheetOf(page, w.rule)?.tailwind) {
-      return agent('值来自父元素上的 Tailwind 选择器，暂不直接改写');
+      return agent(t('plan.parentTwSelector'));
     }
     return css(w.rule, 'edit', w.via);
   }
@@ -254,7 +254,7 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
   if (twPage && el.source && srcFile) return tailwind(null);
   const own = ownRule(el, page, (r) => !utilityOf(r, ctx) && !!project.sheetFile(pageUrl, r.sheet));
   if (own) return css(own, 'add', null);
-  return agent('这个元素没有可以写入的样式规则');
+  return agent(t('plan.noWritableRule'));
 }
 
 /**
@@ -265,20 +265,20 @@ export function planVar(el: ElementSnapshot, name: string, ctx: PlanContext): Pl
   const { page, project } = ctx;
   const w = el.winners[name];
   const agent = (reason: string, preview: PreviewTarget = { kind: 'inline', uid: el.uid, sourceKey: null }): Plan => ({
-    view: { kind: 'agent', label: '交给 Agent', affects: 1, reason },
+    view: { kind: 'agent', label: t('plan.agent'), affects: 1, reason },
     preview,
     write: { kind: 'agent', reason },
   });
-  if (!w || w.origin === 'initial') return agent('找不到这个变量的定义');
-  if (!w.rule) return agent('变量定义在内联 style 里，暂不直接改写');
+  if (!w || w.origin === 'initial') return agent(t('plan.varNotFound'));
+  if (!w.rule) return agent(t('plan.varInline'));
   const preview: PreviewTarget = { kind: 'rule', rule: w.rule, uid: el.uid };
-  if (ctx.varStrategy === 'agent') return agent('设置为 CSS 变量交给 Agent 处理', preview);
+  if (ctx.varStrategy === 'agent') return agent(t('plan.varToAgent'), preview);
   const file = project.sheetFile(page.url, w.rule.sheet);
-  if (!file) return agent('找不到定义这个变量的样式表文件', preview);
+  if (!file) return agent(t('plan.varNoFile'), preview);
   if (sheetOf(page, w.rule)?.tailwind && w.rule.layer?.split('.')[0] === 'theme') {
     return { view: { kind: 'css', label: `${project.label(file)} @theme ${name}`, file, affects: 0 }, preview, write: { kind: 'theme', file, name } };
   }
-  if (isFramework(page, w.rule)) return agent('变量定义在 Tailwind 的预设样式里', preview);
+  if (isFramework(page, w.rule)) return agent(t('plan.varInPreset'), preview);
   const src = ctx.ruleSource(file, w.rule);
   const real = src?.file ?? file;
   return {

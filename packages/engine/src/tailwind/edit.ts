@@ -1,3 +1,4 @@
+import { t as msg } from '@css-tuner/protocol';
 import { minimizeEdit, type EditResult, type TextEdit } from '../types';
 import { intersects, isSubset, physicalSet, sameSet } from '../physical';
 import type { TwDesign } from './design';
@@ -309,7 +310,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
 
   const E = physicalSet(input.props);
   const root = rootFor(E);
-  if (!root) return { ok: false, reason: `没有能同时设置 ${input.props.join(', ')} 的 Tailwind 工具类` };
+  if (!root) return { ok: false, reason: msg('engine.tw.noUtility', { props: input.props.join(', ') }) };
 
   const hint = input.utility ? splitCandidate(input.utility) : null;
   const variant = hint?.variant ?? '';
@@ -330,9 +331,9 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   if (input.utility) {
     primary = site.tokens.find((t) => t.text === input.utility) ?? null;
     if (!primary && !input.override) {
-      return { ok: false, reason: `生效的类名 ${input.utility} 不在这个元素 className 的字面量里（可能来自变量、组件参数或 @apply）` };
+      return { ok: false, reason: msg('engine.tw.utilityNotLiteral', { cls: input.utility }) };
     }
-    if (primary && !primary.editable) return { ok: false, reason: `类名 ${input.utility} 和模板字符串里的表达式拼在一起，无法安全改写` };
+    if (primary && !primary.editable) return { ok: false, reason: msg('engine.tw.utilityInTemplate', { cls: input.utility }) };
     // 生效的类管的属性比这次改的多（如 p-4 而只改左右），保留它，另加更具体的类
     if (primary && !covered.includes(primary)) primary = null;
   }
@@ -347,10 +348,10 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
       break;
     }
   }
-  if (!next) return { ok: false, reason: `无法为 ${input.value} 生成有效的 Tailwind 类名` };
+  if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
 
   if (!site.hasClassName) {
-    if (site.hasSpread) return { ok: false, reason: '元素上有 {...props} 展开且没有 className，新增类名可能被覆盖' };
+    if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
     return {
       ok: true,
       file: input.file,
@@ -372,7 +373,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   for (const t of covered) {
     if (t === primary) continue;
     if (t.seg.conditional && t.seg !== primarySeg) continue;
-    if (!t.editable) return { ok: false, reason: `类名 ${t.text} 在动态表达式里，无法安全改写` };
+    if (!t.editable) return { ok: false, reason: msg('engine.tw.classInDynamic', { cls: t.text }) };
     ops.push({ token: t, kind: 'remove' });
     removedTexts.push(t.text);
   }
@@ -399,7 +400,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
           break;
         }
       }
-      if (!inserted) return { ok: false, reason: 'className 里没有可以追加类名的固定字符串' };
+      if (!inserted) return { ok: false, reason: msg('engine.tw.noStaticToAppend') };
     }
     inserts.push(inserted);
   }
@@ -417,7 +418,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   if (redundant) {
     if (primary) ops[0] = { token: primary, kind: 'remove' };
     else inserts.length = 0;
-    summaryNext = `（已由 ${redundant.text} 覆盖）`;
+    summaryNext = msg('engine.tw.coveredBy', { cls: redundant.text });
     added = [];
   } else {
     const nb = splitCandidate(next).base;
@@ -479,7 +480,7 @@ export function revertTailwind(input: TailwindRevertInput): EditResult {
     const s = input.literal ? locateLiteralSite(input.source, input.file, input.line, input.column, null) : locateClassSite(input.source, input.file, input.line, input.column);
     site = 'error' in s ? null : s;
   }
-  if (!site) return { ok: false, reason: `源码里找不到当初写入的类名 ${input.added.join(' ')}，可能已被改动` };
+  if (!site) return { ok: false, reason: msg('engine.tw.addedNotFound', { classes: input.added.join(' ') }) };
 
   const summary = `${input.added.join(' ') || '∅'} → ${input.removed.join(' ') || '∅'}`;
   if (input.attrAdded && site.attrRange && site.tokens.map((t) => t.text).join(' ') === input.added.join(' ')) {
@@ -496,7 +497,7 @@ export function revertTailwind(input: TailwindRevertInput): EditResult {
   });
   if (!addedToks.length && input.removed.length) {
     const seg = site.segments.find((s) => !s.conditional);
-    if (!seg) return { ok: false, reason: 'className 里没有可以放回类名的固定字符串' };
+    if (!seg) return { ok: false, reason: msg('engine.tw.noStaticToRestore') };
     const toks = site.tokens.filter((t) => t.seg === seg);
     inserts.push({ seg, after: toks[toks.length - 1] ?? null, text: input.removed.join(' ') });
   }

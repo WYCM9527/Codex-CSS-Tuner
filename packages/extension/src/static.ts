@@ -2,6 +2,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, relative, sep } from 'node:path';
+import { t } from '@css-tuner/protocol';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -80,7 +81,7 @@ export class StaticServer {
         st = statOf(file);
       }
       if (!st?.isFile()) {
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(`找不到 ${path}`);
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(t('ext.static.notFound', { path }));
         return;
       }
       res.writeHead(200, {

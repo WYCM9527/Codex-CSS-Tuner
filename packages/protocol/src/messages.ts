@@ -1,3 +1,5 @@
+import type { Locale } from './i18n';
+
 /* ---------- 页面侧快照 ---------- */
 
 export interface SourceLoc {
@@ -284,6 +286,8 @@ export interface PanelState {
   busy: boolean;
   /** 数值吸附到刻度（按住 Alt 临时关闭） */
   snap: boolean;
+  /** 界面语言，跟随编辑器的显示语言 */
+  locale: Locale;
 }
 
 export type PanelToExt =
