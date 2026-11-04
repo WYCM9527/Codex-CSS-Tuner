@@ -1,10 +1,26 @@
 import { useMemo } from 'react';
-import { MARGIN, PADDING, RADIUS, t, type PanelState, type PanelToExt, type PropValue, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
+import {
+  BORDER,
+  BORDER_STYLE,
+  BORDER_WIDTH,
+  groupLabel,
+  MARGIN,
+  PADDING,
+  parseColor,
+  RADIUS,
+  t,
+  type EditRequest,
+  type PanelState,
+  type PanelToExt,
+  type PropValue,
+  type ScaleStep,
+  type SelectionView,
+} from '@css-tuner/protocol';
 import { currentValue, declaredVar, isPending } from '../lib/format';
-import { ctxOf, scaleKeyOf, type Ctx } from '../lib/scale';
+import { ctxOf, scaleKeyOf, valuePx, type Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
 import { Content } from './Content';
-import { IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
+import { AddRemove, Corner, IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
 import { Icon } from './icons';
 import { NumberField } from './NumberField';
 import { Props as PropsSection } from './Props';
@@ -29,6 +45,10 @@ interface Props {
 
 const [PT, PR, PB, PL] = PADDING;
 const [MT, MR, MB, ML] = MARGIN;
+const SIDES = ['top', 'right', 'bottom', 'left'] as const;
+type Side = (typeof SIDES)[number];
+const SIDE_ICONS = [<Icon.top key="t" />, <Icon.right key="r" />, <Icon.bottom key="b" />, <Icon.left key="l" />];
+const DEFAULT_SHADOW = '0 1px 3px rgba(0, 0, 0, 0.12)';
 
 export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editProp, send }: Props) {
   const ctx = useMemo<Ctx>(() => ctxOf(sel.el), [sel.el]);
@@ -39,8 +59,22 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
   };
   const open = (id: string) => !prefs.closed.includes(id);
   const toggle = (id: string) => setPrefs({ ...prefs, closed: open(id) ? [...prefs.closed, id] : prefs.closed.filter((x) => x !== id) });
+  /** 加上属性时展开折叠着的分区，不然加了看不到 */
+  const reveal = (id: string, add: () => void) => () => {
+    if (!open(id)) toggle(id);
+    add();
+  };
   const split = (id: string) => prefs.split.includes(id);
   const toggleSplit = (id: string) => setPrefs({ ...prefs, split: split(id) ? prefs.split.filter((x) => x !== id) : [...prefs.split, id] });
+
+  const commit = (props: string[], value: string, token: string | null = null) => edit(props, { props: [], value, token, phase: 'commit' });
+  const remove = (props: string[]) => edit(props, { props: [], value: '', token: null, phase: 'commit', remove: true });
+  const removed = (props: readonly string[]) => props.filter((p) => sel.removed.includes(p));
+  /** 还能删的：值来自源码里的声明，而且还没删 */
+  const removable = (props: readonly string[]) => props.some((p) => sel.targets[p]?.declared && !sel.removed.includes(p));
+  const corner = (props: string[]) => (
+    <Corner label={groupLabel(props)} pending={isPending(sel, props)} onReset={() => send({ t: 'resetProps', props })} onRemove={removable(props) ? () => remove(props) : null} />
+  );
 
   const num = (props: string[], label: React.ReactNode, title: string, extra: Partial<React.ComponentProps<typeof NumberField>> = {}) => (
     <NumberField
@@ -55,6 +89,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
       pending={isPending(sel, props)}
       target={sel.targets[props[0]]}
       declared={props.length === 1 && !(props[0] in sel.pending) ? declaredVar(sel.el, props[0]) : null}
+      corner={corner(props)}
       onEdit={(e) => edit(props, e)}
       {...extra}
     />
@@ -64,8 +99,44 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
     value: currentValue(sel, prop),
     pending: isPending(sel, [prop]),
     target: sel.targets[prop],
-    onPick: (v: string) => edit([prop], { props: [], value: v, token: null, phase: 'commit' }),
+    corner: corner([prop]),
+    onPick: (v: string) => commit([prop], v),
   });
+
+  // 填充：背景色看得见才算有；加上是白色，减掉是删声明（不是写在源码里的就改成透明）
+  const hasFill = visible(currentValue(sel, 'background-color'));
+  const addFill = () => {
+    if (removed(['background-color']).length) return send({ t: 'resetProps', props: ['background-color'] });
+    const white = scales?.colors.find((s) => s.label === 'white');
+    commit(['background-color'], white?.value ?? '#ffffff', white ? (white.token ?? white.label) : null);
+  };
+  const removeFill = () => (removable(['background-color']) ? remove(['background-color']) : commit(['background-color'], 'transparent'));
+
+  // 描边：看得见的边（粗细大于 0、样式不是 none）；加上是 1px 实线，减掉是删掉四边的声明
+  const sides = strokeSides(sel, ctx);
+  const tailwind = scales?.mode === 'tailwind';
+  const styleProps = strokeProps('style', sides, tailwind);
+  const colorProps = strokeProps('color', sides, tailwind);
+  const addStroke = () => {
+    if (removed(BORDER).length) return send({ t: 'resetProps', props: removed(BORDER) });
+    // 样式是 none 时算出来的粗细总是 0（会当成没改），所以先改样式
+    const edits: EditRequest[] = [];
+    if (BORDER_STYLE.some((p) => /^(none|hidden)$/.test(currentValue(sel, p)))) edits.push({ props: BORDER_STYLE, value: 'solid', token: null, phase: 'commit' });
+    edits.push({ props: BORDER_WIDTH, value: '1px', token: null, phase: 'commit' });
+    send({ t: 'editMany', edits });
+  };
+  const removeStroke = () => (removable(BORDER) ? remove(BORDER) : commit(BORDER_WIDTH, '0px'));
+
+  // 投影：加上是刻度里的 sm（没有就取第一档），减掉是删声明（不是写在源码里的就改成 none）
+  const shadow = currentValue(sel, 'box-shadow');
+  const hasShadow = !!shadow && shadow !== 'none';
+  const addShadow = () => {
+    if (removed(['box-shadow']).length) return send({ t: 'resetProps', props: ['box-shadow'] });
+    const shadows = (scales?.shadow ?? []).filter((s) => s.value && s.value !== 'none');
+    const s = shadows.find((x) => x.label === 'sm') ?? shadows[0];
+    commit(['box-shadow'], s?.value ?? DEFAULT_SHADOW, s?.token ?? null);
+  };
+  const removeShadow = () => (removable(['box-shadow']) ? remove(['box-shadow']) : commit(['box-shadow'], 'none'));
 
   const display = currentValue(sel, 'display');
   const isFlex = /flex/.test(display);
@@ -76,7 +147,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
 
   return (
     <div className="inspector">
-      <Content sel={sel} open={open('content')} onToggle={toggle} editText={editText} />
+      <Content sel={sel} open={open('content')} onToggle={toggle} editText={editText} resetText={(segment) => send({ t: 'resetText', segment })} />
       <PropsSection sel={sel} ctx={ctx} open={open('props')} onToggle={toggle} editProp={editProp} send={send} />
 
       <Section id="layout" title={t('insp.layout')} open={open('layout')} onToggle={toggle}>
@@ -124,6 +195,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
               unit=""
               min={1}
               max={24}
+              corner={corner(['grid-template-columns'])}
               onEdit={(e) => edit(['grid-template-columns'], { ...e, value: /^\d+$/.test(e.value) ? `repeat(${e.value}, minmax(0, 1fr))` : e.value })}
             />
           </Row>
@@ -261,6 +333,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
             pending={isPending(sel, ['font-weight'])}
             target={sel.targets['font-weight']}
             describe={(s) => s.value}
+            corner={corner(['font-weight'])}
             onEdit={(e) => edit(['font-weight'], e)}
           />
         </Row>
@@ -272,13 +345,15 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
           <Segmented
             value={alignOf(currentValue(sel, 'text-align'))}
             pending={isPending(sel, ['text-align'])}
+            target={sel.targets['text-align']}
+            corner={corner(['text-align'])}
             options={[
               { value: 'left', label: <Icon.alignLeft />, title: t('insp.ta.left') },
               { value: 'center', label: <Icon.alignCenter />, title: t('insp.ta.center') },
               { value: 'right', label: <Icon.alignRight />, title: t('insp.ta.right') },
               { value: 'justify', label: <Icon.alignJustify />, title: t('insp.ta.justify') },
             ]}
-            onPick={(v) => edit(['text-align'], { props: [], value: v, token: null, phase: 'commit' })}
+            onPick={(v) => commit(['text-align'], v)}
           />
         </Row>
         <Row label={t('insp.color')}>
@@ -290,12 +365,20 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
             pending={isPending(sel, ['color'])}
             target={sel.targets['color']}
             declared={'color' in sel.pending ? null : declaredVar(sel.el, 'color')}
+            corner={corner(['color'])}
             onEdit={(e) => edit(['color'], e)}
           />
         </Row>
       </Section>
 
-      <Section id="fill" title={t('insp.fill')} open={open('fill')} onToggle={toggle}>
+      <Section
+        id="fill"
+        title={t('insp.fill')}
+        open={open('fill')}
+        onToggle={toggle}
+        empty={!hasFill}
+        aside={<AddRemove present={hasFill} name={t('insp.fill')} onAdd={reveal('fill', addFill)} onRemove={removeFill} />}
+      >
         <Row label={t('insp.background')}>
           <ColorField
             title={t('insp.bgColor')}
@@ -305,7 +388,57 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
             pending={isPending(sel, ['background-color'])}
             target={sel.targets['background-color']}
             declared={'background-color' in sel.pending ? null : declaredVar(sel.el, 'background-color')}
+            corner={corner(['background-color'])}
             onEdit={(e) => edit(['background-color'], e)}
+          />
+        </Row>
+      </Section>
+
+      <Section
+        id="stroke"
+        title={t('insp.stroke')}
+        open={open('stroke')}
+        onToggle={toggle}
+        empty={!sides.length}
+        aside={<AddRemove present={sides.length > 0} name={t('insp.stroke')} onAdd={reveal('stroke', addStroke)} onRemove={removeStroke} />}
+      >
+        <Row label={t('insp.stroke.width')}>
+          {split('stroke') ? (
+            <div className="quad">
+              {BORDER_WIDTH.map((p, i) => num([p], SIDE_ICONS[i], t((['insp.stroke.top', 'insp.stroke.right', 'insp.stroke.bottom', 'insp.stroke.left'] as const)[i]), { min: 0 }))}
+            </div>
+          ) : (
+            num(BORDER_WIDTH, <Icon.stroke />, t('insp.stroke.width'), { min: 0 })
+          )}
+          <IconToggle on={split('stroke')} title={t('insp.stroke.split')} onClick={() => toggleSplit('stroke')}>
+            <Icon.sides />
+          </IconToggle>
+        </Row>
+        <Row label={t('insp.stroke.style')}>
+          <Segmented
+            value={currentValue(sel, styleProps[0])}
+            pending={isPending(sel, styleProps)}
+            target={sel.targets[styleProps[0]]}
+            corner={corner(styleProps)}
+            options={[
+              { value: 'solid', label: <Icon.solid />, title: t('insp.stroke.solid') },
+              { value: 'dashed', label: <Icon.dashed />, title: t('insp.stroke.dashed') },
+              { value: 'dotted', label: <Icon.dotted />, title: t('insp.stroke.dotted') },
+            ]}
+            onPick={(v) => commit(styleProps, v)}
+          />
+        </Row>
+        <Row label={t('insp.stroke.color')}>
+          <ColorField
+            title={t('insp.stroke.color')}
+            prop={colorProps[0]}
+            value={currentValue(sel, colorProps[0])}
+            steps={scales?.colors ?? null}
+            pending={isPending(sel, colorProps)}
+            target={sel.targets[colorProps[0]]}
+            declared={colorProps[0] in sel.pending ? null : declaredVar(sel.el, colorProps[0])}
+            corner={corner(colorProps)}
+            onEdit={(e) => edit(colorProps, e)}
           />
         </Row>
       </Section>
@@ -327,6 +460,29 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
         </Row>
       </Section>
 
+      <Section
+        id="shadow"
+        title={t('insp.shadow')}
+        open={open('shadow')}
+        onToggle={toggle}
+        empty={!hasShadow}
+        aside={<AddRemove present={hasShadow} name={t('insp.shadow')} onAdd={reveal('shadow', addShadow)} onRemove={removeShadow} />}
+      >
+        <Row label={t('insp.shadow')}>
+          <SelectField
+            title={t('insp.shadow')}
+            value={shadow}
+            display={shadowLabel(sel, scales?.shadow)}
+            steps={scales?.shadow ?? []}
+            pending={isPending(sel, ['box-shadow'])}
+            target={sel.targets['box-shadow']}
+            describe={() => ''}
+            corner={corner(['box-shadow'])}
+            onEdit={(e) => edit(['box-shadow'], e)}
+          />
+        </Row>
+      </Section>
+
       <Section id="effects" title={t('insp.effects')} open={open('effects')} onToggle={toggle}>
         <Row label={t('insp.opacity')}>
           <SliderField
@@ -337,24 +493,13 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
             step={1}
             pending={isPending(sel, ['opacity'])}
             format={(n) => `${n}%`}
+            corner={corner(['opacity'])}
             onEdit={(n, phase) => edit(['opacity'], { props: [], value: String(n / 100), token: opacityToken(n, scales?.opacity), phase })}
-          />
-        </Row>
-        <Row label={t('insp.shadow')}>
-          <SelectField
-            title={t('insp.shadow')}
-            value={currentValue(sel, 'box-shadow')}
-            display={shadowLabel(sel, scales?.shadow)}
-            steps={scales?.shadow ?? []}
-            pending={isPending(sel, ['box-shadow'])}
-            target={sel.targets['box-shadow']}
-            describe={() => ''}
-            onEdit={(e) => edit(['box-shadow'], e)}
           />
         </Row>
       </Section>
 
-      <Vars sel={sel} ctx={ctx} snap={state.snap} colors={scales?.colors ?? null} open={open('vars')} onToggle={toggle} edit={edit} />
+      <Vars sel={sel} ctx={ctx} snap={state.snap} colors={scales?.colors ?? null} open={open('vars')} onToggle={toggle} edit={edit} reset={(props) => send({ t: 'resetProps', props })} />
     </div>
   );
 }
@@ -406,6 +551,29 @@ function trackCount(v: string): string {
   const tracks = v.replace(/\[[^\]]*\]/g, ' ').trim();
   if (!tracks || /repeat\(|minmax\(|subgrid|masonry/.test(tracks)) return v;
   return String(tracks.split(/\s+/).length);
+}
+
+/** 颜色看得见：不是空值、不是全透明（变量这类认不出的当作看得见） */
+function visible(color: string): boolean {
+  return !!color && (parseColor(color)?.a ?? 1) > 0;
+}
+
+/** 看得见描边的那几边：粗细大于 0、样式不是 none / hidden */
+function strokeSides(sel: SelectionView, ctx: Ctx): Side[] {
+  return SIDES.filter((s) => {
+    const style = currentValue(sel, `border-${s}-style`);
+    return (valuePx(currentValue(sel, `border-${s}-width`), ctx, `border-${s}-width`) ?? 0) > 0 && style !== 'none' && style !== 'hidden';
+  });
+}
+
+/**
+ * 改描边样式 / 颜色时动哪几边：看得见的是四边、一对边（上下 / 左右）或单独一边就只改它们，其余情况四边一起改；
+ * Tailwind 的样式类只有四边一起的
+ */
+function strokeProps(part: 'style' | 'color', sides: Side[], tailwind: boolean): string[] {
+  const key = sides.join();
+  const exact = sides.length === 1 || sides.length === 4 || key === 'top,bottom' || key === 'right,left';
+  return (exact && !(part === 'style' && tailwind) ? sides : SIDES).map((s) => `border-${s}-${part}`);
 }
 
 function weightLabel(value: string, steps: ScaleStep[] | undefined): string {

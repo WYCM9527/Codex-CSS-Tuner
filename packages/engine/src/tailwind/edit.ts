@@ -22,9 +22,11 @@ export interface TailwindEditInput {
   literal?: boolean;
   /** 在这里追加一个覆盖类（组件用 cn / twMerge 合并，后写的赢）；utility 只用来确定变体前缀 */
   override?: boolean;
+  /** 删属性：去掉这些类（各属性当前生效的类名，含变体），value、token 不用 */
+  remove?: string[];
 }
 
-type Kind = 'length' | 'color' | 'weight' | 'opacity' | 'shadow' | 'align' | 'number' | 'keyword' | 'tracks' | 'integer';
+type Kind = 'length' | 'color' | 'weight' | 'opacity' | 'shadow' | 'align' | 'number' | 'keyword' | 'tracks' | 'integer' | 'borderWidth';
 
 interface Root {
   root: string;
@@ -105,6 +107,20 @@ const ROOTS: Root[] = [
   { root: 'rounded-tr', props: ['border-top-right-radius'], kind: 'length' },
   { root: 'rounded-br', props: ['border-bottom-right-radius'], kind: 'length' },
   { root: 'rounded-bl', props: ['border-bottom-left-radius'], kind: 'length' },
+  { root: 'border', props: SIDES.map((s) => `border-${s}-width`), kind: 'borderWidth' },
+  { root: 'border-x', props: ['border-left-width', 'border-right-width'], kind: 'borderWidth' },
+  { root: 'border-y', props: ['border-top-width', 'border-bottom-width'], kind: 'borderWidth' },
+  ...SIDES.map((s): Root => ({ root: `border-${s[0]}`, props: [`border-${s}-width`], kind: 'borderWidth' })),
+  { root: 'border', props: SIDES.map((s) => `border-${s}-color`), kind: 'color' },
+  { root: 'border-x', props: ['border-left-color', 'border-right-color'], kind: 'color' },
+  { root: 'border-y', props: ['border-top-color', 'border-bottom-color'], kind: 'color' },
+  ...SIDES.map((s): Root => ({ root: `border-${s[0]}`, props: [`border-${s}-color`], kind: 'color' })),
+  {
+    root: '',
+    props: SIDES.map((s) => `border-${s}-style`),
+    kind: 'keyword',
+    words: { solid: 'border-solid', dashed: 'border-dashed', dotted: 'border-dotted', double: 'border-double', hidden: 'border-hidden', none: 'border-none' },
+  },
   { root: 'opacity', props: ['opacity'], kind: 'opacity' },
   { root: 'shadow', props: ['box-shadow'], kind: 'shadow' },
   { root: '', props: ['display'], kind: 'keyword', words: DISPLAY },
@@ -216,7 +232,17 @@ function composeBases(root: Root, value: string, token: string | null): string[]
       if (ref) out.push(root.root === 'text' ? `text-(color:${ref})` : `${root.root}-(${ref})`);
       if (v === 'transparent' || v === 'currentcolor' || v === 'currentColor' || v === 'inherit') out.push(`${root.root}-${v === 'currentColor' ? 'current' : v === 'currentcolor' ? 'current' : v}`);
       out.push(`${root.root}-[${arb(v)}]`);
+      // border-[var(--x)] 分不清是粗细还是颜色
+      if (root.root.startsWith('border')) out.push(`${root.root}-[color:${arb(v)}]`);
       break;
+    case 'borderWidth': {
+      const px = /^(\d+)px$/.exec(v);
+      if (v === '1px') out.push(root.root);
+      if (px) out.push(`${root.root}-${px[1]}`);
+      if (ref) out.push(`${root.root}-(length:${ref})`);
+      out.push(`${root.root}-[${arb(v)}]`, `${root.root}-[length:${arb(v)}]`);
+      break;
+    }
     case 'opacity': {
       const n = parseFloat(v);
       if (!Number.isNaN(n)) out.push(`${root.root}-[${Math.round((v.endsWith('%') ? n : n * 100) * 100) / 100}%]`);
@@ -310,6 +336,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   if ('error' in site) return { ok: false, reason: site.error };
 
   const E = physicalSet(input.props);
+  if (input.remove) return removeClasses(design, input, site, E);
   const root = rootFor(E);
   if (!root) return { ok: false, reason: msg('engine.tw.noUtility', { props: input.props.join(', ') }) };
 
@@ -454,6 +481,23 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   const edits = finish(input.source, segmentEdits(input.source, site, ops, inserts));
   const summary = removedTexts.length ? `${removedTexts.join(' ')} → ${summaryNext}` : `+ ${summaryNext}`;
   return { ok: true, file: input.file, edits, summary, classes: { removed: removedTexts, added, attrAdded: false } };
+}
+
+/** 删属性：去掉各属性当前生效的类；类还管着别的属性（只删 p-4 的左边）就删不了 */
+function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSite, E: Set<string>): EditResult {
+  const ops: Op[] = [];
+  for (const cls of input.remove ?? []) {
+    const tok = site.tokens.find((t) => t.text === cls);
+    if (!tok) return { ok: false, reason: msg('engine.tw.utilityNotLiteral', { cls }) };
+    if (!tok.editable) return { ok: false, reason: msg('engine.tw.classInDynamic', { cls }) };
+    if (tok.seg.single) return { ok: false, reason: msg('engine.tw.singleClass', { cls }) };
+    const info = design.info(cls);
+    if (info && !isSubset(info.hard, E)) return { ok: false, reason: msg('engine.tw.removePartial', { cls }) };
+    if (!ops.some((o) => o.token === tok)) ops.push({ token: tok, kind: 'remove' });
+  }
+  if (!ops.length) return { ok: false, reason: msg('engine.tw.nothingToRemove') };
+  const removed = ops.map((o) => o.token.text);
+  return { ok: true, file: input.file, edits: finish(input.source, segmentEdits(input.source, site, ops, [])), summary: `${removed.join(' ')} → ∅`, classes: { removed, added: [], attrAdded: false } };
 }
 
 function finish(source: string, edits: TextEdit[]): TextEdit[] {

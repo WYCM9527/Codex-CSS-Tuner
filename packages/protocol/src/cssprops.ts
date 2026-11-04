@@ -71,6 +71,19 @@ export const SHORTHANDS: Record<string, string[]> = {
   'grid-template-columns': ['grid-template', 'grid'],
 };
 
+/** 描边的长写：border-top-width ↔ border-block-start-width，简写有边（border-top）、分量（border-width）和整体（border） */
+const BORDER_SIDES = { top: 'block-start', right: 'inline-end', bottom: 'block-end', left: 'inline-start' } as const;
+for (const [side, logical] of Object.entries(BORDER_SIDES)) {
+  const axis = logical.split('-')[0];
+  for (const part of ['width', 'style', 'color']) {
+    const phys = `border-${side}-${part}`;
+    const log = `border-${logical}-${part}`;
+    ALIASES[phys] = [phys, log];
+    SHORTHANDS[phys] = [`border-${side}`, `border-${part}`, 'border'];
+    SHORTHANDS[log] = [`border-${logical}`, `border-${axis}-${part}`, `border-${axis}`];
+  }
+}
+
 export function aliasesOf(prop: string): string[] {
   return ALIASES[prop] ?? [prop];
 }
@@ -95,6 +108,13 @@ export const BOX_SHORTHANDS: Record<string, string[]> = {
   'inset-inline': ['left', 'right'],
   'inset-block': ['top', 'bottom'],
   gap: ['row-gap', 'column-gap'],
+  ...Object.fromEntries(
+    ['width', 'style', 'color'].flatMap((part) => [
+      [`border-${part}`, ['top', 'right', 'bottom', 'left'].map((s) => `border-${s}-${part}`)],
+      [`border-inline-${part}`, [`border-left-${part}`, `border-right-${part}`]],
+      [`border-block-${part}`, [`border-top-${part}`, `border-bottom-${part}`]],
+    ]),
+  ),
 };
 
 /** 逻辑长写 → 物理长写（LTR） */

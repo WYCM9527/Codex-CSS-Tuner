@@ -56,8 +56,51 @@ export function mockScales(): Scales {
     ],
     opacity: Array.from({ length: 21 }, (_, i) => ({ label: String(i * 5), value: String(i / 20), token: String(i * 5) })),
     zIndex: [0, 10, 20, 30, 40, 50].map((n) => ({ label: String(n), value: String(n), px: n, token: String(n) })),
+    borderWidth: [['0', 0], ['DEFAULT', 1], ['2', 2], ['4', 4], ['8', 8]].map(([k, v]) => ({ label: String(k), value: `${v}px`, px: +v, token: k === 'DEFAULT' ? '' : String(k) })),
   };
 }
+
+/** 删属性后页面上回落到的值（假宿主里按 Tailwind 预设样式估一个） */
+function fallbackOf(prop: string): string {
+  if (/^border-.*-width$/.test(prop)) return '0px';
+  if (/^border-.*-style$/.test(prop)) return 'solid';
+  if (/^border-.*-color$/.test(prop)) return 'rgb(229, 231, 235)';
+  return ({ 'background-color': 'rgba(0, 0, 0, 0)', 'box-shadow': 'none', color: 'rgb(31, 35, 40)' } as Record<string, string>)[prop] ?? 'initial';
+}
+
+/** 假宿主里算一步（能撤销）的消息和这一步的说明 */
+function stepLabel(m: PanelToExt, state: PanelState): string | null {
+  switch (m.t) {
+    case 'edit':
+      if (m.edit.remove) return t('history.removed', { label: groupLabel(m.edit.props) });
+      return m.edit.phase === 'commit' ? groupLabel(m.edit.props) : null;
+    case 'editMany':
+      return m.edits.length ? groupLabel(m.edits[0].props) : null;
+    case 'editText':
+      return m.phase === 'commit' ? t('panel.change.text') : null;
+    case 'reorder':
+      return m.phase === 'commit' ? t('panel.change.order') : null;
+    case 'editProp':
+      return m.phase === 'commit' ? m.name : null;
+    case 'resetProps':
+      return t('history.dropped', { label: groupLabel(m.props) });
+    case 'resetText':
+      return t('history.dropped', { label: t('panel.change.text') });
+    case 'resetProp':
+      return t('history.dropped', { label: m.name });
+    case 'resetOrder':
+      return t('history.dropped', { label: t('panel.change.order') });
+    case 'discard': {
+      const c = state.changes.find((x) => x.id === m.id);
+      return c?.status === 'pending' ? t('history.dropped', { label: c.propLabel }) : null;
+    }
+    default:
+      return null;
+  }
+}
+
+const SIDES = ['top', 'right', 'bottom', 'left'];
+const NO_BORDER = Object.fromEntries(SIDES.flatMap((s) => [[`border-${s}-width`, '0px'], [`border-${s}-style`, 'solid'], [`border-${s}-color`, 'rgb(229, 231, 235)']]));
 
 function el(over: Partial<ElementSnapshot>): ElementSnapshot {
   const computed: Record<string, string> = {
@@ -100,6 +143,7 @@ function el(over: Partial<ElementSnapshot>): ElementSnapshot {
     'border-top-right-radius': '0px',
     'border-bottom-right-radius': '0px',
     'border-bottom-left-radius': '0px',
+    ...NO_BORDER,
     'box-shadow': 'none',
     opacity: '1',
     '--spacing': '0.25rem',
@@ -192,8 +236,10 @@ export function createMockHost(): Host {
     busy: false,
     snap: true,
     locale: getLocale(),
+    history: { undo: null, redo: null },
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
+  const removedByEl: Record<string, string[]> = {};
   const textByEl: Record<string, Record<number, string>> = {};
   const app = (line: number, parent: string): Target => ({ kind: 'source', label: `src/App.tsx:${line} ${parent}`, file: '/proj/src/App.tsx', line, column: 5, affects: 1 });
   const orders: Record<string, OrderView & { start: string[] }> = {
@@ -271,14 +317,107 @@ export function createMockHost(): Host {
               column: e.source?.column,
               affects: e.sameSource,
               reason: agent ? t('mock.agentReason') : undefined,
+              ...(e.winners[p] ? { declared: true } : {}),
             },
           ];
         }),
       ),
       pending: (pendingByEl[e.uid] ??= {}),
+      removed: (removedByEl[e.uid] ??= []),
     };
   };
   select('e1');
+
+  // 上一步 / 下一步：每步之前存一份假宿主的全部状态，撤销、重做时整份换回去
+  const undos: Array<{ label: string; data: string }> = [];
+  const redos: Array<{ label: string; data: string }> = [];
+  const dump = () => JSON.stringify({ changes: state.changes, pendingByEl, removedByEl, textByEl, orders, propViews });
+  const refill = <T extends object>(to: T, from: T) => {
+    for (const k of Object.keys(to)) delete (to as Record<string, unknown>)[k];
+    Object.assign(to, from);
+  };
+  const restore = (data: string) => {
+    const d = JSON.parse(data) as { changes: ChangeView[]; pendingByEl: typeof pendingByEl; removedByEl: typeof removedByEl; textByEl: typeof textByEl; orders: typeof orders; propViews: typeof propViews };
+    state.changes = d.changes;
+    refill(pendingByEl, d.pendingByEl);
+    refill(removedByEl, d.removedByEl);
+    refill(textByEl, d.textByEl);
+    refill(orders, d.orders);
+    refill(propViews, d.propViews);
+    select(state.selection?.el.uid ?? 'e1');
+  };
+  const mark = (label: string) => {
+    undos.push({ label, data: dump() });
+    redos.length = 0;
+  };
+  const syncHistory = () => {
+    state.history = { undo: undos[undos.length - 1]?.label ?? null, redo: redos[redos.length - 1]?.label ?? null };
+  };
+  const dropChanges = (pick: (c: ChangeView) => boolean) => {
+    const sel = state.selection!;
+    for (const c of state.changes.filter((x) => x.status === 'pending' && pick(x))) {
+      for (const p of c.props) {
+        delete sel.pending[p];
+        sel.removed.splice(0, sel.removed.length, ...sel.removed.filter((x) => x !== p));
+      }
+    }
+    state.changes = state.changes.filter((x) => !(x.status === 'pending' && pick(x)));
+  };
+  const editStyle = (edit: PanelToExt & { t: 'edit' }) => {
+    const sel = state.selection!;
+    const e = sel.el;
+    const props = edit.edit.props;
+    const key = `${e.uid}|${props.join(',')}`;
+    if (edit.edit.remove) {
+      const declared = props.filter((p) => sel.targets[p]?.declared);
+      if (!declared.length) {
+        state.notice = { level: 'info', text: t('ext.remove.nothing') };
+        return;
+      }
+      dropChanges((c) => c.element === e.label && c.props.some((p) => declared.includes(p)));
+      for (const p of declared) {
+        sel.pending[p] = fallbackOf(p);
+        if (!sel.removed.includes(p)) sel.removed.push(p);
+      }
+      state.changes.unshift({
+        id: `${e.uid}|${declared.join(',')}#${++seq}`,
+        kind: 'style',
+        status: 'pending',
+        element: e.label,
+        props: declared,
+        propLabel: groupLabel(declared),
+        from: e.winners[declared[0]]?.rule?.utility ?? e.computed[declared[0]],
+        to: t('panel.change.removed'),
+        remove: true,
+        target: sel.targets[declared[0]],
+        pageUrl: state.page!.url,
+        createdAt: Date.now(),
+      } satisfies ChangeView);
+      return;
+    }
+    for (const p of props) sel.pending[p] = edit.edit.value;
+    if (edit.edit.phase !== 'commit') return;
+    dropChanges((c) => !!c.remove && c.element === e.label && c.props.some((p) => props.includes(p)));
+    for (const p of props) sel.pending[p] = edit.edit.value;
+    const from = e.computed[props[0]];
+    const existing = state.changes.find((c) => c.status === 'pending' && c.id.startsWith(key));
+    const to = edit.edit.token || edit.edit.value;
+    if (existing) existing.to = to;
+    else
+      state.changes.unshift({
+        id: `${key}#${++seq}`,
+        kind: 'style',
+        status: 'pending',
+        element: e.label,
+        props,
+        propLabel: groupLabel(props),
+        from,
+        to,
+        target: sel.targets[props[0]],
+        pageUrl: state.page!.url,
+        createdAt: Date.now(),
+      } satisfies ChangeView);
+  };
 
   const subs = new Set<(s: PanelState) => void>();
   const emit = () => {
@@ -289,6 +428,8 @@ export function createMockHost(): Host {
 
   const handle = (m: PanelToExt) => {
     console.debug('[mock] →', m);
+    const label = stepLabel(m, state);
+    if (label) mark(label);
     switch (m.t) {
       case 'ready':
         break;
@@ -316,31 +457,53 @@ export function createMockHost(): Host {
       case 'setSnap':
         state.snap = m.on;
         break;
-      case 'edit': {
-        const sel = state.selection!;
-        const e = sel.el;
-        for (const p of m.edit.props) sel.pending[p] = m.edit.value;
-        if (m.edit.phase === 'commit') {
-          const key = `${e.uid}|${m.edit.props.join(',')}`;
-          const from = e.computed[m.edit.props[0]];
-          const existing = state.changes.find((c) => c.status === 'pending' && c.id.startsWith(key));
-          const to = m.edit.token ?? m.edit.value;
-          if (existing) existing.to = to;
-          else
-            state.changes.unshift({
-              id: `${key}#${++seq}`,
-              kind: 'style',
-              status: 'pending',
-              element: e.label,
-              props: m.edit.props,
-              propLabel: groupLabel(m.edit.props),
-              from,
-              to,
-              target: sel.targets[m.edit.props[0]],
-              pageUrl: state.page!.url,
-              createdAt: Date.now(),
-            } satisfies ChangeView);
+      case 'edit':
+        editStyle(m);
+        break;
+      case 'editMany':
+        for (const edit of m.edits) editStyle({ t: 'edit', edit });
+        break;
+      case 'resetProps': {
+        const label = state.selection!.el.label;
+        dropChanges((c) => c.kind === 'style' && c.element === label && c.props.some((p) => m.props.includes(p)));
+        break;
+      }
+      case 'resetText': {
+        const uid = state.selection!.el.uid;
+        delete textByEl[uid]?.[m.segment];
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === `${uid}|text|${m.segment}`));
+        select(uid);
+        break;
+      }
+      case 'resetProp': {
+        const uid = state.selection!.el.uid;
+        const item = propViews[uid]?.items.find((x) => x.name === m.name);
+        if (item) {
+          item.value = propStart[uid][m.name];
+          item.pending = false;
         }
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === `${uid}|prop|${m.name}`));
+        select(uid);
+        break;
+      }
+      case 'resetOrder': {
+        const uid = state.selection!.el.uid;
+        const o = orders[uid];
+        if (o) {
+          o.items.sort((a, b) => o.start.indexOf(a.uid) - o.start.indexOf(b.uid));
+          o.pending = false;
+        }
+        state.changes = state.changes.filter((c) => !(c.status === 'pending' && c.id === `${uid}|order`));
+        select(uid);
+        break;
+      }
+      case 'undo':
+      case 'redo': {
+        const [from, to] = m.t === 'undo' ? [undos, redos] : [redos, undos];
+        const step = from.pop();
+        if (!step) break;
+        to.push({ label: step.label, data: dump() });
+        restore(step.data);
         break;
       }
       case 'editText': {
@@ -439,6 +602,8 @@ export function createMockHost(): Host {
             c.note = `${c.propLabel}: ${c.from} → ${c.to}`;
           }
           state.busy = false;
+          undos.length = redos.length = 0;
+          syncHistory();
           emit();
         }, 350);
         return;
@@ -478,6 +643,9 @@ export function createMockHost(): Host {
       default:
         break;
     }
+    // 交给 Agent、还原之后，之前记的几步对不上了
+    if (m.t === 'handoff' || m.t === 'revert') undos.length = redos.length = 0;
+    syncHistory();
     emit();
   };
 

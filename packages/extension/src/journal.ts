@@ -46,6 +46,17 @@ export class Journal {
     this.save();
   }
 
+  /** 撤销 / 重做：把一条记录整条换成记下的样子，不在清单里的按创建时间放回原来的位置 */
+  put(rec: ChangeRecord) {
+    const i = this.records.findIndex((r) => r.id === rec.id);
+    if (i >= 0) this.records[i] = rec;
+    else {
+      const at = this.records.findIndex((r) => r.createdAt < rec.createdAt);
+      this.records.splice(at < 0 ? this.records.length : at, 0, rec);
+    }
+    this.save();
+  }
+
   remove(id: string) {
     this.records = this.records.filter((r) => r.id !== id);
     this.save();

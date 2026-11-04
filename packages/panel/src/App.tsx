@@ -31,13 +31,30 @@ export function App({ host }: { host: Host }) {
   const editText = useCallback((segment: number, value: string, phase: 'live' | 'commit') => host.send({ t: 'editText', segment, value, phase }), [host]);
   const editProp = useCallback((name: string, value: PropValue, phase: 'live' | 'commit') => host.send({ t: 'editProp', name, value, phase }), [host]);
 
+  // ⌘Z / ⇧⌘Z（Windows、Linux 上 Ctrl+Z / Ctrl+Shift+Z、Ctrl+Y）：输入框里留给输入框自己撤销
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.isComposing) return;
+      const k = e.key.toLowerCase();
+      const redo = (k === 'z' && e.shiftKey) || (k === 'y' && e.ctrlKey && !e.shiftKey);
+      if (!redo && !(k === 'z' && !e.shiftKey)) return;
+      if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      host.send({ t: redo ? 'redo' : 'undo' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [host]);
+
   if (!state) return <div className="boot">{t('panel.boot')}</div>;
   const sel = state.selection;
   const connected = state.connection === 'connected';
+  const toggleClosed = (id: string) => setPrefs({ ...prefs, closed: prefs.closed.includes(id) ? prefs.closed.filter((x) => x !== id) : [...prefs.closed, id] });
 
   return (
     <div className="app">
       <Toolbar state={state} send={send} />
+      <ChangeList state={state} send={send} open={!prefs.closed.includes('changes')} onToggle={() => toggleClosed('changes')} />
       <NoticeBar state={state} send={send} />
       <main className="main">
         {!connected && state.connection !== 'opening' && (
@@ -60,7 +77,7 @@ export function App({ host }: { host: Host }) {
               sel={sel}
               send={send}
               open={!prefs.closed.includes('tree')}
-              onToggle={(id) => setPrefs({ ...prefs, closed: prefs.closed.includes(id) ? prefs.closed.filter((x) => x !== id) : [...prefs.closed, id] })}
+              onToggle={toggleClosed}
               onlyComponents={prefs.split.includes('tree-components')}
               setOnlyComponents={(on) => setPrefs({ ...prefs, split: on ? [...prefs.split, 'tree-components'] : prefs.split.filter((x) => x !== 'tree-components') })}
             />
@@ -68,7 +85,6 @@ export function App({ host }: { host: Host }) {
           </>
         )}
       </main>
-      <ChangeList state={state} send={send} />
     </div>
   );
 }

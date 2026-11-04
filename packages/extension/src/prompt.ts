@@ -60,6 +60,7 @@ function changeLines(rec: ChangeRecord, tw: boolean): string[] {
       return lines;
     }
     default: {
+      if (rec.removal) return [back ? t('handoff.remove.revert', { props: rec.propLabel, from: rec.from }) : t('handoff.remove', { props: rec.propLabel, from: rec.from })];
       const props = rec.props.join(' / ');
       const value = valueText(rec.value, rec.token, tw);
       return [back ? t('handoff.revertTo', { props, value, from: rec.from }) : t('handoff.change', { props, from: rec.from, to: value })];

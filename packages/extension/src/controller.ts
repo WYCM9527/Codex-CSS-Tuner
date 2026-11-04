@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import {
+  aliasesOf,
   getLocale,
   groupLabel,
   PROP_NAMES,
@@ -32,6 +33,7 @@ import { Applier, SnapshotStore } from './applier';
 import { BrowserAdapter } from './browser';
 import { literalCompletions } from './completions';
 import { prefill, type PrefillResult } from './handoff';
+import { History, pendingSet } from './history';
 import { Journal, type ChangeRecord } from './journal';
 import { MessageFiles } from './messages';
 import {
@@ -100,6 +102,15 @@ export function targetKey(p: Plan, el: ElementSnapshot): string {
 function htmlSelector(path: number[]): string {
   return `:root${path.map((i) => ` > :nth-child(${i + 1})`).join('')}`;
 }
+
+/**
+ * 删属性的预览：改规则的直接去掉规则里的这些声明（连同逻辑别名），页面自然回落；
+ * 改元素的（类名还在，规则还生效）把内联样式设成量好的回落值
+ */
+function removalDecls(preview: PreviewTarget, values: Record<string, string>): Record<string, string> {
+  if (preview.kind === 'rule') return Object.fromEntries(Object.keys(values).flatMap((p) => aliasesOf(p).map((n) => [n, ''])));
+  return values;
+}
 export class Controller implements vscode.Disposable {
   readonly browser = new BrowserAdapter();
   readonly server = new BridgeServer();
@@ -139,6 +150,10 @@ export class Controller implements vscode.Disposable {
   /** 当前页面 Tailwind 入口的设计系统，不是 Tailwind 页面时为 null */
   private design: TwDesign | null = null;
   private editChain: Promise<unknown> = Promise.resolve();
+  /** 上一步 / 下一步（只管未应用的改动） */
+  readonly history = new History();
+  /** 正在做一步（编辑提交、重置、撤销）：中途改动清单的变化不算外部改动 */
+  private stepping = 0;
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
@@ -161,12 +176,15 @@ export class Controller implements vscode.Disposable {
       busy: false,
       snap: cfg.get<boolean>('snap', true),
       locale: getLocale(),
+      history: { undo: null, redo: null },
     };
     this.disposables.push(
       this.journal,
       this.applier.snapshots,
       this.journal.onChange(() => {
         this.state.changes = this.journal.views();
+        // 应用、交给 Agent、清理这些不经过历史的变化：对不上的几步作废
+        if (!this.stepping) this.syncHistory();
         this.push();
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.project.invalidate()),
@@ -303,6 +321,24 @@ export class Controller implements vscode.Disposable {
         return;
       case 'editProp':
         await this.editProp(msg.name, msg.value, msg.phase);
+        return;
+      case 'editMany':
+        await this.editMany(msg.edits);
+        return;
+      case 'undo':
+        await this.undo();
+        return;
+      case 'redo':
+        await this.redo();
+        return;
+      case 'resetText':
+        await this.resetText(msg.segment);
+        return;
+      case 'resetProp':
+        await this.resetProp(msg.name);
+        return;
+      case 'resetOrder':
+        await this.resetOrder();
         return;
       case 'reload':
         if (this.session) await this.browser.reload(this.session.browserId);
@@ -588,33 +624,35 @@ export class Controller implements vscode.Disposable {
   }
 
   private async restorePreviews() {
-    const session = this.session;
-    if (!session || !this.page) return;
-    for (const rec of this.journal.pending()) {
-      if (!this.samePage(rec.pageUrl, this.page.url)) continue;
-      const src = rec.element.source;
-      // 换序记的是挪动的那一项，按选中时的元素（anchor）找回这一组
-      const anchor = rec.preview.kind === 'order' ? rec.preview.anchor : undefined;
-      const htmlPath = rec.preview.kind === 'text' || rec.preview.kind === 'order' ? rec.preview.htmlPath : undefined;
-      const query = anchor
-        ? { source: anchor }
-        : src && rec.preview.kind !== 'order'
-          ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
-          : htmlPath
-            ? { selector: htmlSelector(htmlPath) }
-            : null;
-      const uid = query ? await session.call('resolve', { ...query, waitMs: 3000 }, 6000).catch(() => null) : null;
-      // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
-      if (!uid && rec.preview.kind !== 'rule') continue;
-      const target = { ...rec.preview, uid: uid ?? rec.preview.uid } as PreviewTarget;
-      this.journal.update(rec.id, { preview: target });
-      await session
-        .call('preview', { id: rec.previewId, target, ...(await this.previewValue(rec)) })
-        .catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
-    }
+    for (const rec of this.journal.pending()) await this.showPreview(rec);
   }
 
-  /** 一条改动的预览值：样式是声明（含 Tailwind 令牌顺带的属性），文字和 props 是新值，换序的位置在目标里 */
+  /** 把一条未应用改动的预览挂到页面上：元素按源码位置找回来（换序按选中时的那一项，纯 HTML 按路径） */
+  private async showPreview(rec: ChangeRecord) {
+    const session = this.session;
+    if (!session || !this.page || !this.samePage(rec.pageUrl, this.page.url)) return;
+    const src = rec.element.source;
+    // 换序记的是挪动的那一项，按选中时的元素（anchor）找回这一组
+    const anchor = rec.preview.kind === 'order' ? rec.preview.anchor : undefined;
+    const htmlPath = rec.preview.kind === 'text' || rec.preview.kind === 'order' ? rec.preview.htmlPath : undefined;
+    const query = anchor
+      ? { source: anchor }
+      : src && rec.preview.kind !== 'order'
+        ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
+        : htmlPath
+          ? { selector: htmlSelector(htmlPath) }
+          : null;
+    const uid = query ? await session.call('resolve', { ...query, waitMs: 3000 }, 6000).catch(() => null) : null;
+    // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
+    if (!uid && rec.preview.kind !== 'rule') return;
+    const target = { ...rec.preview, uid: uid ?? rec.preview.uid } as PreviewTarget;
+    this.journal.update(rec.id, { preview: target });
+    await session
+      .call('preview', { id: rec.previewId, target, ...(await this.previewValue(rec)) })
+      .catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
+  }
+
+  /** 一条改动的预览值：样式是声明（含 Tailwind 令牌顺带的属性），删属性见 removalDecls，文字和 props 是新值，换序的位置在目标里 */
   private async previewValue(rec: ChangeRecord): Promise<{ decls?: Record<string, string>; text?: string; prop?: PropValue }> {
     switch (rec.kind) {
       case 'text':
@@ -624,6 +662,7 @@ export class Controller implements vscode.Disposable {
       case 'reorder':
         return {};
       default:
+        if (rec.removal) return { decls: removalDecls(rec.preview, rec.removal.values) };
         return { decls: { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) } };
     }
   }
@@ -671,7 +710,7 @@ export class Controller implements vscode.Disposable {
         targets[v.name] = p.view;
       }
     }
-    return { el, file, targets, pending: this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el), props: this.propsFor(el) };
+    return { el, file, targets, ...this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el), props: this.propsFor(el) };
   }
 
   private orderContext(page: PageInfo): OrderContext {
@@ -824,9 +863,7 @@ export class Controller implements vscode.Disposable {
 
   /** 改选中元素所属组件的属性：live 只预览，commit 记进改动清单；改回原来的值就撤掉这条改动 */
   editProp(name: string, value: PropValue, phase: 'live' | 'commit'): Promise<void> {
-    const run = this.editChain.then(() => this.doEditProp(name, value, phase));
-    this.editChain = run.catch(() => undefined);
-    return run;
+    return this.queue(() => (phase === 'commit' ? this.step(() => this.doEditProp(name, value, phase)) : this.doEditProp(name, value, phase)));
   }
 
   private async doEditProp(name: string, value: PropValue, phase: 'live' | 'commit') {
@@ -886,18 +923,28 @@ export class Controller implements vscode.Disposable {
     this.push();
   }
 
-  /** 选中元素上仍未应用的改动值（同一写回目标、同一属性） */
-  private pendingFor(el: ElementSnapshot): Record<string, string> {
-    const out: Record<string, string> = {};
-    const recs = this.journal.pending();
-    if (!recs.length) return out;
-    for (const rec of [...recs].reverse()) {
+  /** 选中元素上仍未应用的改动值（同一写回目标、同一属性），删属性的是删掉之后的值 */
+  private pendingFor(el: ElementSnapshot): Pick<SelectionView, 'pending' | 'removed'> {
+    const pending: Record<string, string> = {};
+    const removed = new Set<string>();
+    for (const rec of [...this.journal.pending()].reverse()) {
       for (const prop of rec.props) {
         const p = this.plans.get(prop);
-        if (p && rec.key.startsWith(targetKey(p, el) + '|')) out[prop] = rec.value;
+        if (!p || !rec.key.startsWith(targetKey(p, el) + '|')) continue;
+        pending[prop] = rec.removal?.values[prop] ?? rec.value;
+        if (rec.removal) removed.add(prop);
+        else removed.delete(prop);
       }
     }
-    return out;
+    return { pending, removed: [...removed] };
+  }
+
+  /** 选中元素上未应用的样式改动（和元素现在的写回目标相同） */
+  private pendingOn(el: ElementSnapshot): ChangeRecord[] {
+    return this.journal.pending().filter((rec) => {
+      const p = rec.kind === 'style' ? this.plans.get(rec.props[0]) : undefined;
+      return !!p && rec.key.startsWith(targetKey(p, el) + '|');
+    });
   }
 
   private resolveSelectionWaiters() {
@@ -924,19 +971,49 @@ export class Controller implements vscode.Disposable {
 
   /* ---------- 编辑与预览 ---------- */
 
-  edit(req: EditRequest): Promise<void> {
-    const run = this.editChain.then(() => this.doEdit(req));
-    this.editChain = run.catch(() => undefined);
-    return run;
+  /** 编辑、重置、撤销按顺序一个个来：预览和改动清单都是异步改的 */
+  private queue<T>(run: () => Promise<T>): Promise<T> {
+    const p = this.editChain.then(run);
+    this.editChain = p.catch(() => undefined);
+    return p;
   }
 
-  private async doEdit(req: EditRequest) {
-    const sel = this.state.selection;
-    const session = this.session;
-    if (!sel || !session || !this.page || !req.props.length) return;
-    const el = sel.el;
+  /** 一次用户操作：前后的未应用改动有变化就记成历史里的一步；套在别的操作里时算进外面那一步 */
+  private async step<T>(run: () => Promise<T>): Promise<T> {
+    if (this.stepping) return run();
+    const before = pendingSet(this.journal.all());
+    this.stepping++;
+    try {
+      return await run();
+    } finally {
+      this.stepping--;
+      this.history.record(before, pendingSet(this.journal.all()));
+      this.syncHistory();
+      this.push();
+    }
+  }
+
+  /** 作废和现在的改动清单对不上的几步，按钮提示跟着变 */
+  private syncHistory() {
+    this.history.prune((key) => this.journal.findPending(key));
+    this.state.history = this.history.labels();
+  }
+
+  edit(req: EditRequest): Promise<void> {
+    return this.queue(() => (req.phase === 'commit' || req.remove ? this.step(() => this.doEdit(req)) : this.doEdit(req)));
+  }
+
+  /** 一次改几组属性（加描边：粗细和样式一起设），撤销时算一步 */
+  editMany(edits: EditRequest[]): Promise<void> {
+    return this.queue(() => this.step(async () => {
+      for (const req of edits) await this.doEdit(req);
+    }));
+  }
+
+  /** 按写回目标分组：同一组的属性记成一条改动 */
+  private groupByTarget(el: ElementSnapshot, props: string[]): Map<string, { plan: Plan; props: string[] }> {
     const groups = new Map<string, { plan: Plan; props: string[] }>();
-    for (const prop of req.props) {
+    for (const prop of props) {
       const p = this.plans.get(prop);
       if (!p) continue;
       const k = targetKey(p, el);
@@ -944,7 +1021,17 @@ export class Controller implements vscode.Disposable {
       g.props.push(prop);
       groups.set(k, g);
     }
-    for (const [tk, g] of groups) {
+    return groups;
+  }
+
+  private async doEdit(req: EditRequest) {
+    const sel = this.state.selection;
+    const session = this.session;
+    if (!sel || !session || !this.page || !req.props.length) return;
+    if (req.remove) return this.doRemove(req);
+    const el = sel.el;
+    let undeleted = false;
+    for (const [tk, g] of this.groupByTarget(el, req.props)) {
       const props = [...g.props].sort();
       const key = `${tk}|${props.join(',')}`;
       const existing = this.journal.findPending(key);
@@ -955,20 +1042,31 @@ export class Controller implements vscode.Disposable {
       if (live) for (const p of props) live.pending[p] = req.value;
       if (req.phase !== 'commit') continue;
 
-      const original = Object.fromEntries(props.map((p) => [p, existing?.original[p] ?? el.computed[p] ?? '']));
+      // 这些属性上别的未应用删除（删的范围不一样）：先撤掉删除再按新值改，原值按删之前的算
+      const removals = this.pendingOn(el).filter((r) => r.removal && r.key !== key && r.props.some((p) => props.includes(p)));
+      const before: Record<string, string> = Object.assign({}, ...removals.map((r) => r.original));
+      const was: Record<string, string> = Object.assign({}, ...removals.map((r) => r.removal?.from ?? {}), existing?.removal?.from ?? {});
+      for (const r of removals) await this.dropRecord(r);
+      undeleted ||= removals.length > 0;
+      const original = Object.fromEntries(props.map((p) => [p, existing?.original[p] ?? before[p] ?? el.computed[p] ?? '']));
       const backToOriginal = props.every((p) => res.computed[p] !== undefined && sameValue(p, res.computed[p], original[p]));
       if (backToOriginal) {
         if (existing) this.journal.remove(existing.id);
         await session.call('clearPreview', { id: previewId });
         const now = this.selectionOf(el);
-        if (now) for (const p of props) delete now.pending[p];
+        if (now) {
+          for (const p of props) delete now.pending[p];
+          now.removed = now.removed.filter((p) => !props.includes(p));
+        }
         continue;
       }
       const to = this.describeTo(g.plan, req);
+      const from = was[props[0]] ?? this.describeFrom(el, props[0], g.plan);
       const expected = Object.fromEntries(props.filter((p) => res.computed[p] !== undefined).map((p) => [p, res.computed[p]]));
       const { view, write } = await this.withPolicy(g.plan, props, req);
       if (existing) {
-        this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write });
+        const undo = existing.removal ? { from, removal: undefined } : {};
+        this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write, ...undo });
       } else {
         this.journal.add({
           kind: 'style',
@@ -983,7 +1081,7 @@ export class Controller implements vscode.Disposable {
           },
           props,
           propLabel: groupLabel(props),
-          from: this.describeFrom(el, props[0], g.plan),
+          from,
           to,
           value: req.value,
           token: req.token ?? null,
@@ -996,9 +1094,94 @@ export class Controller implements vscode.Disposable {
         });
       }
       const now = this.selectionOf(el);
-      if (now) for (const p of props) now.pending[p] = req.value;
+      if (now) {
+        for (const p of props) now.pending[p] = req.value;
+        now.removed = now.removed.filter((p) => !props.includes(p));
+      }
     }
+    // 撤掉的删除管着更多属性（删了整个描边再改粗细）：其余属性回到原来的值，重新读一遍
+    if (undeleted) await this.refreshSelection();
     this.push();
+  }
+
+  /**
+   * 删属性：去掉这些属性在元素上生效的那条声明（Tailwind 删类名，CSS 删声明），页面上预览删掉之后的样子。
+   * 只删作者写的声明，继承、初始值和框架预设样式删不了；先试算一遍写回，删不了的当场说明
+   */
+  private async doRemove(req: EditRequest) {
+    const sel = this.state.selection;
+    const session = this.session;
+    if (!sel || !session || !this.page) return;
+    const el = sel.el;
+    const declared = req.props.filter((p) => this.plans.get(p)?.view.declared);
+    if (!declared.length) {
+      this.notify('info', t('ext.remove.nothing'));
+      return;
+    }
+    const utility = (p: string) => {
+      const w = this.plans.get(p)?.write;
+      return w?.kind === 'tailwind' ? w.utility : null;
+    };
+    const groups: Array<{ key: string; plan: Plan; props: string[]; classes?: string[] }> = [];
+    for (const [tk, g] of this.groupByTarget(el, declared)) {
+      const props = [...g.props].sort();
+      const w = g.plan.write;
+      const classes = w.kind === 'tailwind' ? [...new Set(props.map(utility).filter((u): u is string => !!u))] : undefined;
+      if (w.kind === 'tailwind' && w.override) {
+        this.notify('warn', t('ext.remove.override'));
+        continue;
+      }
+      if (w.kind !== 'agent') {
+        const res = await computeWrite({ write: w, props, value: '', token: null, removal: { values: {}, classes } } as ChangeRecord, this.tailwind, this.remBase);
+        if (!res.ok) {
+          this.notify('warn', res.reason);
+          continue;
+        }
+      }
+      groups.push({ key: `${tk}|${props.join(',')}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
+    }
+    const props = groups.flatMap((g) => g.props);
+    if (!props.length) return;
+    // 只改（或删）这几个属性里一部分的未应用改动删掉之后就没用了，原值和原来的写法按它们记下的算
+    const dropped = this.pendingOn(el).filter((r) => r.props.every((p) => props.includes(p)));
+    const before: Record<string, string> = Object.assign({}, ...dropped.map((r) => r.original));
+    const was: Record<string, string> = Object.assign({}, ...dropped.map((r) => Object.fromEntries(r.props.map((p) => [p, r.removal?.from?.[p] ?? r.from]))));
+    for (const r of dropped) await this.dropRecord(r);
+    const fallback = await session.call('fallback', { uid: el.uid, props });
+    if (!fallback) return;
+    for (const { key, plan: g, props: gp, classes } of groups) {
+      const existing = this.journal.findPending(key);
+      const previewId = existing?.previewId ?? key;
+      const values = Object.fromEntries(gp.map((p) => [p, fallback[p] ?? '']));
+      const from = Object.fromEntries(gp.map((p) => [p, was[p] ?? this.describeFrom(el, p, g)]));
+      const removal = { values, from, ...(classes ? { classes } : {}) };
+      const { view, write } = g;
+      await session.call('preview', { id: previewId, target: g.preview, decls: removalDecls(g.preview, values) });
+      const fields = { value: '', token: null, to: t('panel.change.removed'), expected: values, view, write, removal };
+      if (existing) this.journal.update(existing.id, fields);
+      else {
+        this.journal.add({
+          kind: 'style',
+          key,
+          pageUrl: this.page.url,
+          element: {
+            label: el.label,
+            source: el.source,
+            sourceIndex: el.sourceIndex,
+            sameSource: el.sameSource,
+            path: el.breadcrumb.map((b) => b.label).join(' > '),
+          },
+          props: gp,
+          propLabel: groupLabel(gp),
+          from: classes?.join(' ') || from[gp[0]],
+          original: Object.fromEntries(gp.map((p) => [p, before[p] ?? el.computed[p] ?? ''])),
+          preview: g.preview,
+          previewId,
+          ...fields,
+        });
+      }
+    }
+    await this.refreshSelection();
   }
 
   /** 编辑等预览的时候选中可能已经重建过（热更新换了样式表、刚连上还在读刻度）：改现在这份，换了元素就不改 */
@@ -1009,9 +1192,7 @@ export class Controller implements vscode.Disposable {
 
   /** 改选中元素的第 segment 段文字：live 只预览，commit 记进改动清单；改回原文或清空就撤掉这条改动 */
   editText(segment: number, value: string, phase: 'live' | 'commit'): Promise<void> {
-    const run = this.editChain.then(() => this.doEditText(segment, value, phase));
-    this.editChain = run.catch(() => undefined);
-    return run;
+    return this.queue(() => (phase === 'commit' ? this.step(() => this.doEditText(segment, value, phase)) : this.doEditText(segment, value, phase)));
   }
 
   private async doEditText(segment: number, raw: string, phase: 'live' | 'commit') {
@@ -1073,9 +1254,7 @@ export class Controller implements vscode.Disposable {
    * 同一组上的换序合并成一条，挪回原来的顺序就撤掉这条改动
    */
   reorder(uid: string, to: number, phase: 'live' | 'commit'): Promise<void> {
-    const run = this.editChain.then(() => this.doReorder(uid, to, phase));
-    this.editChain = run.catch(() => undefined);
-    return run;
+    return this.queue(() => (phase === 'commit' ? this.step(() => this.doReorder(uid, to, phase)) : this.doReorder(uid, to, phase)));
   }
 
   private async doReorder(uid: string, to: number, phase: 'live' | 'commit') {
@@ -1170,27 +1349,108 @@ export class Controller implements vscode.Disposable {
     return req.value;
   }
 
-  /** 撤掉选中元素上这些属性的未应用改动 */
-  async resetProps(props: string[]) {
-    const sel = this.state.selection;
-    if (!sel) return;
-    for (const rec of this.journal.pending()) {
-      if (!rec.props.some((p) => props.includes(p))) continue;
-      const p = this.plans.get(rec.props[0]);
-      if (p && rec.key.startsWith(targetKey(p, sel.el) + '|')) await this.discard(rec.id);
-    }
+  /** 重置：撤掉选中元素上这些属性的未应用改动 */
+  resetProps(props: string[]): Promise<void> {
+    return this.reset(() => {
+      const el = this.state.selection?.el;
+      return el ? this.pendingOn(el).filter((r) => r.props.some((p) => props.includes(p))) : [];
+    });
   }
 
-  async discard(id: string) {
-    const rec = this.journal.get(id);
-    if (!rec) return;
+  /** 重置第 segment 段文字 */
+  resetText(segment: number): Promise<void> {
+    return this.reset(() => {
+      const el = this.state.selection?.el;
+      const p = this.textPlans.get(segment);
+      return el && p ? [this.journal.findPending(textKey(p, el, segment))] : [];
+    });
+  }
+
+  /** 重置组件的一个属性 */
+  resetProp(name: string): Promise<void> {
+    return this.reset(() => {
+      const el = this.state.selection?.el;
+      const p = this.propPlans.get(name);
+      return el && p ? [this.journal.findPending(propKey(p, el, name))] : [];
+    });
+  }
+
+  /** 重置兄弟组的换序 */
+  resetOrder(): Promise<void> {
+    this.liveOrder = null;
+    return this.reset(() => [this.orderPlan ? this.journal.findPending(this.orderPlan.key) : undefined]);
+  }
+
+  private reset(pick: () => Array<ChangeRecord | undefined>): Promise<void> {
+    return this.queue(() =>
+      this.step(async () => {
+        const recs = pick().filter((r): r is ChangeRecord => !!r);
+        if (!recs.length) return;
+        for (const rec of recs) await this.dropRecord(rec);
+        await this.sweepSnapshots();
+        await this.refreshSelection();
+      }),
+    );
+  }
+
+  /** 改动清单里的「放弃」 */
+  discard(id: string): Promise<void> {
+    return this.queue(() =>
+      this.step(async () => {
+        const rec = this.journal.get(id);
+        if (!rec) return;
+        await this.dropRecord(rec);
+        await this.sweepSnapshots();
+        if (this.state.selection) {
+          for (const p of rec.props) delete this.state.selection.pending[p];
+          await this.refreshSelection();
+        }
+      }),
+    );
+  }
+
+  /** 撤掉一条改动：去掉页面上的预览，移出清单 */
+  private async dropRecord(rec: ChangeRecord) {
     await this.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
-    this.journal.remove(id);
-    await this.sweepSnapshots();
-    if (this.state.selection) {
-      for (const p of rec.props) delete this.state.selection.pending[p];
-      await this.refreshSelection();
+    this.journal.remove(rec.id);
+  }
+
+  /** 上一步 */
+  undo(): Promise<void> {
+    return this.queue(() => this.replay('undo'));
+  }
+
+  /** 下一步 */
+  redo(): Promise<void> {
+    return this.queue(() => this.replay('redo'));
+  }
+
+  /** 把这一步动到的未应用改动放回之前（重做是之后）的样子，页面上的预览和面板跟着变 */
+  private async replay(kind: 'undo' | 'redo') {
+    const state = this.history.take(kind, (key) => this.journal.findPending(key));
+    if (!state) return;
+    this.stepping++;
+    try {
+      for (const [key, rec] of state) await this.restoreRecord(key, rec);
+    } finally {
+      this.stepping--;
+      this.syncHistory();
     }
+    this.liveOrder = null;
+    await this.sweepSnapshots();
+    await this.refreshSelection();
+    this.push();
+  }
+
+  /** 把 key 这条未应用改动换成 rec 记下的样子（null 是撤掉）；同一 id 的预览会合并声明，先撤掉再重新挂 */
+  private async restoreRecord(key: string, rec: ChangeRecord | null) {
+    const cur = this.journal.findPending(key);
+    if (cur) await this.session?.call('clearPreview', { id: cur.previewId }).catch(() => undefined);
+    if (cur && (!rec || cur.id !== rec.id)) this.journal.remove(cur.id);
+    if (!rec) return;
+    const copy = structuredClone(rec);
+    this.journal.put(copy);
+    await this.showPreview(copy);
   }
 
   /** 重新取一次选中元素的快照（预览变化后计算值会变） */

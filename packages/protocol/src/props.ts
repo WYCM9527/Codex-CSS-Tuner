@@ -1,4 +1,4 @@
-export type SectionId = 'layout' | 'position' | 'spacing' | 'size' | 'typography' | 'fill' | 'radius' | 'effects';
+export type SectionId = 'layout' | 'position' | 'spacing' | 'size' | 'typography' | 'fill' | 'stroke' | 'radius' | 'effects';
 
 export type PropKind =
   | 'length'
@@ -60,6 +60,12 @@ export const PROPS: PropMeta[] = [
 
   { prop: 'background-color', section: 'fill', kind: 'color' },
 
+  ...(['top', 'right', 'bottom', 'left'] as const).flatMap((side): PropMeta[] => [
+    { prop: `border-${side}-width`, section: 'stroke', kind: 'length' },
+    { prop: `border-${side}-style`, section: 'stroke', kind: 'keyword', keywords: ['none', 'solid', 'dashed', 'dotted', 'double', 'hidden'] },
+    { prop: `border-${side}-color`, section: 'stroke', kind: 'color' },
+  ]),
+
   { prop: 'border-top-left-radius', section: 'radius', kind: 'length' },
   { prop: 'border-top-right-radius', section: 'radius', kind: 'length' },
   { prop: 'border-bottom-right-radius', section: 'radius', kind: 'length' },
@@ -82,6 +88,10 @@ export const MARGIN = ['margin-top', 'margin-right', 'margin-bottom', 'margin-le
 export const RADIUS = ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius'];
 export const GAP = ['row-gap', 'column-gap'];
 export const INSET = ['top', 'right', 'bottom', 'left'];
+export const BORDER_WIDTH = ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width'];
+export const BORDER_STYLE = ['border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style'];
+export const BORDER_COLOR = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
+export const BORDER = [...BORDER_WIDTH, ...BORDER_STYLE, ...BORDER_COLOR];
 
 /** 面板上的一组联动控件对应的 longhand 集合，用于引擎合并成简写类或简写声明 */
 export const PROP_GROUPS: Record<string, string[]> = {
@@ -94,6 +104,10 @@ export const PROP_GROUPS: Record<string, string[]> = {
   'border-radius': RADIUS,
   gap: GAP,
   inset: INSET,
+  border: BORDER,
+  'border-width': BORDER_WIDTH,
+  'border-style': BORDER_STYLE,
+  'border-color': BORDER_COLOR,
 };
 
 export function groupLabel(props: string[]): string {

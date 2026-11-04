@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { t, type PanelToExt, type PropValue, type PropView, type ScaleStep, type SelectionView } from '@css-tuner/protocol';
 import type { Ctx } from '../lib/scale';
-import { Section, Segmented, SelectField, targetHint } from './controls';
+import { Corner, Section, Segmented, SelectField, targetHint } from './controls';
 import { NumberField } from './NumberField';
 
 type EditProp = (name: string, value: PropValue, phase: 'live' | 'commit') => void;
@@ -35,7 +35,13 @@ export function Props(props: { sel: SelectionView; ctx: Ctx; open: boolean; onTo
         </div>
       )}
       {view.items.map((x) => (
-        <PropRow key={`${props.sel.el.uid}:${x.name}`} view={x} ctx={props.ctx} onEdit={(v, phase) => props.editProp(x.name, v, phase)} />
+        <PropRow
+          key={`${props.sel.el.uid}:${x.name}`}
+          view={x}
+          ctx={props.ctx}
+          onEdit={(v, phase) => props.editProp(x.name, v, phase)}
+          onReset={() => props.send({ t: 'resetProp', name: x.name })}
+        />
       ))}
       {!view.items.length && <p className="sec-note">{t('insp.props.empty')}</p>}
       {typed && <p className="sec-note">{t('insp.props.hint')}</p>}
@@ -43,20 +49,21 @@ export function Props(props: { sel: SelectionView; ctx: Ctx; open: boolean; onTo
   );
 }
 
-function PropRow({ view, ctx, onEdit }: { view: PropView; ctx: Ctx; onEdit: OnEdit }) {
+function PropRow({ view, ctx, onEdit, onReset }: { view: PropView; ctx: Ctx; onEdit: OnEdit; onReset: () => void }) {
   const hint = [view.name, view.missing ? t('insp.props.missing') : null, view.warn ?? null].filter(Boolean).join('\n');
+  const corner = <Corner label={view.name} pending={view.pending} onReset={onReset} />;
   return (
     <div className={`row pp-row${view.missing ? ' is-missing' : ''}`}>
       <span className="row-label" title={hint}>
         {view.name}
         {view.warn && <i className="pp-warn" />}
       </span>
-      <div className="row-fields">{control(view, ctx, onEdit)}</div>
+      <div className="row-fields">{control(view, ctx, onEdit, corner)}</div>
     </div>
   );
 }
 
-function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
+function control(view: PropView, ctx: Ctx, onEdit: OnEdit, corner: ReactNode): ReactNode {
   const { value, pending, target } = view;
   const opts = view.options ?? [];
   if (opts.length) {
@@ -67,6 +74,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
           value={key}
           pending={pending}
           target={target}
+          corner={corner}
           options={opts.map((o) => ({ value: JSON.stringify(o), label: String(o), title: String(o) }))}
           onPick={(v) => onEdit(JSON.parse(v) as PropValue, 'commit')}
         />
@@ -82,6 +90,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
         pending={pending}
         target={target}
         describe={() => ''}
+        corner={corner}
         onEdit={(e) => onEdit(JSON.parse(e.value) as PropValue, e.phase)}
       />
     );
@@ -92,6 +101,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
         value={String(value)}
         pending={pending}
         target={target}
+        corner={corner}
         options={['true', 'false'].map((v) => ({ value: v, label: v, title: v }))}
         onPick={(v) => onEdit(v === 'true', 'commit')}
       />
@@ -111,6 +121,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
         target={target}
         unit=""
         stepSize={Number.isInteger(value) ? 1 : 0.1}
+        corner={corner}
         onEdit={(e) => {
           const n = Number(e.value);
           if (Number.isFinite(n)) onEdit(n, e.phase);
@@ -118,7 +129,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
       />
     );
   }
-  if (view.type === 'string' && typeof value === 'string') return <PropText view={view} onEdit={onEdit} />;
+  if (view.type === 'string' && typeof value === 'string') return <PropText view={view} onEdit={onEdit} corner={corner} />;
   return (
     <span className="pp-readonly" title={t('insp.props.readonly')}>
       {view.summary ?? shown(value)}
@@ -127,7 +138,7 @@ function control(view: PropView, ctx: Ctx, onEdit: OnEdit): ReactNode {
 }
 
 /** 输入时实时预览；回车或失焦提交，Esc 恢复开始编辑时的值 */
-function PropText({ view, onEdit }: { view: PropView; onEdit: OnEdit }) {
+function PropText({ view, onEdit, corner }: { view: PropView; onEdit: OnEdit; corner: ReactNode }) {
   const [text, setText] = useState<string | null>(null);
   const start = useRef<PropValue>('');
   const live = useRef(false);
@@ -177,6 +188,7 @@ function PropText({ view, onEdit }: { view: PropView; onEdit: OnEdit }) {
         }}
       />
       {agent && <span className="nf-agent" title={view.target.reason ?? t('field.agent')} />}
+      {corner}
     </div>
   );
 }

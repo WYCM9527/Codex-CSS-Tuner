@@ -54,6 +54,11 @@ export interface ChangeRecord {
   patch?: AppliedPatch;
   /** 交给 Agent 时用的附加说明：换序后兄弟的新顺序、props 所属组件和它的调用处、文字来源 */
   detail?: { order?: string[]; component?: string; site?: string; origin?: string };
+  /**
+   * 删属性：每个属性删掉之后页面上的值（面板显示、应用后核对）、删之前的写法（撤掉删除再改时当原值显示；
+   * 删除预览开着时元素快照里已经读不到），Tailwind 还有要去掉的类（各属性当前生效的类名）
+   */
+  removal?: { values: Record<string, string>; from?: Record<string, string>; classes?: string[] };
 }
 
 /** 存下来的记录：0.2.0 及以前的没有 kind，都是样式改动 */
@@ -76,6 +81,7 @@ export function recordView(r: ChangeRecord): ChangeView {
     target: r.view,
     note: r.note,
     ...(r.kind === 'reorder' && r.status === 'pending' ? { simulated: true } : {}),
+    ...(r.removal ? { remove: true } : {}),
     pageUrl: r.pageUrl,
     createdAt: r.createdAt,
   };

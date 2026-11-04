@@ -33,6 +33,7 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
             <Icon.crosshair />
             {state.pickOn ? t('panel.picking') : t('panel.pick')}
           </button>
+          <HistoryButtons state={state} send={send} />
           <span className="spacer" />
           <IconToggle on={state.snap} title={state.snap ? t('panel.snap.on') : t('panel.snap.off')} onClick={() => send({ t: 'setSnap', on: !state.snap })}>
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3">
@@ -41,6 +42,30 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
           </IconToggle>
         </div>
       )}
+    </div>
+  );
+}
+
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+export const SHORTCUT = { undo: MAC ? '⌘Z' : 'Ctrl+Z', redo: MAC ? '⇧⌘Z' : 'Ctrl+Shift+Z' };
+
+/** 上一步 / 下一步：撤销、重做还没应用的改动，提示里写着这一步改的是什么 */
+function HistoryButtons({ state, send }: { state: PanelState; send: Send }) {
+  const btn = (kind: 'undo' | 'redo') => {
+    const label = state.history[kind];
+    const name = t(`panel.${kind}`);
+    const title = label ? t(`panel.${kind}.title`, { label, key: SHORTCUT[kind] }) : t(`panel.${kind}.none`, { key: SHORTCUT[kind] });
+    const Glyph = kind === 'undo' ? Icon.undo : Icon.redo;
+    return (
+      <button className="icon-btn" disabled={!label} title={title} aria-label={name} onClick={() => send({ t: kind })}>
+        <Glyph />
+      </button>
+    );
+  };
+  return (
+    <div className="history-btns">
+      {btn('undo')}
+      {btn('redo')}
     </div>
   );
 }
@@ -111,8 +136,8 @@ export function ElementHeader({ state, sel, send }: { state: PanelState; sel: Se
   );
 }
 
-export function ChangeList({ state, send }: { state: PanelState; send: Send }) {
-  const [open, setOpen] = useState(true);
+/** 改动清单和提交按钮，固定在工具栏下面 */
+export function ChangeList({ state, send, open, onToggle }: { state: PanelState; send: Send; open: boolean; onToggle: () => void }) {
   const changes = state.changes;
   if (!changes.length) return null;
   const pending = changes.filter((c) => c.status === 'pending');
@@ -121,7 +146,7 @@ export function ChangeList({ state, send }: { state: PanelState; send: Send }) {
   return (
     <div className={`changes${open ? '' : ' is-closed'}`}>
       <header className="changes-head">
-        <button className="sec-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <button className="sec-toggle" onClick={onToggle} aria-expanded={open}>
           <svg className={`chev${open ? ' open' : ''}`} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 4l4 4-4 4" />
           </svg>
@@ -174,10 +199,16 @@ function OrderButtons({ uid, order, send }: { uid: string; order: OrderView; sen
       </button>
     );
   };
+  const reset = t('field.reset', { label: t('panel.change.order') });
   return (
     <div className="order-btns">
       {btn(-1)}
       {btn(1)}
+      {order.pending && (
+        <button className="icon-btn" title={reset} aria-label={reset} onClick={() => send({ t: 'resetOrder' })}>
+          <Icon.undo />
+        </button>
+      )}
       {order.target.kind === 'agent' && <span className="nf-agent" title={order.target.reason ?? t('field.agent')} />}
     </div>
   );
@@ -187,6 +218,7 @@ function changeValues(c: ChangeView): [string, string] {
   if (c.kind === 'text') return [`“${c.from}”`, `“${c.to}”`];
   if (c.kind === 'reorder') return [t('panel.change.position', { n: c.from }), t('panel.change.position', { n: c.to })];
   if (c.kind === 'prop') return [c.from, c.to];
+  if (c.remove) return [displayValue(c.from), t('panel.change.removed')];
   return [displayValue(c.from), displayValue(c.to)];
 }
 

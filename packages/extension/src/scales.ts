@@ -27,6 +27,7 @@ export function emptyScales(rem: number, mode: Scales['mode'] = 'css'): Scales {
     colors: [],
     opacity: [],
     zIndex: [],
+    borderWidth: [],
   };
 }
 
@@ -45,6 +46,7 @@ function bucketOf(v: CssVar): Bucket | null {
   }
   if (v.kind !== 'length') return null;
   if (/radius|round|corner/.test(n)) return 'radius';
+  if (/border|stroke|outline/.test(n)) return 'borderWidth';
   if (/leading|line-height|lh/.test(n)) return 'lineHeight';
   if (/tracking|letter/.test(n)) return 'letterSpacing';
   if (/font-size|text-|fs-|^--font-|type-|step-/.test(n)) return 'fontSize';

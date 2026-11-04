@@ -33,6 +33,9 @@ export function isDirty(file: string): boolean {
 export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService, rem: number, read: Reader = readDisk): Promise<EditResult> {
   const w = rec.write;
   if (w.kind === 'agent') return { ok: false, reason: w.reason };
+  if (rec.removal && (w.kind === 'theme' || (w.kind === 'tailwind' && !rec.removal.classes?.length) || (w.kind === 'css' && w.mode !== 'edit'))) {
+    return { ok: false, reason: t('ext.write.unsupported') };
+  }
   if (w.kind === 'tailwind') {
     if (!w.entry) return { ok: false, reason: t('ext.write.noTwEntry') };
     const design = await tailwind.designFor(w.entry, rem);
@@ -50,6 +53,7 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
       utility: w.utility,
       literal: w.literal,
       override: w.override,
+      ...(rec.removal ? { remove: rec.removal.classes } : {}),
     });
   }
   if (w.kind === 'theme') return editThemeVar({ file: w.file, read, name: w.name, value: rec.value });
@@ -60,6 +64,7 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
       spec: { selector: w.selector, fullSelector: w.fullSelector, conditions: w.conditions, ordinal: w.ordinal, mode: w.mode, via: w.via },
       props: rec.props,
       value: rec.value,
+      ...(rec.removal ? { remove: true } : {}),
     });
   }
   if (w.kind === 'jsxText' || w.kind === 'jsxAttr' || w.kind === 'message' || w.kind === 'htmlText') {

@@ -2,7 +2,7 @@ import { formatNumber, parseCssNumber, t, type ScaleStep, type SelectionView, ty
 import { currentValue, isPending } from '../lib/format';
 import type { Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
-import { Section, TextField } from './controls';
+import { Corner, Section, TextField } from './controls';
 import { NumberField } from './NumberField';
 import type { Edit } from './types';
 
@@ -14,10 +14,11 @@ interface Props {
   open: boolean;
   onToggle: (id: string) => void;
   edit: (props: string[], e: Edit) => void;
+  reset: (props: string[]) => void;
 }
 
 /** 元素用到的 CSS 变量：改的是定义处，页面上用到它的地方一起变 */
-export function Vars({ sel, ctx, snap, colors, open, onToggle, edit }: Props) {
+export function Vars({ sel, ctx, snap, colors, open, onToggle, edit, reset }: Props) {
   const vars = sel.el.vars ?? [];
   if (!vars.length) return null;
   return (
@@ -28,7 +29,7 @@ export function Vars({ sel, ctx, snap, colors, open, onToggle, edit }: Props) {
             {v.name}
           </span>
           <div className="row-fields">
-            <VarField v={v} sel={sel} ctx={ctx} snap={snap} colors={colors} edit={(e) => edit([v.name], e)} />
+            <VarField v={v} sel={sel} ctx={ctx} snap={snap} colors={colors} edit={(e) => edit([v.name], e)} reset={() => reset([v.name])} />
           </div>
         </div>
       ))}
@@ -36,11 +37,13 @@ export function Vars({ sel, ctx, snap, colors, open, onToggle, edit }: Props) {
   );
 }
 
-function VarField({ v, sel, ctx, snap, colors, edit }: { v: UsedVar; sel: SelectionView; ctx: Ctx; snap: boolean; colors: ScaleStep[] | null; edit: (e: Edit) => void }) {
+function VarField(props: { v: UsedVar; sel: SelectionView; ctx: Ctx; snap: boolean; colors: ScaleStep[] | null; edit: (e: Edit) => void; reset: () => void }) {
+  const { v, sel, ctx, snap, colors, edit } = props;
   const value = currentValue(sel, v.name);
   const pending = isPending(sel, [v.name]);
   const target = sel.targets[v.name];
-  if (v.kind === 'color') return <ColorField title={v.name} prop={v.name} value={value} steps={colors} pending={pending} target={target} onEdit={edit} />;
+  const corner = <Corner label={v.name} pending={pending} onReset={props.reset} />;
+  if (v.kind === 'color') return <ColorField title={v.name} prop={v.name} value={value} steps={colors} pending={pending} target={target} corner={corner} onEdit={edit} />;
   if (v.kind === 'length' || v.kind === 'number') {
     const unitless = v.kind === 'number';
     const rem = /rem$/.test(v.value.trim());
@@ -58,11 +61,12 @@ function VarField({ v, sel, ctx, snap, colors, edit }: { v: UsedVar; sel: Select
         target={target}
         unit={unitless ? '' : 'px'}
         stepSize={unitless && n && !Number.isInteger(n.num) ? 0.05 : 1}
+        corner={corner}
         onEdit={(e) => edit(rem ? { ...e, value: pxToRem(e.value, ctx.rootPx) } : e)}
       />
     );
   }
-  return <TextField title={v.name} value={value} pending={pending} target={target} onCommit={(s) => edit({ props: [], value: s, token: null, phase: 'commit' })} />;
+  return <TextField title={v.name} value={value} pending={pending} target={target} corner={corner} onCommit={(s) => edit({ props: [], value: s, token: null, phase: 'commit' })} />;
 }
 
 /** 变量原来用 rem 写的，拖出来的 px 换回 rem，保持源码里的单位 */

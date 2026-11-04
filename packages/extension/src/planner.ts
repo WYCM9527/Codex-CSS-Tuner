@@ -132,8 +132,15 @@ export function sourceKeyOf(el: ElementSnapshot): string | null {
   return el.source ? `${el.source.path}:${el.source.line}:${el.source.column}` : null;
 }
 
-/** 给选中元素的某个属性决定写回目标和预览方式 */
+/** 给选中元素的某个属性决定写回目标和预览方式；值来自作者写的声明时标上 declared（面板上可以删） */
 export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {
+  const p = planTarget(el, prop, ctx);
+  const w = el.winners[prop];
+  const declared = w?.origin === 'inline' || (w?.origin === 'rule' && !!w.rule && !isFramework(ctx.page, w.rule, ctx));
+  return declared ? { ...p, view: { ...p.view, declared: true } } : p;
+}
+
+function planTarget(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {
   const { page, project } = ctx;
   const pageUrl = page.url;
   const w = el.winners[prop];
@@ -588,16 +595,17 @@ export function propKey(p: Plan, el: ElementSnapshot, name: string): string {
   return `prop|agent|${el.props?.source ? locOf(el.props.source) : (sourceKeyOf(el) ?? el.uid)}|${name}`;
 }
 
-/** 加声明用的规则：优先级最高、且最后一段选择器写着元素自己的类名或 id 的作者规则 */
+/**
+ * 加声明用的规则：最后一段选择器写着元素自己的类名或 id 的作者规则，优先级高的优先；
+ * 不在 @media / @supports 这类条件里的优先，不然加的样式换个窗口宽度就没了
+ */
 function ownRule(el: ElementSnapshot, page: PageInfo, ctx: PlanContext, writable: (r: RuleRef) => boolean): RuleRef | null {
   const candidates = [...el.rules].reverse().filter((r) => !isFramework(page, r, ctx) && writable(r));
   const subject = (r: RuleRef) => r.fullSelector.split(/\s*[\s>+~]\s*/).pop() ?? '';
-  return (
-    candidates.find((r) => {
-      const last = subject(r);
-      return el.classes.some((c) => last.includes(`.${c}`)) || (!!el.id && last.includes(`#${el.id}`));
-    }) ??
-    candidates[0] ??
-    null
-  );
+  const own = (r: RuleRef) => {
+    const last = subject(r);
+    return el.classes.some((c) => last.includes(`.${c}`)) || (!!el.id && last.includes(`#${el.id}`));
+  };
+  const always = (r: RuleRef) => r.conditions.every((c) => c.startsWith('@layer'));
+  return candidates.find((r) => own(r) && always(r)) ?? candidates.find(own) ?? candidates.find(always) ?? candidates[0] ?? null;
 }

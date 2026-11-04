@@ -1,6 +1,7 @@
 import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
 import { installHook } from './devtools';
 import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
+import { fallbackValues } from './fallback';
 import { visibleBoxes } from './order';
 import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './overlay';
 import { pageInfo } from './page';
@@ -357,6 +358,10 @@ class Bridge {
       return had;
     },
     clearAllPreviews: () => clearAll(),
+    fallback: ({ uid, props }) => {
+      const el = elOf(uid);
+      return el ? fallbackValues(el, props) : null;
+    },
     hover: ({ uid }) => {
       const el = uid ? elOf(uid) : null;
       setHover(el);

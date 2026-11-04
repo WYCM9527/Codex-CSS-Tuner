@@ -20,6 +20,8 @@ export interface NumberFieldProps {
   min?: number;
   max?: number;
   unit?: 'px' | '';
+  /** 右上角的重置 / 删除按钮 */
+  corner?: ReactNode;
   onEdit: (e: Edit) => void;
 }
 
@@ -183,6 +185,7 @@ export function NumberField(p: NumberFieldProps) {
       />
       {(drag?.label ?? token) && !drag?.exact && <span className="nf-token">{drag?.label ?? token}</span>}
       {agent && <span className="nf-agent" title={p.target?.reason ?? t('field.agent')} />}
+      {!drag && p.corner}
       {drag && <Ruler seq={seq} px={drag.px} exact={drag.exact} unit={unit} stepSize={stepSize} />}
     </div>
   );

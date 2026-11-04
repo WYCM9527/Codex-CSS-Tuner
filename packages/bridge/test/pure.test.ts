@@ -5,8 +5,34 @@ import { decodeMappings, extractMapUrl, filePathOf, jsxLineShift, originalPositi
 import { unescapeIdent } from '../src/util';
 import { dropSlot, flowOffsets, slotLine } from '../src/drop';
 import { hasRun, sameOrder, textSig } from '../src/sig';
+import { readDecl, type Reader } from '../src/cascade';
 
 const box = (x: number, y: number, w: number, h: number) => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h }) as DOMRect;
+
+/** 假的声明块：属性名按写的顺序排 */
+const declBlock = (decls: Record<string, string>) =>
+  Object.assign(Object.keys(decls), { getPropertyValue: (p: string) => decls[p] ?? '', getPropertyPriority: () => '' }) as unknown as CSSStyleDeclaration;
+
+describe('读规则里的声明', () => {
+  it('删属性的预览把声明去掉了：按预览之前的原样读，赢家不变', () => {
+    const before = { 'box-shadow': '0 1px 3px #0002', 'border-radius': '8px' };
+    const live = declBlock({ 'border-radius': '8px' });
+    const reader: Reader = (style, prop) => {
+      if (style !== live) return null;
+      const index = Object.keys(before).indexOf(prop);
+      return index < 0 ? 'absent' : { value: before[prop as keyof typeof before], priority: '', index };
+    };
+    expect(readDecl({ style: live }, 'box-shadow')).toBeNull();
+    expect(readDecl({ style: live }, 'box-shadow', reader)).toMatchObject({ value: '0 1px 3px #0002', index: 0 });
+  });
+
+  it('预览加上去的声明原本没有', () => {
+    const live = declBlock({ 'border-radius': '8px', 'border-top-width': '1px' });
+    const reader: Reader = (style, prop) => (style === live && prop === 'border-top-width' ? 'absent' : null);
+    expect(readDecl({ style: live }, 'border-top-width')).toMatchObject({ value: '1px' });
+    expect(readDecl({ style: live }, 'border-top-width', reader)).toBeNull();
+  });
+});
 
 describe('拖动换序的落点', () => {
   const rows = [box(0, 0, 100, 20), box(0, 30, 100, 20), box(0, 60, 100, 20)];

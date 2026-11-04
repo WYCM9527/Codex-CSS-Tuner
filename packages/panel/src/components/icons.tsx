@@ -97,6 +97,33 @@ export const Icon = {
       <path d="M2 7h7a4 4 0 010 8H6" />
     </svg>
   ),
+  redo: () => (
+    <svg {...S}>
+      <path d="M11 4l3 3-3 3" />
+      <path d="M14 7H7a4 4 0 000 8h3" />
+    </svg>
+  ),
+  /* 描边：粗细和三种线型 */
+  stroke: () => (
+    <svg {...S}>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" strokeWidth="2.2" />
+    </svg>
+  ),
+  solid: () => (
+    <svg {...S}>
+      <path d="M2 8h12" strokeWidth="1.6" />
+    </svg>
+  ),
+  dashed: () => (
+    <svg {...S}>
+      <path d="M2 8h12" strokeWidth="1.6" strokeDasharray="3.2 2.2" strokeLinecap="butt" />
+    </svg>
+  ),
+  dotted: () => (
+    <svg {...S}>
+      <path d="M2.5 8h11.5" strokeWidth="1.8" strokeDasharray="0.01 3" />
+    </svg>
+  ),
   x: () => (
     <svg {...S}>
       <path d="M4 4l8 8M12 4l-8 8" />

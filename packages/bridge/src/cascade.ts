@@ -214,8 +214,9 @@ export interface DeclRead {
 /**
  * 读取声明的钩子：预览会临时改写规则和内联样式，快照要读改写前的原值。
  * 返回 'absent' 表示该属性是预览加进去的、原本不存在；返回 null 表示没被预览动过，直接读。
+ * index 是改写前在声明块里的位置（删属性的预览把声明去掉了，规则里已经找不到它）
  */
-export type Reader = (style: CSSStyleDeclaration, prop: string) => { value: string; priority: string } | 'absent' | null;
+export type Reader = (style: CSSStyleDeclaration, prop: string) => { value: string; priority: string; index?: number } | 'absent' | null;
 
 const plain = (style: CSSStyleDeclaration, prop: string) => ({ value: style.getPropertyValue(prop), priority: style.getPropertyPriority(prop) });
 const plainReader: Reader = () => null;
@@ -225,10 +226,10 @@ export function readDecl(fr: { style: CSSStyleDeclaration; names?: Map<string, n
   const names = namesOf(fr);
   let best: DeclRead | null = null;
   for (const alias of aliasesOf(prop)) {
-    const idx = names.get(alias);
-    if (idx === undefined) continue;
     const got = reader(fr.style, alias);
     if (got === 'absent') continue;
+    const idx = got?.index ?? names.get(alias);
+    if (idx === undefined) continue;
     const r = got ?? plain(fr.style, alias);
     let value = r.value;
     let shorthand: string | null = null;

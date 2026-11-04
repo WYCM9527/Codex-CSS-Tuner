@@ -81,5 +81,12 @@ export function tailwindScales(d: TwDesign, rem = d.rem): Scales {
 
   const zIndex: ScaleStep[] = [0, 10, 20, 30, 40, 50].map((n) => ({ label: String(n), value: String(n), px: n, token: String(n) }));
 
-  return { mode: 'tailwind', rem, spacing, size, radius, fontSize, fontWeight, lineHeight, letterSpacing, shadow, colors, opacity, zIndex };
+  // 粗细取设计系统实际生成的值（v3 的 tailwind.config 可能改过 borderWidth）
+  const borderWidth: ScaleStep[] = [];
+  for (const k of ['0', '', '2', '4', '8']) {
+    const value = d.info(k ? `border-${k}` : 'border')?.values.get('border-top-width');
+    if (value) borderWidth.push({ label: k || 'DEFAULT', value, px: px(value, rem), token: k });
+  }
+
+  return { mode: 'tailwind', rem, spacing, size, radius, fontSize, fontWeight, lineHeight, letterSpacing, shadow, colors, opacity, zIndex, borderWidth };
 }

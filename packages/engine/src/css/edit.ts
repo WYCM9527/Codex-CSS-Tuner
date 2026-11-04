@@ -22,6 +22,8 @@ export interface CssEditInput {
   spec: CssRuleSpec;
   props: string[];
   value: string;
+  /** 删掉管这些属性的声明，value 不用 */
+  remove?: boolean;
 }
 
 export interface FoundRule {
@@ -182,6 +184,9 @@ const BOX: Record<string, string[]> = {
   margin: ['margin-top', 'margin-right', 'margin-bottom', 'margin-left'],
   inset: ['top', 'right', 'bottom', 'left'],
   'border-radius': ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius'],
+  'border-width': ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width'],
+  'border-style': ['border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style'],
+  'border-color': ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'],
 };
 const PAIR: Record<string, string[]> = {
   gap: ['row-gap', 'column-gap'],
@@ -191,7 +196,51 @@ const PAIR: Record<string, string[]> = {
   'margin-block': ['margin-top', 'margin-bottom'],
   'inset-inline': ['left', 'right'],
   'inset-block': ['top', 'bottom'],
+  ...Object.fromEntries(
+    ['width', 'style', 'color'].flatMap((part) => [
+      [`border-inline-${part}`, [`border-left-${part}`, `border-right-${part}`]],
+      [`border-block-${part}`, [`border-top-${part}`, `border-bottom-${part}`]],
+    ]),
+  ),
 };
+
+const BORDER_PARTS = ['width', 'style', 'color'] as const;
+type BorderPart = (typeof BORDER_PARTS)[number];
+const BORDER_STYLES = new Set(['none', 'hidden', 'dotted', 'dashed', 'solid', 'double', 'groove', 'ridge', 'inset', 'outset']);
+const BORDER_WIDTH = /^(thin|medium|thick|-?(\d+\.?\d*|\.\d+)([a-z]+|%)?)$/i;
+
+/** border、border-top、border-inline 这类分量简写（值里是粗细、样式、颜色各一个词） */
+function isBorderShorthand(name: string): boolean {
+  return name.startsWith('border') && physical(name).length >= 3 && !/-(width|style|color|radius)$/.test(name);
+}
+
+/** 分量简写里每个词是哪个分量；变量分不清，只能有一个、归到唯一缺的那个分量，否则返回 null */
+function borderParts(value: string): Partial<Record<BorderPart, string>> | null {
+  const out: Partial<Record<BorderPart, string>> = {};
+  const unknown: string[] = [];
+  for (const w of splitTopLevel(value.trim(), ' ').filter(Boolean)) {
+    const part: BorderPart | null = BORDER_STYLES.has(w.toLowerCase()) ? 'style' : BORDER_WIDTH.test(w) || /^calc\(/i.test(w) ? 'width' : /^var\(/i.test(w) ? null : 'color';
+    if (!part) unknown.push(w);
+    else if (out[part]) return null;
+    else out[part] = w;
+  }
+  if (unknown.length) {
+    const missing = BORDER_PARTS.filter((p) => !out[p]);
+    if (unknown.length > 1 || missing.length !== 1) return null;
+    out[missing[0]] = unknown[0];
+  }
+  return out;
+}
+
+/** 改的属性正好是分量简写里某个分量的全部长写（border 的四边粗细、border-top 的颜色） */
+function wholePart(name: string, props: string[]): BorderPart | null {
+  const all = physical(name);
+  for (const part of BORDER_PARTS) {
+    const of = all.filter((p) => p.endsWith(`-${part}`));
+    if (of.length === props.length && of.every((p) => props.includes(p))) return part;
+  }
+  return null;
+}
 
 /** 1~4 值的盒模型简写展开成四边 */
 function expandBox(values: string[]): string[] | null {
@@ -275,6 +324,22 @@ function relevant(prop: string, edited: Set<string>): boolean {
   return physical(prop).some((p) => edited.has(p));
 }
 
+/** 每个被改的长属性找到规则里最后一条管它的声明（!important 优先），按声明归组 */
+function ownersOf(decls: Declaration[], E: Set<string>): Map<Declaration, string[]> {
+  const owner = new Map<string, Declaration>();
+  for (const p of E) {
+    const names = new Set([p, ...aliasesOf(p), ...shorthandsOf(p)]);
+    for (const a of aliasesOf(p)) for (const s of shorthandsOf(a)) names.add(s);
+    const cands = decls.filter((d) => names.has(propName(d)));
+    const imp = cands.filter((d) => d.important);
+    const pick = (imp.length ? imp : cands)[(imp.length ? imp : cands).length - 1];
+    if (pick) owner.set(p, pick);
+  }
+  const byDecl = new Map<Declaration, string[]>();
+  for (const [p, d] of owner) byDecl.set(d, [...(byDecl.get(d) ?? []), p]);
+  return byDecl;
+}
+
 export function editCssRule(input: CssEditInput): EditResult {
   const found = findRule(input);
   if ('error' in found) return { ok: false, reason: found.error };
@@ -284,26 +349,14 @@ export function editCssRule(input: CssEditInput): EditResult {
   const sel = sourceSelector(found, input.spec.selector);
 
   const decls = (rule.nodes ?? []).filter((n) => n.type === 'decl') as Declaration[];
+  if (input.remove) return removeDecls(found, input.spec.mode === 'edit' ? ownersOf(decls, E) : new Map(), E, sel);
   const edits: TextEdit[] = [];
   const notes: string[] = [];
   const handled = new Set<string>();
   const appends: Array<[string, string]> = [];
 
   if (input.spec.mode === 'edit') {
-    // 每个被改的长属性找到规则里最后一条管它的声明（!important 优先）
-    const owner = new Map<string, Declaration>();
-    for (const p of E) {
-      const names = new Set([p, ...aliasesOf(p), ...shorthandsOf(p)]);
-      for (const a of aliasesOf(p)) for (const s of shorthandsOf(a)) names.add(s);
-      const cands = decls.filter((d) => names.has(propName(d)));
-      const imp = cands.filter((d) => d.important);
-      const pick = (imp.length ? imp : cands)[(imp.length ? imp : cands).length - 1];
-      if (pick) owner.set(p, pick);
-    }
-    const byDecl = new Map<Declaration, string[]>();
-    for (const [p, d] of owner) byDecl.set(d, [...(byDecl.get(d) ?? []), p]);
-
-    for (const [d, props] of byDecl) {
+    for (const [d, props] of ownersOf(decls, E)) {
       const name = propName(d);
       const range = valueRange(source, d);
       if (!range) continue;
@@ -314,6 +367,18 @@ export function editCssRule(input: CssEditInput): EditResult {
       if (isLonghand || coversAll || simpleShorthand) {
         edits.push({ start: range.start, end: range.end, text: v });
         notes.push(`${name}: ${d.value} → ${v}`);
+        for (const p of props) handled.add(p);
+        continue;
+      }
+      // border: 1px solid #ddd 里换掉一个分量（四边一起改粗细、改颜色），没写的分量补在后面
+      const part = isBorderShorthand(name) ? wholePart(name, props) : null;
+      const parts = part ? borderParts(d.value) : null;
+      if (part && parts) {
+        const words = splitTopLevel(d.value.trim(), ' ').filter(Boolean);
+        const at = parts[part] ? words.indexOf(parts[part]!) : -1;
+        const text = at >= 0 ? words.map((w, i) => (i === at ? v : w)).join(' ') : `${words.join(' ')} ${v}`;
+        edits.push({ start: range.start, end: range.end, text });
+        notes.push(`${name}: ${d.value} → ${text}`);
         for (const p of props) handled.add(p);
         continue;
       }
@@ -348,6 +413,58 @@ export function editCssRule(input: CssEditInput): EditResult {
   }
   if (!edits.length) return { ok: false, reason: t('engine.noEdits') };
   return { ok: true, file, edits, summary: `${sel} { ${notes.join('; ')} }` };
+}
+
+/**
+ * 删声明：完全由删的属性组成的整条删掉（连同前面的换行和缩进）；
+ * 盒模型简写、描边简写只删一部分时，剩下的部分改写成长写，其余简写（font、多值 background）删不了一部分
+ */
+function removeDecls(found: FoundRule, owners: Map<Declaration, string[]>, E: Set<string>, sel: string): EditResult {
+  const { source, file } = found;
+  if (!owners.size) return { ok: false, reason: t('engine.css.nothingToRemove', { selector: sel }) };
+  const edits: TextEdit[] = [];
+  const notes: string[] = [];
+  for (const [d, props] of owners) {
+    const name = propName(d);
+    const left = physical(name).filter((p) => !E.has(p));
+    const whole = !left.length || (name === 'background' && props.length === 1 && props[0] === 'background-color' && singleValue(d.value));
+    const rest = whole ? [] : remainder(name, d.value, left);
+    if (!rest) return { ok: false, reason: t('engine.css.removePartial', { decl: `${name}: ${d.value}` }) };
+    const r = declRange(d);
+    if (!r) continue;
+    const before = d.raws.before ?? '';
+    const start = before && source.slice(r.start - before.length, r.start) === before ? r.start - before.length : r.start;
+    const imp = d.important ? ' !important' : '';
+    const text = rest.map(([p, val]) => `${before || ' '}${p}: ${val}${imp};`).join('');
+    edits.push({ start, end: r.end, text });
+    notes.push(rest.length ? `${name}: ${d.value} → ${rest.map(([p, val]) => `${p}: ${val}`).join('; ')}` : `- ${name}: ${d.value}`);
+  }
+  if (!edits.length) return { ok: false, reason: t('engine.noEdits') };
+  return { ok: true, file, edits, summary: `${sel} { ${notes.join('; ')} }` };
+}
+
+/** 简写删掉一部分长写之后，剩下的写成长写；四边的同一分量合成 border-width 这类 */
+function remainder(name: string, value: string, left: string[]): Array<[string, string]> | null {
+  const sides = BOX[name] ?? PAIR[name];
+  if (sides) {
+    if (/\(/.test(value)) return null;
+    const parts = value.trim().split(/\s+/);
+    const vals = BOX[name] ? expandBox(parts) : parts.length === 1 ? [parts[0], parts[0]] : parts.length === 2 ? parts : null;
+    if (!vals) return null;
+    return sides.flatMap((s, i): Array<[string, string]> => (left.includes(s) ? [[s, vals[i]]] : []));
+  }
+  if (!isBorderShorthand(name)) return null;
+  const parts = borderParts(value);
+  if (!parts) return null;
+  const out: Array<[string, string]> = [];
+  for (const part of BORDER_PARTS) {
+    const val = parts[part];
+    const mine = left.filter((p) => p.endsWith(`-${part}`));
+    if (!val || !mine.length) continue;
+    if (mine.length === 4) out.push([`border-${part}`, val]);
+    else for (const p of mine) out.push([p, val]);
+  }
+  return out;
 }
 
 /** 新增声明时四边都改就写简写，否则写长属性 */

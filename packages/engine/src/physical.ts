@@ -39,6 +39,20 @@ const EXPAND: Record<string, string[]> = {
   'max-block-size': ['max-height'],
 };
 
+/** 描边：border 管四边的粗细、样式、颜色，border-top 管一边，border-width 管四边的一个分量，逻辑写法换成物理边 */
+const PARTS = ['width', 'style', 'color'];
+const sideParts = (side: string) => PARTS.map((p) => `border-${side}-${p}`);
+EXPAND.border = ['top', 'right', 'bottom', 'left'].flatMap(sideParts);
+for (const p of PARTS) EXPAND[`border-${p}`] = ['top', 'right', 'bottom', 'left'].map((s) => `border-${s}-${p}`);
+for (const [name, side] of Object.entries({ top: 'top', right: 'right', bottom: 'bottom', left: 'left', 'block-start': 'top', 'inline-end': 'right', 'block-end': 'bottom', 'inline-start': 'left' })) {
+  EXPAND[`border-${name}`] = sideParts(side);
+  for (const p of PARTS) if (name !== side) EXPAND[`border-${name}-${p}`] = [`border-${side}-${p}`];
+}
+for (const [axis, sides] of Object.entries({ inline: ['left', 'right'], block: ['top', 'bottom'] })) {
+  EXPAND[`border-${axis}`] = sides.flatMap(sideParts);
+  for (const p of PARTS) EXPAND[`border-${axis}-${p}`] = sides.map((s) => `border-${s}-${p}`);
+}
+
 export function physical(prop: string): string[] {
   return EXPAND[prop] ?? [prop];
 }

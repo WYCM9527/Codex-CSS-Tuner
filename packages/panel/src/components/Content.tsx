@@ -1,19 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t, type SelectionView, type TextView } from '@css-tuner/protocol';
-import { Section, targetHint } from './controls';
+import { Corner, Section, targetHint } from './controls';
 
 type EditText = (segment: number, value: string, phase: 'live' | 'commit') => void;
 
 const oneLine = (s: string) => s.replace(/\s*[\r\n]+\s*/g, ' ').trim();
 
 /** 元素自己的文字，每段一个输入框；页面上双击文字也能直接改 */
-export function Content(props: { sel: SelectionView; open: boolean; onToggle: (id: string) => void; editText: EditText }) {
+export function Content(props: { sel: SelectionView; open: boolean; onToggle: (id: string) => void; editText: EditText; resetText: (segment: number) => void }) {
   const texts = props.sel.texts ?? [];
   if (!texts.length) return null;
   return (
     <Section id="content" title={t('insp.content')} open={props.open} onToggle={props.onToggle}>
       {texts.map((x) => (
-        <TextRow key={`${props.sel.el.uid}:${x.segment}`} view={x} onEdit={(value, phase) => props.editText(x.segment, value, phase)} />
+        <TextRow key={`${props.sel.el.uid}:${x.segment}`} view={x} onEdit={(value, phase) => props.editText(x.segment, value, phase)} onReset={() => props.resetText(x.segment)} />
       ))}
       <p className="sec-note">{t('insp.text.hint')}</p>
     </Section>
@@ -21,7 +21,7 @@ export function Content(props: { sel: SelectionView; open: boolean; onToggle: (i
 }
 
 /** 输入时实时预览；回车或失焦提交，Esc 恢复开始编辑时的文字 */
-function TextRow({ view, onEdit }: { view: TextView; onEdit: (value: string, phase: 'live' | 'commit') => void }) {
+function TextRow({ view, onEdit, onReset }: { view: TextView; onEdit: (value: string, phase: 'live' | 'commit') => void; onReset: () => void }) {
   const [text, setText] = useState<string | null>(null);
   const start = useRef('');
   const live = useRef(false);
@@ -57,6 +57,7 @@ function TextRow({ view, onEdit }: { view: TextView; onEdit: (value: string, pha
         <span className="tx-origin">{t(`insp.text.origin.${view.origin}`)}</span>
         <span className="tx-target">{agent ? t('panel.change.toAgent') : view.target.label}</span>
         {agent && <span className="nf-agent" title={view.target.reason ?? t('field.agent')} />}
+        <Corner label={t('panel.change.text')} pending={view.pending} onReset={onReset} />
       </div>
       <textarea
         ref={area}

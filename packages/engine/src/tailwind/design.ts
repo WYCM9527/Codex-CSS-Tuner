@@ -26,8 +26,12 @@ export interface UtilityInfo {
 
 const DECL = /^\s*(--[\w-]+|[a-z-]+)\s*:\s*(.+?)\s*;\s*$/gm;
 
-/** 整个值就是 var(--tw-*, 默认值)：只给个默认值，别的工具类设了这个变量就让位（v3 的阴影是几个 var 拼起来的，不算） */
+/**
+ * 整个值就是 var(--tw-*, 默认值) 或 var(--tw-*)：只给个默认值，别的工具类设了这个变量就让位
+ * （v4 的 border 给 border-style 的是 var(--tw-border-style)；v3 的阴影是几个 var 拼起来的，不算）
+ */
 function fallbackOnly(value: string): boolean {
+  if (/^var\(\s*--tw-[\w-]+\s*\)$/.test(value)) return true;
   if (!/^var\(\s*--tw-[\w-]+\s*,/.test(value)) return false;
   let depth = 0;
   for (let i = 3; i < value.length; i++) {

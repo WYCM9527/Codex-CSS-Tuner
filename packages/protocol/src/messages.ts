@@ -268,6 +268,8 @@ export interface BridgeMethods {
   };
   clearPreview: { p: { id: string }; r: boolean };
   clearAllPreviews: { p: Record<string, never>; r: number };
+  /** 去掉这些属性在元素上生效的那条作者声明之后的计算值（删属性的预览值），元素不在时为 null */
+  fallback: { p: { uid: string; props: string[] }; r: Record<string, string> | null };
   /** 面板结构树上悬停的元素，在页面上描边；null 取消 */
   hover: { p: { uid: string | null }; r: boolean };
   verify: {
@@ -309,6 +311,8 @@ export interface EditRequest {
   /** 吸附到的刻度：Tailwind 主题键（如 "5"、"lg"、"tri-void"）或 CSS 变量名（如 "--space-2"） */
   token?: string | null;
   phase: 'live' | 'commit';
+  /** 删掉这些属性的声明（Tailwind 删类名、CSS 删声明），value 不用 */
+  remove?: boolean;
 }
 
 /** source：写进 JSX、HTML 或多语言文件（文字、换序、props） */
@@ -323,6 +327,8 @@ export interface Target {
   column?: number;
   affects: number;
   reason?: string;
+  /** 属性的值来自一条作者写的声明或类名（可以删掉）；继承、初始值和框架预设样式不算 */
+  declared?: boolean;
 }
 
 export interface SelectionView {
@@ -330,6 +336,8 @@ export interface SelectionView {
   file: string | null;
   targets: Record<string, Target>;
   pending: Record<string, string>;
+  /** 有未应用的删除的属性（pending 里是删掉之后的值） */
+  removed: string[];
   /** 元素的每段文字和它的写回目标 */
   texts?: TextView[];
   /** 选中元素所在的兄弟组（少于两项时缺省） */
@@ -406,6 +414,7 @@ export interface Scales {
   colors: ScaleStep[];
   opacity: ScaleStep[];
   zIndex: ScaleStep[];
+  borderWidth: ScaleStep[];
 }
 
 export type ChangeStatus = 'pending' | 'applied' | 'unverified' | 'failed' | 'reverted' | 'conflict' | 'handoff';
@@ -428,6 +437,8 @@ export interface ChangeView {
   note?: string;
   /** 页面上的预览是模拟出来的（换序用 order / transform 摆出来，真实 DOM 没动） */
   simulated?: boolean;
+  /** 删掉属性的声明（to 是删掉之后的值） */
+  remove?: boolean;
   pageUrl: string;
   createdAt: number;
 }
@@ -454,6 +465,8 @@ export interface PanelState {
   snap: boolean;
   /** 界面语言，跟随编辑器的显示语言 */
   locale: Locale;
+  /** 上一步 / 下一步会撤销、重做的操作说明，没有可撤销、重做的为 null */
+  history: { undo: string | null; redo: string | null };
 }
 
 export type PanelToExt =
@@ -463,6 +476,11 @@ export type PanelToExt =
   | { t: 'select'; uid: string }
   | { t: 'hover'; uid: string | null }
   | { t: 'edit'; edit: EditRequest }
+  /** 一次改几组属性（加描边要同时设粗细和样式），撤销时算一步 */
+  | { t: 'editMany'; edits: EditRequest[] }
+  /** 撤销 / 重做未应用的改动 */
+  | { t: 'undo' }
+  | { t: 'redo' }
   /** 改选中元素第 segment 段文字 */
   | { t: 'editText'; segment: number; value: string; phase: 'live' | 'commit' }
   /** 把选中元素兄弟组里 uid 所在的那项挪到第 to 个（按现在的顺序，0 起）：live 只预览（结构树拖动中），commit 记进改动清单 */
@@ -471,7 +489,11 @@ export type PanelToExt =
   | { t: 'editProp'; name: string; value: PropValue; phase: 'live' | 'commit' }
   /** 刷新页面（让钩子赶在 React 之前挂上，才能预览 props） */
   | { t: 'reload' }
+  /** 重置：放弃选中元素上这些属性 / 这段文字 / 这个 prop / 换序的未应用改动 */
   | { t: 'resetProps'; props: string[] }
+  | { t: 'resetText'; segment: number }
+  | { t: 'resetProp'; name: string }
+  | { t: 'resetOrder' }
   | { t: 'apply'; ids?: string[] }
   | { t: 'revert'; id: string }
   | { t: 'discard'; id: string }

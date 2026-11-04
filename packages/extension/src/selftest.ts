@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
-import { getLocale, localeFrom, setLocale, type PropValue, type SelectionView } from '@css-tuner/protocol';
+import { getLocale, localeFrom, setLocale, type PanelToExt, type PropValue, type SelectionView } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import { summarizeCheck } from './selfcheck';
 import { computeWrite } from './writer';
@@ -43,7 +43,7 @@ export function summarize(sel: SelectionView | null, props: string[] = []) {
   const targets: Record<string, string> = {};
   for (const p of props) {
     const t = sel.targets[p];
-    if (t) targets[p] = `${t.kind} ${t.label} affects=${t.affects}${t.reason ? ` (${t.reason})` : ''}`;
+    if (t) targets[p] = `${t.kind} ${t.label} affects=${t.affects}${t.declared ? ' declared' : ''}${t.reason ? ` (${t.reason})` : ''}`;
   }
   return {
     label: el.label,
@@ -143,13 +143,34 @@ async function readComputed(c: Controller, props: string[]) {
 
 defineStep('edit', async (c, s) => {
   const props = s.props as string[];
-  await c.edit({ props, value: String(s.value), token: (s.token as string) ?? null, phase: (s.phase as 'live' | 'commit') ?? 'commit' });
+  await c.edit({ props, value: String(s.value ?? ''), token: (s.token as string) ?? null, phase: (s.phase as 'live' | 'commit') ?? 'commit', ...(s.remove ? { remove: true } : {}) });
   const computed = await readComputed(c, (s.read as string[]) ?? props);
   const peers =
     typeof s.peers === 'string'
       ? await c.browser.exec(c.session!.browserId, `[...document.querySelectorAll(${JSON.stringify(s.peers)})].map(e => getComputedStyle(e).getPropertyValue(${JSON.stringify(s.peersProp ?? props[0])}))`)
       : undefined;
-  return { pending: c.state.selection?.pending, computed, peers, changes: c.state.changes.map((ch) => `${ch.status} ${ch.propLabel} ${ch.from}→${ch.to} @${ch.target.kind}:${ch.target.label} affects=${ch.target.affects}`) };
+  return {
+    pending: c.state.selection?.pending,
+    ...(c.state.selection?.removed.length ? { removed: c.state.selection.removed } : {}),
+    computed,
+    peers,
+    changes: c.state.changes.map((ch) => `${ch.status} ${ch.propLabel} ${ch.from}→${ch.to} @${ch.target.kind}:${ch.target.label} affects=${ch.target.affects}`),
+    notice: c.state.notice?.text ?? null,
+  };
+});
+
+/** 按面板消息原样发给扩展（上一步 / 下一步、重置、一次改几组），返回之后的历史、改动清单和页面上的计算值 */
+defineStep('send', async (c, s) => {
+  await c.handle(s.msg as PanelToExt);
+  const sel = c.state.selection;
+  return {
+    history: c.state.history,
+    pending: sel?.pending,
+    removed: sel?.removed,
+    computed: s.read ? await readComputed(c, s.read as string[]) : undefined,
+    changes: changeLines(c),
+    notice: c.state.notice?.text ?? null,
+  };
 });
 
 /** 模拟拖动：连续发 live 编辑，测每次从发出到预览生效的往返耗时 */

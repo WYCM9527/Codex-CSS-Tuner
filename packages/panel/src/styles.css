@@ -252,6 +252,16 @@ select {
   gap: 6px;
 }
 
+.history-btns {
+  display: flex;
+  gap: 1px;
+}
+
+.history-btns .icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .btn {
   height: var(--row);
   padding: 0 10px;
@@ -818,6 +828,21 @@ select {
   margin-left: auto;
 }
 
+/* 没有这类属性（无填充、无描边、无投影）：只留标题和加号 */
+.sec.is-empty .sec-toggle {
+  color: var(--muted);
+}
+
+.sec.is-empty .chev {
+  visibility: hidden;
+}
+
+.sec-add {
+  width: 22px;
+  height: 22px;
+  margin-right: -4px;
+}
+
 .chev {
   transition: transform 0.12s ease;
   color: var(--muted);
@@ -881,6 +906,69 @@ select {
 
 .glyph {
   font: 600 10px var(--mono);
+}
+
+/*
+ * 字段右上角的重置 / 删除：有未应用的改动时一直显示重置，值来自源码里的声明时悬停才出现删除。
+ * 数值字段的刻度尺按整行定位，字段本身不能当定位容器，按钮用负外边距挂成不占位的弹性项；其余字段绝对定位
+ */
+.app .corner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--fg-2);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  z-index: 3;
+}
+
+.app .corner:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--bg), var(--lift) 14%);
+}
+
+.app .corner.is-remove {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.app :is(.nf, .cf, .sel, .seg, .slider):hover > .corner.is-remove,
+.app .corner.is-remove:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cf,
+.seg,
+.slider {
+  position: relative;
+}
+
+.app :is(.cf, .sel, .seg, .slider) > .corner {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+
+.app .nf > .corner {
+  position: relative;
+  align-self: flex-start;
+  margin: -7px -7px 0 -7px;
+}
+
+.app .tx-head > .corner {
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app .corner.is-remove {
+    transition: none;
+  }
 }
 
 /* ---------- 数值字段（刻度尺是这里的招牌） ---------- */
@@ -1362,14 +1450,14 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 改动清单 ---------- */
+/* ---------- 改动清单（固定在工具栏下面，条目多了在里面滚动） ---------- */
 
 .changes {
   flex: none;
-  max-height: 46%;
+  max-height: 40%;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 

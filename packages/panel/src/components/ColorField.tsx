@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { hsvToRgb, parseColor, rgbToHsv, sameColor, t, toHex, type Hsva, type ScaleStep, type Target } from '@css-tuner/protocol';
 import { varName } from '../lib/format';
 import type { Edit } from './types';
@@ -11,6 +11,8 @@ export interface ColorFieldProps {
   pending: boolean;
   target?: Target;
   declared?: string | null;
+  /** 右上角的重置 / 删除按钮 */
+  corner?: ReactNode;
   onEdit: (e: Edit) => void;
 }
 
@@ -47,6 +49,7 @@ export function ColorField(p: ColorFieldProps) {
         {label !== hexOf(shown) && parseColor(shown) && <span className="cf-hex">{hexOf(shown)}</span>}
         {agent && <span className="nf-agent" title={p.target?.reason ?? t('field.agent')} />}
       </button>
+      {p.corner}
       {open && <ColorPicker value={shown} steps={p.steps} onEdit={p.onEdit} onClose={() => setOpen(false)} />}
     </div>
   );

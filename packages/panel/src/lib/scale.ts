@@ -13,7 +13,8 @@ export function scaleKeyOf(prop: string): ScaleKey | null {
   if (/radius$/.test(prop)) return 'radius';
   if (prop === 'box-shadow') return 'shadow';
   if (prop === 'opacity') return 'opacity';
-  if (prop === 'color' || prop === 'background-color') return 'colors';
+  if (/^border-(top|right|bottom|left)-width$/.test(prop)) return 'borderWidth';
+  if (prop === 'color' || prop === 'background-color' || /^border-(top|right|bottom|left)-color$/.test(prop)) return 'colors';
   if (prop === 'z-index') return 'zIndex';
   return null;
 }

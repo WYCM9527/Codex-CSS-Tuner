@@ -71,10 +71,10 @@ function restore(k: HTMLElement | CSSStyleDeclaration) {
 export const originalReader: Reader = (style, prop) => {
   for (const s of saved.values()) {
     if (styleOf(s.holder) !== style) continue;
-    let present = false;
-    for (let i = 0; i < s.probe.length; i++) if (s.probe[i] === prop) present = true;
-    if (!present && !s.probe.getPropertyValue(prop)) return 'absent';
-    return { value: s.probe.getPropertyValue(prop), priority: s.probe.getPropertyPriority(prop) };
+    let index = -1;
+    for (let i = 0; i < s.probe.length; i++) if (s.probe[i] === prop) index = i;
+    if (index < 0 && !s.probe.getPropertyValue(prop)) return 'absent';
+    return { value: s.probe.getPropertyValue(prop), priority: s.probe.getPropertyPriority(prop), ...(index >= 0 ? { index } : {}) };
   }
   return null;
 };

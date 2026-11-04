@@ -341,6 +341,21 @@ export class Applier {
       .catch(() => null);
   }
 
+  /**
+   * 还原后要核对的原值。描边样式是 none 时粗细总算成 0：同一处写回里改描边样式的那条还生效着，
+   * 还原粗细后页面上是这个样式的默认粗细，和记下的原值对不上，这几边的粗细不核对
+   */
+  private revertExpected(rec: ChangeRecord): Record<string, string> {
+    const target = (r: ChangeRecord) => r.key.slice(0, r.key.lastIndexOf('|'));
+    const live = new Set(
+      this.c.journal
+        .all()
+        .filter((r) => r.id !== rec.id && target(r) === target(rec) && (r.status === 'applied' || r.status === 'unverified'))
+        .flatMap((r) => r.props),
+    );
+    return Object.fromEntries(Object.entries(rec.original).filter(([p]) => !/^border-\w+-width$/.test(p) || !live.has(p.replace(/width$/, 'style'))));
+  }
+
   /** 没有热更新的页面（内置静态服务、普通文件服务）：让写过的 CSS 对应的 <link> 重新加载 */
   private async reloadSheets(files: string[]) {
     const s = this.c.session;
@@ -395,7 +410,7 @@ export class Applier {
         });
         return 'conflict';
       }
-      const check = this.verify(rec, rec.original);
+      const check = this.verify(rec, this.revertExpected(rec));
       const known = this.lastWritten.get(p.file);
       const external =
         known !== undefined

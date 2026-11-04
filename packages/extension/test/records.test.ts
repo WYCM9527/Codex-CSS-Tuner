@@ -39,6 +39,8 @@ describe('改动记录', () => {
 
   it('改动清单的视图带上类型', () => {
     expect(recordView(rec({ kind: 'reorder', from: '2', to: '1' }))).toMatchObject({ id: 'a1', kind: 'reorder', from: '2', to: '1', target: { kind: 'agent' } });
+    expect(recordView(rec({})).remove).toBeUndefined();
+    expect(recordView(rec({ removal: { values: { 'padding-top': '0px' } } })).remove).toBe(true);
   });
 
   it('同一批里样式和文字先改，换序按里层先、外层后', () => {
@@ -92,6 +94,14 @@ describe('交给 Agent 的提示词', () => {
     expect(p).toContain('move it from position 3 to position 1 within the same parent');
     expect(p).toContain('   - New order of the siblings: Team, Starter, Pro');
     expect(p).toContain('when the list is rendered from an array, reorder the array');
+  });
+
+  it('删属性写成去掉声明；冲突时要求加回来', () => {
+    const removal = { propLabel: 'border', props: ['border-top-width', 'border-top-style'], from: 'border border-brand', to: 'removed', value: '', removal: { values: { 'border-top-width': '0px' }, classes: ['border', 'border-brand'] } };
+    const p = buildPrompt([rec(removal)], ctx);
+    expect(p).toContain('   - Remove the declaration of border (now border border-brand) so the element falls back to what it would be without it');
+    expect(p).not.toContain('border-top-width');
+    expect(buildPrompt([rec({ ...removal, status: 'conflict' })], ctx)).toContain('   - Put back the removed declaration of border (it was border border-brand)');
   });
 
   it('props 写出组件和属性名；交给 Agent 时附上调用处，并要求只改调用处', () => {
