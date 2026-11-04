@@ -74,7 +74,9 @@ const SVELTE_SRC = `<script lang="ts">
 let d: TwDesign;
 beforeAll(async () => {
   d = await loadTailwindDesign(join(VUE, 'src/style.css'));
-});
+  // Tailwind 4 第一次规范类名要先建整张反查表，CI 上要好几秒，不能算进第一个测试的超时
+  d.canonical('p-4');
+}, 30_000);
 
 function run(file: string, source: string, input: Omit<TailwindEditInput, 'file' | 'source'>) {
   const r = editTailwind(d, { file, source, ...input });

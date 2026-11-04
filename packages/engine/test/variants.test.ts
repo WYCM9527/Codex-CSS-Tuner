@@ -8,7 +8,9 @@ const FIX = join(__dirname, '../../../fixtures/tw-react');
 let d: TwDesign;
 beforeAll(async () => {
   d = await loadTailwindDesign(join(FIX, 'src/index.css'));
-});
+  // Tailwind 4 第一次规范类名要先建整张反查表，CI 上要好几秒，不能算进第一个测试的超时
+  d.canonical('p-4');
+}, 30_000);
 
 const BUTTON = `import { cva } from 'class-variance-authority';
 import { cn } from './utils';
