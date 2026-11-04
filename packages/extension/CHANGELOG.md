@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- Undo and redo: the change list and Apply All now sit at the top of the panel, with Undo and Redo right next to Apply All (or ⌘Z / ⇧⌘Z, Ctrl+Z / Ctrl+Shift+Z, in the panel). They step through the changes you haven't applied yet, and the change list follows along. The list is folded into one line by default.
+- Reset a field: a value with an unapplied change shows a reset button in its corner. This works for styles, text, order and props.
+- Stroke: a new section for border width, style and color. Tailwind gets `border` classes, and a CSS `border` shorthand is edited part by part. Shadow now has its own section.
+- Add and remove properties: an element with no fill, stroke or shadow gets one from the + on that section, and − takes it away. A value that comes from a declaration in your code has a × that removes it: the declaration is deleted in CSS (when a box or border shorthand also sets properties you keep, the rest is written out as longhands), and the class is removed in Tailwind. The page previews the element without it, and changes handed to the Agent ask for the declaration to be removed.
+- A property that isn't declared yet is added to a rule outside `@media` and other conditions when there is one, so it applies at every width.
+- Plainer panel: the selected element is named in words with the start of its text (for example *Heading “Welcome”*), next to the file it's written in. The Structure tree is now called Layers and uses the same names, with Move up / Move down and the element's position below it. *This one* / *All* only appears when the two would change different places in your code, and *All* says how many elements it affects. Labels and hints throughout avoid jargon.
+- Switch between English and Simplified Chinese with 中 / EN at the top of the panel. The choice is saved in the new `cssTuner.language` setting.
+- Fixed: after a preview removed a declaration from a rule, the next snapshot no longer saw the original declaration; resetting only the stroke width was reported as not taking effect.
+
 ## 0.7.0
 
 - Vue 3 and Svelte 5, styles only: pick elements on Vue 3 + Vite, Nuxt 4, Svelte 5 + Vite and SvelteKit pages, and write style changes back into `.vue` and `.svelte` files:
