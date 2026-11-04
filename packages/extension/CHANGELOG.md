@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- Vue 3 and Svelte 5, styles only: pick elements on Vue 3 + Vite, Nuxt 4, Svelte 5 + Vite and SvelteKit pages, and write style changes back into `.vue` and `.svelte` files:
+  - Classes in the `class` attribute, `:class` strings, arrays and object literals, `class:` directives, and the `class` written where a component is used.
+  - Rules in `<style>` and `<style scoped>` blocks. Selectors with `:deep()`, `:global()` and similar are matched as written.
+- In Vue and Svelte components, text, reordering and props go to the Agent. Elements rendered by components from `node_modules` map to where your code uses the component, and Nuxt and SvelteKit pages are read once they have hydrated.
+- Tailwind 3: the theme is read from `tailwind.config` with the project's own `tailwindcss`, and classes are written back the same way as in Tailwind 4.
+- Next.js webpack dev mode (`next dev --webpack`): source locations for server and client components and CSS files. When a write makes the page reload completely, verification waits for it to reconnect.
+- Fixed: reordering items that share a row in normal flow (such as a row of buttons under a heading), or that wrap onto the next line, didn't move them in the preview.
+
 ## 0.5.0
 
 - Reorder elements among their siblings: drag the handle on the selected element (an insertion line shows where it lands), drag rows in the Structure tree, or use Move up / Move down. The page previews the new order with `order` or transforms before anything is written.
