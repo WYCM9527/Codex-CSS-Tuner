@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { t, type Crumb, type OrderView, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
-import { IconToggle, Section } from './controls';
+import { boundary, nameOf } from '../lib/names';
+import { Section, targetHint } from './controls';
+import { Icon } from './icons';
 
 type Send = (m: PanelToExt) => void;
 
@@ -27,8 +29,8 @@ interface Drag {
 }
 
 /**
- * 祖先链 + 选中元素和它的兄弟 + 子元素；组件边界处标出组件名，点选切换、悬停在页面上描边。
- * 选中元素有可换序的兄弟时，兄弟行可以上下拖动换位置
+ * 图层：祖先链 + 选中元素和它的兄弟 + 子元素，每行是通俗的叫法加文字开头；组件边界处标出组件名，点选切换、悬停在页面上描边。
+ * 选中元素有可换序的兄弟时，兄弟行可以上下拖动换位置，下面一行也有上移 / 下移按钮
  */
 export function Structure(props: { sel: SelectionView; send: Send; open: boolean; onToggle: (id: string) => void; onlyComponents: boolean; setOnlyComponents: (on: boolean) => void }) {
   const { sel, send, onlyComponents } = props;
@@ -65,8 +67,8 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
         onPointerEnter={() => send({ t: 'hover', uid: c.uid })}
         onPointerLeave={() => send({ t: 'hover', uid: null })}
       >
-        <span className="tree-twisty">{on ? '▾' : c.kids ? '▸' : ''}</span>
-        <span className="tree-label">{c.label}</span>
+        <span className="tree-twisty">{c.kids ? (on ? '▾' : '▸') : ''}</span>
+        <TreeLabel label={c.label} text={c.text} />
         {comp && <span className="tree-comp">&lt;{comp}&gt;</span>}
         {!on && !!c.kids && <small className="tree-kids">{c.kids}</small>}
       </button>
@@ -81,11 +83,6 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
           <button className="tree-more" style={{ paddingLeft: 6 + (selfDepth + 1) * 11 }} onClick={() => setAllKids(true)}>
             {t('tree.moreKids', { n: hiddenKids })}
           </button>
-        </li>
-      )}
-      {!shownKids.length && !sel.el.children.length && (
-        <li key="no-kids" className="tree-empty muted">
-          {t('tree.noKids')}
         </li>
       )}
     </>
@@ -111,8 +108,8 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
           onPointerEnter={() => send({ t: 'hover', uid: it.uid })}
           onPointerLeave={() => send({ t: 'hover', uid: null })}
         >
-          <span className="tree-twisty">{on ? '▾' : ''}</span>
-          <span className="tree-label">{it.label}</span>
+          <span className="tree-twisty">{on && sel.el.children.length ? '▾' : ''}</span>
+          <TreeLabel label={it.label} text={it.text} />
           {comp && <span className="tree-comp">&lt;{comp}&gt;</span>}
           <svg className="tree-grip" viewBox="0 0 6 10" width="6" height="10" aria-hidden="true">
             {[1, 5, 9].flatMap((y) => [1, 5].map((x) => <circle key={`${x}${y}`} cx={x} cy={y} r="1" fill="currentColor" />))}
@@ -129,9 +126,9 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
       open={props.open}
       onToggle={props.onToggle}
       aside={
-        <IconToggle on={onlyComponents} title={onlyComponents ? t('tree.onlyComponents.on') : t('tree.onlyComponents.off')} onClick={() => props.setOnlyComponents(!onlyComponents)}>
-          <b className="glyph">&lt;/&gt;</b>
-        </IconToggle>
+        <button className={`chip-toggle${onlyComponents ? ' on' : ''}`} aria-pressed={onlyComponents} title={t('tree.onlyComponents.title')} onClick={() => props.setOnlyComponents(!onlyComponents)}>
+          {t('tree.onlyComponents')}
+        </button>
       }
     >
       <ul className={`tree${order?.pending ? ' is-pending' : ''}`} onPointerLeave={() => send({ t: 'hover', uid: null })}>
@@ -160,7 +157,55 @@ export function Structure(props: { sel: SelectionView; send: Send; open: boolean
           kidRows
         )}
       </ul>
+      {order && <OrderRow uid={sel.el.uid} order={order} send={send} />}
+      <p className="sec-note">{t(order ? 'tree.hint.drag' : 'tree.hint')}</p>
     </Section>
+  );
+}
+
+/** 一行的名字：通俗的叫法加文字开头（没有文字时是 #id 和类名） */
+function TreeLabel({ label, text }: { label: string; text?: string }) {
+  const name = nameOf(label, text);
+  return (
+    <span className="tree-label">
+      <span className="tree-role">{name.role}</span>
+      {name.detail && <span className={name.quoted ? 'tree-text' : 'tree-code'}>{name.detail}</span>}
+    </span>
+  );
+}
+
+/** 在兄弟之间挪一位：竖排是上移 / 下移，横排是左移 / 右移 */
+function OrderRow({ uid, order, send }: { uid: string; order: OrderView; send: Send }) {
+  const n = order.items.length;
+  const hint = targetHint(order.target);
+  const btn = (d: -1 | 1) => {
+    const action = t(`panel.order.${d < 0 ? 'prev' : 'next'}.${order.axis}`);
+    const title = t('panel.order.title', { action, i: order.index + 1, n });
+    return (
+      <button className="mini" disabled={d < 0 ? order.index <= 0 : order.index >= n - 1} title={hint ? `${title}\n${hint}` : title} onClick={() => send({ t: 'reorder', uid, to: order.index + d, phase: 'commit' })}>
+        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" style={order.axis === 'x' ? { transform: 'rotate(-90deg)' } : undefined}>
+          <path d={d < 0 ? 'M8 13V3M4 7l4-4 4 4' : 'M8 3v10M4 9l4 4 4-4'} />
+        </svg>
+        {action}
+      </button>
+    );
+  };
+  const reset = t('field.reset', { label: t('panel.change.order') });
+  return (
+    <div className="row order-row">
+      <span className="row-label">{t('panel.order')}</span>
+      <div className="row-fields">
+        <span className="order-pos">{t('panel.order.pos', { i: order.index + 1, n })}</span>
+        {btn(-1)}
+        {btn(1)}
+        {order.pending && (
+          <button className="icon-btn" title={reset} aria-label={reset} onClick={() => send({ t: 'resetOrder' })}>
+            <Icon.undo />
+          </button>
+        )}
+        {order.target.kind === 'agent' && <span className="nf-agent" title={order.target.reason ?? t('field.agent')} />}
+      </div>
+    </div>
   );
 }
 
@@ -266,9 +311,4 @@ function useSiblingDrag(order: OrderView | undefined, send: Send) {
       reset();
     },
   };
-}
-
-function boundary(c: Crumb, parent: Crumb | undefined): string | null {
-  if (!c.component) return null;
-  return !parent || parent.component !== c.component ? c.component : null;
 }

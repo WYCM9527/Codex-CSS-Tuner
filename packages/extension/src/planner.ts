@@ -1,4 +1,4 @@
-import { t, type ElementSnapshot, type OrderUnit, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
+import { PROP_NAMES, t, type ElementSnapshot, type OrderUnit, type PageInfo, type PreviewTarget, type RuleRef, type Scope, type SheetInfo, type SourceLoc, type Target, type TextOrigin } from '@css-tuner/protocol';
 import type { MessageRef, OrderSite, PropSite, PropSiteInfo, TextSite } from '@css-tuner/engine';
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
@@ -138,6 +138,22 @@ export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan 
   const w = el.winners[prop];
   const declared = w?.origin === 'inline' || (w?.origin === 'rule' && !!w.rule && !isFramework(ctx.page, w.rule, ctx));
   return declared ? { ...p, view: { ...p.view, declared: true } } : p;
+}
+
+/**
+ * 「只改这个」和「全部」有没有区别：有属性在两种范围下写到不同的地方时，返回选「全部」会改到几个元素；
+ * 两种范围都写到同一处时为 null，面板就不给这个选项。current 是当前范围下已经算好的目标
+ */
+export function scopeAll(el: ElementSnapshot, ctx: PlanContext, current?: Record<string, Target>): number | null {
+  if (!el.source || !el.callers?.length) return null;
+  const other: PlanContext = { ...ctx, scope: ctx.scope === 'instance' ? 'source' : 'instance' };
+  let n = 0;
+  for (const prop of PROP_NAMES) {
+    const now = current?.[prop] ?? planTarget(el, prop, ctx).view;
+    const alt = planTarget(el, prop, other).view;
+    if (now.label !== alt.label) n = Math.max(n, (ctx.scope === 'source' ? now : alt).affects, 1);
+  }
+  return n || null;
 }
 
 function planTarget(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {

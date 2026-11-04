@@ -47,6 +47,7 @@ import {
   planText,
   planVar,
   propKey,
+  scopeAll,
   sourceKeyOf,
   tailwindEntry,
   textKey,
@@ -707,6 +708,7 @@ export class Controller implements vscode.Disposable {
     const file = el.source ? this.project.fileFor(pageUrl, el.source.path, el.source.file) : null;
     this.plans.clear();
     const targets: Record<string, Target> = {};
+    let all: number | null = null;
     if (this.page) {
       const cfg = vscode.workspace.getConfiguration('cssTuner');
       const ctx = {
@@ -731,8 +733,18 @@ export class Controller implements vscode.Disposable {
         this.plans.set(v.name, p);
         targets[v.name] = p.view;
       }
+      all = scopeAll(el, ctx, targets);
     }
-    return { el, file, targets, ...this.pendingFor(el), texts: this.textsFor(el), order: this.orderFor(el), props: this.propsFor(el) };
+    return {
+      el,
+      file,
+      targets,
+      ...this.pendingFor(el),
+      texts: this.textsFor(el),
+      order: this.orderFor(el),
+      props: this.propsFor(el),
+      ...(all ? { scopeAll: all } : {}),
+    };
   }
 
   private orderContext(page: PageInfo): OrderContext {
@@ -763,7 +775,7 @@ export class Controller implements vscode.Disposable {
   private orderView(p: OrderPlan, perm: number[], self: number, axis: 'x' | 'y', pending: boolean): OrderView {
     const items = perm.map((i) => {
       const u = p.units[i];
-      return { uid: u.uids[0], label: u.label, component: /^[a-z]/.test(u.name) ? null : u.name || null };
+      return { uid: u.uids[0], label: u.label, component: /^[a-z]/.test(u.name) ? null : u.name || null, ...(u.text ? { text: u.text } : {}) };
     });
     return { items, index: perm.indexOf(self), axis, pending, target: p.view };
   }

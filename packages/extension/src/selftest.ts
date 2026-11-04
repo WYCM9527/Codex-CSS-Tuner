@@ -51,8 +51,9 @@ export function summarize(sel: SelectionView | null, props: string[] = []) {
     file: sel.file,
     sameSource: el.sameSource,
     sourceIndex: el.sourceIndex,
+    scopeAll: sel.scopeAll ?? null,
     breadcrumb: el.breadcrumb.map((b) => b.label).join(' > '),
-    tree: [...el.breadcrumb, ...el.children].map((b) => `${b.label}${b.component ? ` <${b.component}>` : ''} kids=${b.kids ?? '?'}`),
+    tree: [...el.breadcrumb, ...el.children].map((b) => `${b.label}${b.text ? ` “${b.text}”` : ''}${b.component ? ` <${b.component}>` : ''} kids=${b.kids ?? '?'}`),
     vars: (el.vars ?? []).map((v) => `${v.name}=${v.value} [${v.kind}] ← ${v.props.join(',')}`),
     winners,
     targets,
@@ -267,7 +268,7 @@ const orderLine = (sel: SelectionView | null) => {
   const o = sel?.order;
   if (!o) return null;
   const target = `${o.target.kind}:${o.target.label}${o.target.affects > 1 ? ` affects=${o.target.affects}` : ''}${o.target.reason ? ` (${o.target.reason})` : ''}`;
-  return { items: o.items.map((i) => (i.component ? `${i.label} <${i.component}>` : i.label)), index: o.index, axis: o.axis, pending: o.pending, target };
+  return { items: o.items.map((i) => `${i.label}${i.text ? ` “${i.text}”` : ''}${i.component ? ` <${i.component}>` : ''}`), index: o.index, axis: o.axis, pending: o.pending, target };
 };
 
 /** 页面上一组元素按显示出来的位置（从上到下，同一行里从左到右）排的文字，看换序预览摆得对不对 */

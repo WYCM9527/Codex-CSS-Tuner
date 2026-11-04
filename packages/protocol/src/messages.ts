@@ -76,6 +76,8 @@ export interface Crumb {
   component?: string | null;
   /** 子元素个数 */
   kids?: number;
+  /** 文字开头（没有文字时是 alt、aria-label 这类说明），面板上靠它认出是哪个元素 */
+  text?: string;
 }
 
 export interface ElementSnapshot {
@@ -141,6 +143,8 @@ export interface OrderUnit {
   /** 这一项渲染出的元素，按页面顺序（多数只有一个） */
   uids: string[];
   label: string;
+  /** 第一个元素的文字开头，同 Crumb.text */
+  text?: string;
   /** 这一项在 JSX 里的位置（元素自己或组件的调用处）；.map() 渲染的各项共用一个 */
   source: SourceLoc | null;
   /** 宿主元素的标签名或组件名，写回前和源码里这一项的 JSX 名字核对 */
@@ -344,6 +348,8 @@ export interface SelectionView {
   order?: OrderView;
   /** 渲染选中元素的项目组件收到的 props（不是 React 页面、或者没有 props 时缺省） */
   props?: PropsView;
+  /** 「只改这个」和「全部」会写到不同地方时才有：选「全部」会改到页面上几个元素 */
+  scopeAll?: number;
 }
 
 export interface PropView {
@@ -373,7 +379,7 @@ export interface PropsView {
 
 export interface OrderView {
   /** 兄弟按现在的顺序（有未应用的换序时是换过之后的） */
-  items: Array<{ uid: string; label: string; component?: string | null }>;
+  items: Array<{ uid: string; label: string; component?: string | null; text?: string }>;
   /** 选中元素在 items 里的位置 */
   index: number;
   axis: 'x' | 'y';

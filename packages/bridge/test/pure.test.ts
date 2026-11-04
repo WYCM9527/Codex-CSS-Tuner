@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { maxSpecificity, resolveNested, specificity, splitTopLevel, staticSelector } from '../src/specificity';
 import { clientModuleUrl, distDirOf, isWebpackModule, joinPath, projectRootOf, serverModuleUrl, webpackCssSources } from '../src/next';
 import { decodeMappings, extractMapUrl, filePathOf, jsxLineShift, originalPosition, originalPositionFor, sourcesOf } from '../src/sourcemap';
-import { unescapeIdent } from '../src/util';
+import { clip, textOf, unescapeIdent } from '../src/util';
 import { dropSlot, flowOffsets, slotLine } from '../src/drop';
 import { hasRun, sameOrder, textSig } from '../src/sig';
 import { readDecl, type Reader } from '../src/cascade';
@@ -12,6 +12,34 @@ const box = (x: number, y: number, w: number, h: number) => ({ x, y, left: x, to
 /** 假的声明块：属性名按写的顺序排 */
 const declBlock = (decls: Record<string, string>) =>
   Object.assign(Object.keys(decls), { getPropertyValue: (p: string) => decls[p] ?? '', getPropertyPriority: () => '' }) as unknown as CSSStyleDeclaration;
+
+describe('面板上认元素用的文字', () => {
+  type Kid = { nodeType: number; textContent: string };
+  const text = (s: string): Kid => ({ nodeType: 3, textContent: s });
+  const child = (s: string): Kid => ({ nodeType: 1, textContent: s });
+  const elem = (tagName: string, kids: Kid[], attrs: Record<string, string> = {}) =>
+    ({ tagName, childNodes: kids, textContent: kids.map((k) => k.textContent).join(''), getAttribute: (n: string) => attrs[n] ?? null }) as unknown as Element;
+
+  it('容器只取自己直接写的字，不把里面整块的字连起来', () => {
+    expect(textOf(elem('DIV', [text('  Hi  '), child('里面的字')]))).toBe('Hi');
+    expect(textOf(elem('DIV', [child('里面的字')]))).toBe('');
+  });
+
+  it('按钮、标题这类元素的字包在子元素里也算', () => {
+    expect(textOf(elem('BUTTON', [child(' 保存 ')]))).toBe('保存');
+    expect(textOf(elem('H2', [text('第 '), child('2'), text(' 章')]))).toBe('第 2 章');
+  });
+
+  it('没有字时用 alt、aria-label', () => {
+    expect(textOf(elem('IMG', [], { alt: 'Logo' }))).toBe('Logo');
+    expect(textOf(elem('svg', [text('\n  ')], { 'aria-label': '关闭' }))).toBe('关闭');
+  });
+
+  it('空白压成一个空格，太长截断', () => {
+    expect(clip('a\n   b', 10)).toBe('a b');
+    expect(clip('x'.repeat(40), 30)).toBe(`${'x'.repeat(29)}…`);
+  });
+});
 
 describe('读规则里的声明', () => {
   it('删属性的预览把声明去掉了：按预览之前的原样读，赢家不变', () => {

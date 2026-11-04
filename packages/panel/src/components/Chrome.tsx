@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { changeName, t, type ChangeView, type Locale, type OrderView, type PanelState, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
+import { useEffect, useState } from 'react';
+import { changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView } from '@css-tuner/protocol';
 import { displayValue, shortFile } from '../lib/format';
-import { IconToggle, targetHint } from './controls';
+import { boundary, nameOf } from '../lib/names';
+import { IconToggle } from './controls';
 import { Icon } from './icons';
 
 type Send = (m: PanelToExt) => void;
@@ -93,56 +94,29 @@ function HistoryButtons({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
+/** 选中的元素叫什么、写在哪个文件；改样式会波及别的元素时说清楚，「只改这个 / 全部」有区别时才给选 */
 export function ElementHeader({ state, sel, send }: { state: PanelState; sel: SelectionView; send: Send }) {
   const { el } = sel;
-  const crumbs = el.breadcrumb;
-  const nav = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (nav.current) nav.current.scrollLeft = nav.current.scrollWidth;
-  }, [el.uid]);
+  const chain = el.breadcrumb;
+  const self = chain[chain.length - 1];
+  const name = nameOf(el.label, self?.text);
+  const comp = self ? boundary(self, chain[chain.length - 2]) : null;
+  const all = sel.scopeAll;
+  const scopeBtn = (scope: Scope, label: string, title: string) => (
+    <button role="radio" aria-checked={state.scope === scope} className={state.scope === scope ? 'on' : ''} title={title} onClick={() => send({ t: 'setScope', scope })}>
+      {label}
+    </button>
+  );
   return (
     <div className="el-head">
-      <nav className="crumbs" aria-label={t('panel.crumbs')} ref={nav}>
-        {crumbs.map((c, i) => (
-          <button key={c.uid} className={i === crumbs.length - 1 ? 'crumb on' : 'crumb'} onClick={() => send({ t: 'select', uid: c.uid })} title={c.label}>
-            {c.label}
-          </button>
-        ))}
-      </nav>
-      <div className="el-title">
-        <span className="el-label">{el.label}</span>
-        {el.sameSource > 1 && (
-          <span className="badge" title={t('panel.sameSource.title', { n: el.sameSource })}>
-            {t('panel.sameSource', { n: el.sameSource })}
-          </span>
-        )}
-        {sel.order && <OrderButtons uid={el.uid} order={sel.order} send={send} />}
-        {state.scales?.mode === 'tailwind' && el.source && (
-          <div className="scope seg" role="radiogroup" aria-label={t('panel.scope')}>
-            <button
-              role="radio"
-              aria-checked={state.scope === 'instance'}
-              className={state.scope === 'instance' ? 'on' : ''}
-              title={t('panel.scope.instance.title')}
-              onClick={() => send({ t: 'setScope', scope: 'instance' })}
-            >
-              {t('panel.scope.instance')}
-            </button>
-            <button
-              role="radio"
-              aria-checked={state.scope === 'source'}
-              className={state.scope === 'source' ? 'on' : ''}
-              title={t('panel.scope.source.title')}
-              onClick={() => send({ t: 'setScope', scope: 'source' })}
-            >
-              {t('panel.scope.source')}
-            </button>
-          </div>
-        )}
+      <div className="el-title" title={el.label}>
+        <span className="el-role">{name.role}</span>
+        {name.quoted && <span className="el-text">{name.detail}</span>}
+        {comp && <span className="tree-comp">&lt;{comp}&gt;</span>}
       </div>
       <div className="el-source">
         {el.source && sel.file ? (
-          <button className="link-btn" onClick={() => send({ t: 'openSource', file: sel.file!, line: el.source!.line, column: el.source!.column })} title={sel.file}>
+          <button className="link-btn" onClick={() => send({ t: 'openSource', file: sel.file!, line: el.source!.line, column: el.source!.column })} title={t('panel.src.open', { file: sel.file })}>
             <Icon.file />
             {shortFile(sel.file)}:{el.source.line}
             {el.source.viaOwner && el.source.component ? <small>{t('panel.via', { name: el.source.component })}</small> : null}
@@ -154,7 +128,23 @@ export function ElementHeader({ state, sel, send }: { state: PanelState; sel: Se
         ) : (
           <span className="muted">{t('panel.src.none')}</span>
         )}
+        <span className="el-code">{el.label}</span>
       </div>
+      {all ? (
+        <div className="row el-scope">
+          <span className="row-label">{t('panel.scope')}</span>
+          <div className="row-fields">
+            <div className="scope seg" role="radiogroup" aria-label={t('panel.scope')}>
+              {scopeBtn('instance', t('panel.scope.instance'), t('panel.scope.instance.title'))}
+              {all > 1
+                ? scopeBtn('source', t('panel.scope.source', { n: all }), t('panel.scope.source.title', { n: all }))
+                : scopeBtn('source', t('panel.scope.component'), t('panel.scope.component.title'))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        el.sameSource > 1 && <p className="el-note">{t('panel.sameSource', { n: el.sameSource })}</p>
+      )}
     </div>
   );
 }
@@ -207,37 +197,6 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
 }
 
 /** 改动前后的值：文字加引号，换序显示位置，样式按颜色、变量缩写 */
-/** 在兄弟之间挪一位：竖排是上移 / 下移，横排是左移 / 右移 */
-function OrderButtons({ uid, order, send }: { uid: string; order: OrderView; send: Send }) {
-  const n = order.items.length;
-  const move = (d: -1 | 1) => send({ t: 'reorder', uid, to: order.index + d, phase: 'commit' });
-  const hint = targetHint(order.target);
-  const btn = (d: -1 | 1) => {
-    const action = t(`panel.order.${d < 0 ? 'prev' : 'next'}.${order.axis}`);
-    const title = t('panel.order.title', { action, i: order.index + 1, n });
-    return (
-      <button className="icon-btn" disabled={d < 0 ? order.index <= 0 : order.index >= n - 1} title={hint ? `${title}\n${hint}` : title} aria-label={action} onClick={() => move(d)}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" style={order.axis === 'x' ? { transform: 'rotate(-90deg)' } : undefined}>
-          <path d={d < 0 ? 'M8 13V3M4 7l4-4 4 4' : 'M8 3v10M4 9l4 4 4-4'} />
-        </svg>
-      </button>
-    );
-  };
-  const reset = t('field.reset', { label: t('panel.change.order') });
-  return (
-    <div className="order-btns">
-      {btn(-1)}
-      {btn(1)}
-      {order.pending && (
-        <button className="icon-btn" title={reset} aria-label={reset} onClick={() => send({ t: 'resetOrder' })}>
-          <Icon.undo />
-        </button>
-      )}
-      {order.target.kind === 'agent' && <span className="nf-agent" title={order.target.reason ?? t('field.agent')} />}
-    </div>
-  );
-}
-
 function changeValues(c: ChangeView): [string, string] {
   if (c.kind === 'text') return [`“${c.from}”`, `“${c.to}”`];
   if (c.kind === 'reorder') return [t('panel.change.position', { n: c.from }), t('panel.change.position', { n: c.to })];

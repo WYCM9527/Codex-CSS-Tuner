@@ -135,6 +135,25 @@ export function labelOf(el: Element): string {
   return s;
 }
 
+/** 按钮、链接、标题这类元素的文字常包在子元素里，取全部文字；容器只取自己直接写的，免得把整块里的字连成一串 */
+const WHOLE_TEXT = new Set(['A', 'BUTTON', 'LABEL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'LI', 'TD', 'TH', 'DT', 'DD', 'SUMMARY', 'FIGCAPTION', 'LEGEND', 'OPTION', 'CAPTION']);
+const TEXT_NODE = 3;
+
+/** 面板上给人认元素用的文字开头；没有文字时用 alt、aria-label、title、placeholder，都没有为空 */
+export function textOf(el: Element): string {
+  let s = '';
+  if (WHOLE_TEXT.has(el.tagName)) s = el.textContent ?? '';
+  else for (const n of Array.from(el.childNodes)) if (n.nodeType === TEXT_NODE) s += n.textContent ?? '';
+  if (!s.trim()) s = el.getAttribute('alt') || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || '';
+  return clip(s, 30);
+}
+
+/** 空白压成一个空格，超过 max 个字符截断加省略号 */
+export function clip(s: string, max: number): string {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+}
+
 export function unescapeIdent(s: string): string {
   return s.replace(/\\([0-9a-fA-F]{1,6}\s?|[\s\S])/g, (_, esc: string) => {
     if (/^[0-9a-fA-F]/.test(esc) && esc.trim().length > 0 && /^[0-9a-fA-F]+\s?$/.test(esc)) {

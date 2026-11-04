@@ -3,7 +3,7 @@ import { flowOffsets } from './drop';
 import { coarse, hasRun, sameOrder, textSig } from './sig';
 import { fiberOf, fiberSource, isPlainHtml, locKey, nameOf, ownerOf, sameSourceElements, type DebugNode } from './source';
 import { baseOf, elementAtPath, htmlPathOf } from './text';
-import { elOf, isOwnNode, labelOf, uidOf } from './util';
+import { elOf, isOwnNode, labelOf, textOf, uidOf } from './util';
 
 type OrderTarget = Extract<PreviewTarget, { kind: 'order' }>;
 
@@ -210,13 +210,17 @@ export async function orderInfo(el: Element): Promise<OrderInfo | undefined> {
   }
   const index = indexIn(units, el);
   if (units.length < 2 || index < 0) return undefined;
-  const out: OrderUnit[] = units.map((u) => ({
-    uids: u.els.map(uidOf),
-    label: u.els.length > 1 ? `${labelOf(u.els[0])} ×${u.els.length}` : labelOf(u.els[0]),
-    source: u.source,
-    name: u.name,
-    sig: u.els.map(sigOf).join(' + '),
-  }));
+  const out: OrderUnit[] = units.map((u) => {
+    const text = textOf(u.els[0]);
+    return {
+      uids: u.els.map(uidOf),
+      label: u.els.length > 1 ? `${labelOf(u.els[0])} ×${u.els.length}` : labelOf(u.els[0]),
+      ...(text ? { text } : {}),
+      source: u.source,
+      name: u.name,
+      sig: u.els.map(sigOf).join(' + '),
+    };
+  });
   return { units: out, index, ...layoutOf(p, units), mapped, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null };
 }
 

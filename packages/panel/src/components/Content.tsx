@@ -54,9 +54,17 @@ function TextRow({ view, onEdit, onReset }: { view: TextView; onEdit: (value: st
   return (
     <div className={`tx${view.pending ? ' is-pending' : ''}`}>
       <div className="tx-head" title={targetHint(view.target)}>
-        <span className="tx-origin">{t(`insp.text.origin.${view.origin}`)}</span>
-        <span className="tx-target">{agent ? t('panel.change.toAgent') : view.target.label}</span>
-        {agent && <span className="nf-agent" title={view.target.reason ?? t('field.agent')} />}
+        {agent ? (
+          <>
+            <span className="tx-where">{t('insp.text.origin.dynamic')}</span>
+            <span className="nf-agent" title={view.target.reason ?? t('field.agent')} />
+          </>
+        ) : (
+          <>
+            <span className="tx-where">{t(`insp.text.origin.${view.origin}`)}</span>
+            <span className="tx-target">{view.target.label}</span>
+          </>
+        )}
         <Corner label={t('panel.change.text')} pending={view.pending} onReset={onReset} />
       </div>
       <textarea

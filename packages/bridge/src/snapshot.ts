@@ -7,10 +7,11 @@ import { propsInfo } from './props';
 import { callersOf, ownerName, sameSourceElements, sourceOf } from './source';
 import { staticSelector } from './specificity';
 import { textInfo } from './text';
-import { isOwnNode, isOwnSheet, isTailwindSheet, labelOf, sheetDevId, uidOf, unescapeIdent } from './util';
+import { isOwnNode, isOwnSheet, isTailwindSheet, labelOf, sheetDevId, textOf, uidOf, unescapeIdent } from './util';
 
 export function crumb(el: Element): Crumb {
-  return { uid: uidOf(el), label: labelOf(el), component: ownerName(el), kids: kidsOf(el).length };
+  const text = textOf(el);
+  return { uid: uidOf(el), label: labelOf(el), component: ownerName(el), kids: kidsOf(el).length, ...(text ? { text } : {}) };
 }
 
 function kidsOf(el: Element): Element[] {

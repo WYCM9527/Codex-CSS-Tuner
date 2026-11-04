@@ -176,8 +176,8 @@ function el(over: Partial<ElementSnapshot>): ElementSnapshot {
       { uid: 'e1', label: 'header.flex.items-center…', component: 'App', kids: 2 },
     ],
     children: [
-      { uid: 'e2', label: 'h1.text-2xl.font-bold…', component: 'App', kids: 0 },
-      { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge', kids: 1 },
+      { uid: 'e2', label: 'h1.text-2xl.font-bold…', component: 'App', kids: 0, text: 'css-tuner fixture' },
+      { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge', kids: 0, text: 'Beta' },
     ],
     source: { url: 'http://localhost:5173/src/App.tsx', path: '/src/App.tsx', file: '/proj/src/App.tsx', line: 14, column: 7, component: 'App', viaOwner: false },
     sameSource: 1,
@@ -213,10 +213,10 @@ const TITLE = el({
   classes: ['text-2xl', 'font-bold', 'tracking-tight'],
   label: 'h1.text-2xl.font-bold…',
   breadcrumb: [
-    { uid: 'e0', label: 'div#root' },
-    { uid: 'e9', label: 'main.mx-auto.max-w-3xl…' },
-    { uid: 'e1', label: 'header.flex.items-center…' },
-    { uid: 'e2', label: 'h1.text-2xl.font-bold…' },
+    { uid: 'e0', label: 'div#root', component: null, kids: 2 },
+    { uid: 'e9', label: 'main.mx-auto.max-w-3xl…', component: 'App', kids: 6 },
+    { uid: 'e1', label: 'header.flex.items-center…', component: 'App', kids: 2 },
+    { uid: 'e2', label: 'h1.text-2xl.font-bold…', component: 'App', kids: 0, text: 'css-tuner fixture' },
   ],
   children: [],
   source: { url: 'http://localhost:5173/src/App.tsx', path: '/src/App.tsx', file: '/proj/src/App.tsx', line: 15, column: 9, component: 'App', viaOwner: false },
@@ -225,8 +225,22 @@ const TITLE = el({
 });
 TITLE.computed = { ...TITLE.computed, display: 'block', 'font-size': '24px', 'font-weight': '700', 'line-height': '32px', 'letter-spacing': '-0.6px', 'background-color': 'rgba(0, 0, 0, 0)', 'padding-top': '0px', 'padding-right': '0px', 'padding-bottom': '0px', 'padding-left': '0px', width: '220px', height: '32px' };
 
+/** 页面上用了 3 次的 Badge 组件里的 span：「只改这个」和「全部」写到不同地方 */
+const BADGE = el({
+  uid: 'e3',
+  tag: 'span',
+  classes: ['rounded-full', 'bg-white/10', 'px-2', 'text-xs'],
+  label: 'span.rounded-full.bg-white/10…',
+  breadcrumb: [...TITLE.breadcrumb.slice(0, 3), { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge', kids: 0, text: 'Beta' }],
+  children: [],
+  source: { url: 'http://localhost:5173/src/Badge.tsx', path: '/src/Badge.tsx', file: '/proj/src/Badge.tsx', line: 4, column: 10, component: 'Badge', viaOwner: false },
+  sameSource: 3,
+  fontSizePx: 12,
+  text: { segments: [{ value: 'Beta', child: 0, props: [] }], htmlPath: null, lang: 'zh-CN' },
+});
+
 export function createMockHost(): Host {
-  const els: Record<string, ElementSnapshot> = { e1: el({}), e2: TITLE };
+  const els: Record<string, ElementSnapshot> = { e1: el({}), e2: TITLE, e3: BADGE };
   const state: PanelState = {
     connection: 'connected',
     page: { url: 'http://localhost:5173/', title: 'fixture · tw-react' },
@@ -252,7 +266,7 @@ export function createMockHost(): Host {
         { uid: 'e1', label: 'header.flex.items-center…' },
         { uid: 'e5', label: 'section.grid.gap-4…' },
         { uid: 'e6', label: 'ul.space-y-2 ×3' },
-        { uid: 'e7', label: 'footer.text-sm', component: 'Footer' },
+        { uid: 'e7', label: 'footer.text-sm', component: 'Footer', text: '© 2026 css-tuner' },
       ],
       index: 0,
       axis: 'y',
@@ -262,8 +276,8 @@ export function createMockHost(): Host {
     },
     e2: {
       items: [
-        { uid: 'e2', label: 'h1.text-2xl.font-bold…' },
-        { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge' },
+        { uid: 'e2', label: 'h1.text-2xl.font-bold…', text: 'css-tuner fixture' },
+        { uid: 'e3', label: 'span.rounded-full.bg-white/10…', component: 'Badge', text: 'Beta' },
       ],
       index: 0,
       axis: 'x',
@@ -295,6 +309,8 @@ export function createMockHost(): Host {
     const e = els[uid] ?? els.e1;
     const edited = (textByEl[e.uid] ??= {});
     const o = orders[e.uid];
+    const file = e.source?.file ?? '/proj/src/App.tsx';
+    const at = `${file.replace('/proj/', '')}:${e.source?.line}`;
     state.selection = {
       props: propViews[e.uid],
       order: o ? { items: o.items, index: o.items.findIndex((i) => i.uid === e.uid), axis: o.axis, pending: o.pending, target: o.target } : undefined,
@@ -303,23 +319,26 @@ export function createMockHost(): Host {
         value: edited[i] ?? s.value.trim(),
         pending: i in edited,
         origin: 'jsx',
-        target: { kind: 'source', label: `src/App.tsx:${e.source?.line}`, file: '/proj/src/App.tsx', line: e.source?.line, column: e.source?.column, affects: 1 },
+        target: { kind: 'source', label: at, file, line: e.source?.line, column: e.source?.column, affects: e.sameSource },
       })),
       el: e,
-      file: '/proj/src/App.tsx',
+      file,
+      ...(e.uid === 'e3' ? { scopeAll: 3 } : {}),
       targets: Object.fromEntries(
         Object.keys(e.computed).map((p): [string, Target] => {
           const agent = p === 'opacity' && uid === 'e2';
           if (p.startsWith('--')) return [p, { kind: 'css', label: `src/index.css @theme ${p}`, file: '/proj/src/index.css', affects: 0 }];
+          // 只改这个：类名加在用到 Badge 的那一处
+          const one = e.uid === 'e3' && state.scope === 'instance';
           return [
             p,
             {
               kind: agent ? 'agent' : 'tailwind',
-              label: `src/App.tsx:${e.source?.line} className`,
-              file: '/proj/src/App.tsx',
-              line: e.source?.line,
+              label: one ? 'src/App.tsx:16 <Badge> className' : `${at} className`,
+              file: one ? '/proj/src/App.tsx' : file,
+              line: one ? 16 : e.source?.line,
               column: e.source?.column,
-              affects: e.sameSource,
+              affects: one ? 1 : e.sameSource,
               reason: agent ? t('mock.agentReason') : undefined,
               ...(e.winners[p] ? { declared: true } : {}),
             },
@@ -457,6 +476,10 @@ export function createMockHost(): Host {
         break;
       case 'select':
         select(m.uid);
+        break;
+      case 'setScope':
+        state.scope = m.scope;
+        if (state.selection) select(state.selection.el.uid);
         break;
       case 'setSnap':
         state.snap = m.on;
