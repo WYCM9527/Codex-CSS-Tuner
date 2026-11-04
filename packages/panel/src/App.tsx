@@ -6,13 +6,21 @@ import { Inspector, type UiPrefs } from './components/Inspector';
 import { Structure } from './components/Structure';
 import type { Edit } from './components/types';
 
+function loadPrefs(host: Host): UiPrefs {
+  const p = host.load<UiPrefs>('prefs', { closed: ['position', 'changes'], split: [], v: 1 });
+  return p.v ? p : { ...p, closed: [...new Set([...p.closed, 'changes'])], v: 1 };
+}
+
 export function App({ host }: { host: Host }) {
   const [state, setState] = useState<PanelState | null>(null);
-  const [prefs, setPrefsState] = useState<UiPrefs>(() => host.load<UiPrefs>('prefs', { closed: ['position'], split: [] }));
+  const [prefs, setPrefsState] = useState<UiPrefs>(() => loadPrefs(host));
 
   useEffect(() => {
     const off = host.subscribe((s) => {
-      if (s.locale && s.locale !== getLocale()) setLocale(s.locale);
+      if (s.locale) {
+        if (s.locale !== getLocale()) setLocale(s.locale);
+        document.documentElement.lang = s.locale;
+      }
       setState(s);
     });
     host.send({ t: 'ready' });

@@ -252,14 +252,15 @@ select {
   gap: 6px;
 }
 
-.history-btns {
-  display: flex;
-  gap: 1px;
+.seg.lang {
+  flex: none;
+  font-size: 11px;
 }
 
-.history-btns .icon-btn:disabled {
-  opacity: 0.35;
-  pointer-events: none;
+.seg.lang button {
+  min-width: 26px;
+  padding: 0 5px;
+  white-space: nowrap;
 }
 
 .btn {
@@ -473,7 +474,9 @@ select {
 }
 
 .scope.seg button {
+  flex: 1 0 auto;
   padding: 0 6px;
+  white-space: nowrap;
 }
 
 .order-btns {
@@ -1467,6 +1470,25 @@ select {
   gap: 6px;
   min-height: 36px;
   padding: 4px 10px 4px 6px;
+}
+
+.changes.is-empty .sec-toggle {
+  opacity: 1;
+  color: var(--muted);
+}
+
+.changes.is-empty .chev {
+  visibility: hidden;
+}
+
+.history-btns {
+  display: flex;
+  gap: 1px;
+}
+
+.history-btns .icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .count {

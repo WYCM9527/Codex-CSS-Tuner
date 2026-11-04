@@ -1,4 +1,4 @@
-import { getLocale, groupLabel, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { changeName, getLocale, groupLabel, setLocale, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
 /** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
@@ -68,31 +68,35 @@ function fallbackOf(prop: string): string {
   return ({ 'background-color': 'rgba(0, 0, 0, 0)', 'box-shadow': 'none', color: 'rgb(31, 35, 40)' } as Record<string, string>)[prop] ?? 'initial';
 }
 
-/** 假宿主里算一步（能撤销）的消息和这一步的说明 */
-function stepLabel(m: PanelToExt, state: PanelState): string | null {
+/** 假宿主里算一步（能撤销）的消息和这一步的说明（用的时候才按当前界面语言拼） */
+function stepLabel(m: PanelToExt, state: PanelState): (() => string) | null {
   switch (m.t) {
-    case 'edit':
-      if (m.edit.remove) return t('history.removed', { label: groupLabel(m.edit.props) });
-      return m.edit.phase === 'commit' ? groupLabel(m.edit.props) : null;
+    case 'edit': {
+      const { props, remove, phase } = m.edit;
+      if (remove) return () => t('history.removed', { label: groupLabel(props) });
+      return phase === 'commit' ? () => groupLabel(props) : null;
+    }
     case 'editMany':
-      return m.edits.length ? groupLabel(m.edits[0].props) : null;
+      return m.edits.length ? () => groupLabel(m.edits[0].props) : null;
     case 'editText':
-      return m.phase === 'commit' ? t('panel.change.text') : null;
+      return m.phase === 'commit' ? () => t('panel.change.text') : null;
     case 'reorder':
-      return m.phase === 'commit' ? t('panel.change.order') : null;
+      return m.phase === 'commit' ? () => t('panel.change.order') : null;
     case 'editProp':
-      return m.phase === 'commit' ? m.name : null;
+      return m.phase === 'commit' ? () => m.name : null;
     case 'resetProps':
-      return t('history.dropped', { label: groupLabel(m.props) });
+      return () => t('history.dropped', { label: groupLabel(m.props) });
     case 'resetText':
-      return t('history.dropped', { label: t('panel.change.text') });
+      return () => t('history.dropped', { label: t('panel.change.text') });
     case 'resetProp':
-      return t('history.dropped', { label: m.name });
+      return () => t('history.dropped', { label: m.name });
     case 'resetOrder':
-      return t('history.dropped', { label: t('panel.change.order') });
+      return () => t('history.dropped', { label: t('panel.change.order') });
     case 'discard': {
       const c = state.changes.find((x) => x.id === m.id);
-      return c?.status === 'pending' ? t('history.dropped', { label: c.propLabel }) : null;
+      if (c?.status !== 'pending') return null;
+      const { kind, propLabel } = c;
+      return () => t('history.dropped', { label: changeName({ kind, propLabel }) });
     }
     default:
       return null;
@@ -329,8 +333,8 @@ export function createMockHost(): Host {
   select('e1');
 
   // 上一步 / 下一步：每步之前存一份假宿主的全部状态，撤销、重做时整份换回去
-  const undos: Array<{ label: string; data: string }> = [];
-  const redos: Array<{ label: string; data: string }> = [];
+  const undos: Array<{ label: () => string; data: string }> = [];
+  const redos: Array<{ label: () => string; data: string }> = [];
   const dump = () => JSON.stringify({ changes: state.changes, pendingByEl, removedByEl, textByEl, orders, propViews });
   const refill = <T extends object>(to: T, from: T) => {
     for (const k of Object.keys(to)) delete (to as Record<string, unknown>)[k];
@@ -346,12 +350,12 @@ export function createMockHost(): Host {
     refill(propViews, d.propViews);
     select(state.selection?.el.uid ?? 'e1');
   };
-  const mark = (label: string) => {
+  const mark = (label: () => string) => {
     undos.push({ label, data: dump() });
     redos.length = 0;
   };
   const syncHistory = () => {
-    state.history = { undo: undos[undos.length - 1]?.label ?? null, redo: redos[redos.length - 1]?.label ?? null };
+    state.history = { undo: undos[undos.length - 1]?.label() ?? null, redo: redos[redos.length - 1]?.label() ?? null };
   };
   const dropChanges = (pick: (c: ChangeView) => boolean) => {
     const sel = state.selection!;
@@ -456,6 +460,10 @@ export function createMockHost(): Host {
         break;
       case 'setSnap':
         state.snap = m.on;
+        break;
+      case 'setLocale':
+        setLocale(m.locale);
+        state.locale = m.locale;
         break;
       case 'edit':
         editStyle(m);

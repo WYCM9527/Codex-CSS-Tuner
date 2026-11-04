@@ -5,13 +5,16 @@ import {
   aliasesOf,
   getLocale,
   groupLabel,
+  localeFrom,
   PROP_NAMES,
   sameValue,
+  setLocale,
   t,
   type BridgeEvent,
   type EditRequest,
   type ElementSnapshot,
   type ExtToPanel,
+  type Locale,
   type Notice,
   type OrderView,
   type PageInfo,
@@ -69,6 +72,12 @@ import { TailwindService } from './tailwind';
 import { computeWrite } from './writer';
 
 const BROWSER_KEY = 'cssTuner.browserId';
+
+/** 界面语言：设置里选了中文或英文就用选的，auto 跟随编辑器的显示语言 */
+export function configuredLocale(): Locale {
+  const v = vscode.workspace.getConfiguration('cssTuner').get<string>('language', 'auto');
+  return v === 'zh-CN' || v === 'en' ? v : localeFrom(vscode.env.language);
+}
 
 /**
  * 静态站点的根目录：从 HTML 所在目录往上找，取工作区内最高一层带 index.html 的目录，
@@ -194,6 +203,11 @@ export class Controller implements vscode.Disposable {
         this.state.defaultUrl = c.get<string>('defaultUrl', this.state.defaultUrl);
         this.state.snap = c.get<boolean>('snap', this.state.snap);
         if (e.affectsConfiguration('cssTuner.tailwind.scope')) this.state.scope = c.get<Scope>('tailwind.scope', this.state.scope);
+        if (e.affectsConfiguration('cssTuner.language')) {
+          setLocale(configuredLocale());
+          this.state.locale = getLocale();
+          this.state.history = this.history.labels();
+        }
         // 写回策略变了：选中元素的写回目标按新设置重新判断（已记下的改动不变）
         if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
         this.push();
@@ -282,6 +296,14 @@ export class Controller implements vscode.Disposable {
           await vscode.workspace.getConfiguration('cssTuner').update('snap', msg.on, vscode.ConfigurationTarget.Global);
           this.push();
           return;
+        case 'setLocale': {
+          this.applyLocale(msg.locale);
+          // 工作区里写过语言的话用户设置会被盖住，切换就改工作区的
+          const cfg = vscode.workspace.getConfiguration('cssTuner');
+          const target = cfg.inspect('language')?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+          await cfg.update('language', msg.locale, target);
+          return;
+        }
         case 'openSource':
           await this.openSource(msg.file, msg.line, msg.column);
           return;
@@ -997,6 +1019,15 @@ export class Controller implements vscode.Disposable {
   private syncHistory() {
     this.history.prune((key) => this.journal.findPending(key));
     this.state.history = this.history.labels();
+  }
+
+  /** 换界面语言：上一步 / 下一步的提示和选中元素的写回说明按新语言重新生成（清单里已记下的说明不变） */
+  applyLocale(locale: Locale) {
+    setLocale(locale);
+    this.state.locale = locale;
+    this.state.history = this.history.labels();
+    if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
+    this.push();
   }
 
   edit(req: EditRequest): Promise<void> {

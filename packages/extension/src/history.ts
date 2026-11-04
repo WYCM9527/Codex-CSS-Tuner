@@ -1,4 +1,4 @@
-import { t } from '@css-tuner/protocol';
+import { changeName, t, type ChangeKind } from '@css-tuner/protocol';
 import type { ChangeRecord } from './records';
 
 /** 未应用的改动，按 key 各存一份 */
@@ -7,8 +7,11 @@ export type PendingSet = Map<string, ChangeRecord>;
 /** 这一步动到的每条改动在某一时刻的样子，null 是那时没有这条 */
 type State = Map<string, ChangeRecord | null>;
 
+/** 这一步对每条改动做了什么：改值、删属性还是撤掉了；按钮提示用的时候才按当前界面语言拼 */
+type Part = { op: 'edit' | 'removed' | 'dropped'; kind: ChangeKind; propLabel: string };
+
 interface Step {
-  label: string;
+  parts: Part[];
   before: State;
   after: State;
 }
@@ -45,7 +48,7 @@ export class History {
       a.set(key, y);
     }
     if (!a.size) return false;
-    this.undos.push({ label: labelOf(b, a), before: b, after: a });
+    this.undos.push({ parts: partsOf(b, a), before: b, after: a });
     if (this.undos.length > LIMIT) this.undos.shift();
     this.redos = [];
     return true;
@@ -70,17 +73,26 @@ export class History {
 
   /** 上一步、下一步各改的是什么（面板按钮的提示），没有是 null */
   labels(): { undo: string | null; redo: string | null } {
-    return { undo: this.undos[this.undos.length - 1]?.label ?? null, redo: this.redos[this.redos.length - 1]?.label ?? null };
+    const top = (steps: Step[]) => (steps.length ? labelOf(steps[steps.length - 1].parts) : null);
+    return { undo: top(this.undos), redo: top(this.redos) };
   }
 }
 
-/** 这一步做了什么：改了哪个属性、删了哪个、撤掉了哪条，动到几条时说第一条和总数 */
-function labelOf(before: State, after: State): string {
+/** 这一步做了什么：改了哪个属性、删了哪个、撤掉了哪条 */
+function partsOf(before: State, after: State): Part[] {
+  return [...after].map(([key, r]): Part => {
+    const { kind, propLabel } = r ?? before.get(key)!;
+    return { op: !r ? 'dropped' : r.removal ? 'removed' : 'edit', kind, propLabel };
+  });
+}
+
+/** 动到几条时说第一条和总数 */
+function labelOf(parts: Part[]): string {
   const names = [
     ...new Set(
-      [...after].map(([key, r]) => {
-        if (!r) return t('history.dropped', { label: before.get(key)!.propLabel });
-        return r.removal ? t('history.removed', { label: r.propLabel }) : r.propLabel;
+      parts.map((p) => {
+        const label = changeName(p);
+        return p.op === 'dropped' ? t('history.dropped', { label }) : p.op === 'removed' ? t('history.removed', { label }) : label;
       }),
     ),
   ];

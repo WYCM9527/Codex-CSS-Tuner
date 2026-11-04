@@ -40,6 +40,6 @@ describe('界面文案', () => {
     expect(format('spreads {...props}', { props: 'p' })).toBe('spreads {...props}');
     expect(t('ext.handoff.none')).toMatch(/Agent/);
     setLocale('zh-CN');
-    expect(t('apply.log', { n: 2, writeMs: 5, ms: 40 })).toBe('应用 2 条改动：写盘 5ms，页面生效 40ms');
+    expect(t('apply.log', { n: 2, writeMs: 5, ms: 40 })).toBe('应用 2 条改动：保存 5ms，页面生效 40ms');
   });
 });

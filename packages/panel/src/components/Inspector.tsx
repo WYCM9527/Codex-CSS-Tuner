@@ -30,6 +30,8 @@ import { Vars } from './Vars';
 export interface UiPrefs {
   closed: string[];
   split: string[];
+  /** 存下这份偏好时的默认值版本：默认值变了，旧偏好补一次（1：改动清单默认收起） */
+  v?: number;
 }
 
 interface Props {

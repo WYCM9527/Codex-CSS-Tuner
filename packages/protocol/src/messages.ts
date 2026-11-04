@@ -1,4 +1,4 @@
-import type { Locale } from './i18n';
+import { t, type Locale } from './i18n';
 
 /* ---------- 页面侧快照 ---------- */
 
@@ -443,6 +443,11 @@ export interface ChangeView {
   createdAt: number;
 }
 
+/** 清单和上一步提示里改动叫什么：文字、换序按当前界面语言叫，样式和 props 用属性名 */
+export function changeName(c: { kind: ChangeKind; propLabel: string }): string {
+  return c.kind === 'text' ? t('panel.change.text') : c.kind === 'reorder' ? t('panel.change.order') : c.propLabel;
+}
+
 export type Connection = 'idle' | 'opening' | 'connected' | 'lost';
 
 export interface Notice {
@@ -463,7 +468,7 @@ export interface PanelState {
   busy: boolean;
   /** 数值吸附到刻度（按住 Alt 临时关闭） */
   snap: boolean;
-  /** 界面语言，跟随编辑器的显示语言 */
+  /** 界面语言：默认跟随编辑器的显示语言，面板上切换过就用切换的 */
   locale: Locale;
   /** 上一步 / 下一步会撤销、重做的操作说明，没有可撤销、重做的为 null */
   history: { undo: string | null; redo: string | null };
@@ -502,6 +507,7 @@ export type PanelToExt =
   | { t: 'handoff'; ids?: string[] }
   | { t: 'setScope'; scope: Scope }
   | { t: 'setSnap'; on: boolean }
+  | { t: 'setLocale'; locale: Locale }
   | { t: 'clearDone' }
   | { t: 'dismissNotice' }
   /** 面板里的未捕获异常，写进扩展的输出面板 */

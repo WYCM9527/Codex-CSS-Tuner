@@ -131,7 +131,7 @@ describe('文字写在哪', () => {
     ]);
     const dyn = planText(e, 0, ctx);
     expect(dyn.origin).toBe('dynamic');
-    expect(dyn.write).toEqual({ kind: 'agent', reason: '文字由代码 n 生成，不是写死的字面量' });
+    expect(dyn.write).toEqual({ kind: 'agent', reason: '文字是代码（n）生成的，不是直接写出来的' });
     expect(planText(e, 1, ctx).write).toMatchObject({ kind: 'jsxText', line: 11, segment: 1 });
   });
 

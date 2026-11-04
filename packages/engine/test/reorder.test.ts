@@ -81,7 +81,7 @@ describe('JSX 兄弟换序', () => {
     expect(jsx(src, [{ ...at(src, 'section'), name: 'article' }, at(src, 'p')], [1, 0])).toMatch(/doesn't match the page|对不上/);
     const viaAttr = `const A = () => <Layout header={<h1>T</h1>}><p>B</p></Layout>;`;
     expect(jsx(viaAttr, [at(viaAttr, 'h1'), at(viaAttr, 'p')], [1, 0])).toMatch(/aren't written next to each other|不是并排写在/);
-    expect(jsx(src, [at(src, 'section'), at(src, 'p')], [0, 0])).toMatch(/number of siblings|个数对不上/);
+    expect(jsx(src, [at(src, 'section'), at(src, 'p')], [0, 0])).toMatch(/number of items|个数对不上/);
   });
 });
 

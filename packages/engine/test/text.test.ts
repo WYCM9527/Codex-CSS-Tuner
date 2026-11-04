@@ -57,7 +57,7 @@ describe('JSX 文字', () => {
     const src = `const A = ({ title }) => <h2>{title}</h2>;`;
     const { line, column } = at(src, 'h2');
     expect(jsxChildSite(src, F, line, column, 0)).toEqual({ kind: 'dynamic', code: 'title' });
-    expect(text(src, 'h2', 0, 'x', 'y')).toMatch(/rather than a literal|不是写死的字面量/);
+    expect(text(src, 'h2', 0, 'x', 'y')).toMatch(/instead of being written out|不是直接写出来的/);
     expect(text(`const A = () => <h2>Now</h2>;`, 'h2', 0, 'Before', 'After')).toMatch(/changed|已经变了/);
   });
 

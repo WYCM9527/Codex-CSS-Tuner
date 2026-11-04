@@ -11,12 +11,12 @@ It does one job: **adjust styles, text, order and props inside Cursor, see the r
 ## Features
 
 - **Pick elements**: hover to highlight, click to select. The panel shows a breadcrumb and the component tree, and marks every instance rendered by the same line of JSX or template.
-- **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, stroke, radius, shadow, effects and CSS variables. Drag or scrub numbers, pick colors, and snap to your theme scale and CSS variables; hold Alt for exact values.
+- **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, stroke, radius, shadow, effects and CSS variables. Drag or scrub numbers, pick colors, and snap to your theme's values and CSS variables; hold Alt for any value.
 - **Add and remove properties**: an element with no fill, stroke or shadow gets one from the + on that section, and − takes it away again. Every value that comes from a declaration in your code has a × in its corner that removes the declaration (in Tailwind, its class), so the element falls back to what it would be without it. Inherited values, initial values and framework presets have nothing to remove.
-- **Undo, redo and reset**: the change list is pinned to the top of the panel. Undo and Redo next to Pick Element (or ⌘Z / ⇧⌘Z, Ctrl+Z / Ctrl+Shift+Z, in the panel) step through the changes you haven't applied yet, and a field with an unapplied change shows a reset button in its corner. The change list follows along.
+- **Undo, redo and reset**: the change list sits at the top of the panel, folded into one line by default (click it to see each change). Undo and Redo, right next to Apply All (or ⌘Z / ⇧⌘Z, Ctrl+Z / Ctrl+Shift+Z, in the panel), step through the changes you haven't applied yet, and a field with an unapplied change shows a reset button in its corner. The change list follows along.
 - **Edit text**: the Content section lists the selected element's text, split into runs around inline tags such as `<b>`. Edit a run there, or double-click text inside the selected element on the page and type in place. Enter adds the change to the list; Esc undoes it.
-- **Reorder siblings**: drag the handle next to the selected element's tag on the page, drag its row in the Structure tree, or use the move buttons in the header. The page previews the new order with CSS `order` (flex and grid) or transforms instead of moving DOM nodes, so the change is marked as a simulated preview until you apply it.
-- **Edit component props**: the Props section lists the props that the component rendering the selected element receives at its call site. Strings, numbers and booleans can be edited. Variants of a `cva` / `tailwind-variants` recipe and string literal union types (from TypeScript) are offered as options, including variants the call site doesn't set. The page shows the new value right away through React's DevTools hook, and every instance created by the same call site changes together. Server components are read-only on the page and change once you apply.
+- **Reorder siblings**: drag the handle next to the selected element's tag on the page, drag its row in the Structure tree, or use the move buttons in the header. The page previews the new order with CSS `order` (flex and grid) or transforms instead of moving DOM nodes, so the change is marked “preview only” until you apply it.
+- **Edit component props**: the Component props section lists the props that the component rendering the selected element receives at its call site. Strings, numbers and booleans can be edited. Variants of a `cva` / `tailwind-variants` recipe and string literal union types (from TypeScript) are offered as options, including variants the call site doesn't set. The page shows the new value right away through React's DevTools hook, and every instance created by the same call site changes together. Server components are read-only on the page and change once you apply.
 - **Live preview**: changes only touch the page until you apply them.
 - **Deterministic write-back**: clicking Apply writes each change to where the style comes from:
   - Tailwind classes (Tailwind 4, or Tailwind 3 with the theme from `tailwind.config`): string and template literals in JSX, `clsx` / `cn` / `twMerge` arguments, `cva` base classes and variants, class-name constants, and the `className` passed in at a component's call site. In Vue and Svelte components: the `class` attribute, `:class` strings, arrays and object literals, `class:` directives, and the `class` written where the component is used. Only the responsive variant that is currently active is changed (for example `md:px-5` at desktop width). Off-scale values become arbitrary-value classes, or go to the Agent if you prefer. Removing a property removes the class that sets it; a class that also sets properties you keep (`p-4` when you remove only the left padding) stays, and the panel tells you why.
@@ -27,9 +27,9 @@ It does one job: **adjust styles, text, order and props inside Cursor, see the r
   - Props: the attribute at the component's call site. A literal is edited in place and keeps its quotes; a prop the call site doesn't set is added to it. When the call site also spreads props (`{...rest}`), the panel warns that the spread may override the value.
 - **Verified after apply**: after writing, it waits for the dev server's hot reload and checks that the page's computed styles, text, order and props match the preview. If hot reload is slow, or the write makes the dev server reload the whole page (a message file in Vite, a CSS Module in Next.js webpack mode), it keeps waiting in the background and checks again once the page reconnects.
 - **Revert one change at a time**: if the file hasn't changed since, it is restored byte for byte from a snapshot. If it has, only this change is rolled back; when the original text can't be found, it stops and shows a diff instead of overwriting your later edits.
-- **Scope**: *Instance* changes only the element you picked (when the component merges classes with `cn` / `twMerge`, an override class is added at the call site). *Source* changes the component definition and its variants, so every place that uses it changes.
+- **This one or all** (Tailwind): *This one* changes only the element you picked (when the component merges classes with `cn` / `twMerge`, a class is added where the component is used). *All* changes the component itself and its variants, so every place that uses it changes.
 - **Hand off to Agent**: changes that can't be written back (for example classes built from variables, text produced by code such as `{count} items`, props passed as expressions such as `size={size}`, or lists that come from props or an API) become a structured prompt in a new Agent chat, together with the code they come from. Nothing is sent automatically.
-- **English and Simplified Chinese**: the panel, notifications and Agent prompts follow Cursor's display language.
+- **English and Simplified Chinese**: the panel, notifications and Agent prompts follow Cursor's display language. Switch with 中 / EN at the top of the panel; the choice is saved in the `cssTuner.language` setting.
 
 ![The panel next to the page, with two pending changes and where each one will be written](https://raw.githubusercontent.com/WYCM9527/Cursor-CSS-Tuner/main/docs/media/overview.png)
 
@@ -58,10 +58,10 @@ Search for **Cursor CSS Tuner** in Cursor's Extensions view and install it. You 
 1. Start your project's dev server (for example `npm run dev`).
 2. Click the CSS Tuner icon in the activity bar, enter the page address in the Tuner panel and open it. The page opens in a tab of Cursor's built-in browser. You don't need to change your project or install anything.
 3. Click **Pick Element**, then click an element on the page.
-4. Drag the values in the panel; the page updates as you go, and each change appears in the list at the top of the panel, where Undo and Redo step back and forth through them. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in the Structure tree. To change the props of its component, use the Props section.
+4. Drag the values in the panel; the page updates as you go, and each change appears in the list at the top of the panel, where Undo and Redo step back and forth through them. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in the Structure tree. To change the props of its component, use the Component props section.
 5. Click **Apply** to write back to the source. Afterwards, **Revert** or **Compare** any single change.
 
-For plain HTML projects, right-click an HTML file or folder in the Explorer and choose "CSS Tuner: Open HTML with Built-in Static Server".
+For plain HTML projects, right-click an HTML file or folder in the Explorer and choose "CSS Tuner: Open HTML File with Built-in Server".
 
 ## Commands
 
@@ -70,22 +70,23 @@ For plain HTML projects, right-click an HTML file or folder in the Explorer and 
 | CSS Tuner: Open Page | Opens a dev server page in the built-in browser and injects the tuner script |
 | CSS Tuner: Pick Element | Turns element picking on the page on or off |
 | CSS Tuner: Apply All Changes | Writes every pending change in the list back to the source |
-| CSS Tuner: Open HTML with Built-in Static Server | Serves HTML that has no dev server from a local static server |
-| CSS Tuner: Hand Unresolved Changes to Agent | Drafts a prompt and prefills it in a new Agent chat |
+| CSS Tuner: Open HTML File with Built-in Server | Serves HTML that has no dev server from a local static server |
+| CSS Tuner: Hand Remaining Changes to Agent | Drafts a prompt and prefills it in a new Agent chat |
 | CSS Tuner: Self-Check | Runs injection, connection, selection, preview and re-injection after reload in a separate tab |
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `cssTuner.defaultUrl` | `http://localhost:5173/` | Default address when opening a page |
-| `cssTuner.remBase` | `16` | Base font size for converting between rem and px |
-| `cssTuner.snap` | `true` | Snap numbers to theme scales and CSS variables (hold Alt for exact values) |
-| `cssTuner.tailwind.scope` | `instance` | Default scope of Tailwind changes: `instance` changes only the current call site, `source` changes where the classes come from |
-| `cssTuner.tailwind.arbitraryValues` | `allow` | Write off-scale values as arbitrary-value classes (`allow`), or hand them to the Agent (`agent`) |
-| `cssTuner.css.strategy` | `editRule` | Edit the matching CSS rule directly (`editRule`), or hand the change to the Agent (`agent`) |
+| `cssTuner.language` | `auto` | Language of the panel and its messages: `auto` follows Cursor's display language, or set `zh-CN` / `en`. The 中 / EN switch at the top of the panel changes this setting |
+| `cssTuner.defaultUrl` | `http://localhost:5173/` | Address to open by default |
+| `cssTuner.remBase` | `16` | Root font size used to convert between rem and px |
+| `cssTuner.snap` | `true` | Snap numbers to the theme's values and CSS variables (hold Alt for any value) |
+| `cssTuner.tailwind.scope` | `instance` | Whether Tailwind changes apply to just the element you picked (`instance`, “This one” in the panel) or to the component itself (`source`, “All”) |
+| `cssTuner.tailwind.arbitraryValues` | `allow` | Write values that aren't in the theme into the class (`allow`, such as `px-[13.5px]`), or hand them to the Agent (`agent`) |
+| `cssTuner.css.strategy` | `editRule` | Edit the CSS rule the element uses (`editRule`), or hand the change to the Agent (`agent`) |
 | `cssTuner.vars.strategy` | `editDefinition` | Edit where a CSS variable is defined (`editDefinition`), or hand the change to the Agent (`agent`) |
-| `cssTuner.verifyTimeoutMs` | `8000` | How long to wait for hot reload before checking the page against the preview, in milliseconds. Changes that time out wait one more round in the background |
+| `cssTuner.verifyTimeoutMs` | `8000` | After applying, how long to wait for the page to refresh before checking it against the preview, in milliseconds. Changes that time out wait one more round in the background |
 
 ## Limitations
 

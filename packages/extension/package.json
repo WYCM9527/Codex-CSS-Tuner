@@ -80,6 +80,21 @@
     "configuration": {
       "title": "CSS Tuner",
       "properties": {
+        "cssTuner.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "zh-CN",
+            "en"
+          ],
+          "enumDescriptions": [
+            "%config.language.auto%",
+            "%config.language.zh-CN%",
+            "%config.language.en%"
+          ],
+          "default": "auto",
+          "description": "%config.language%"
+        },
         "cssTuner.defaultUrl": {
           "type": "string",
           "default": "http://localhost:5173/",

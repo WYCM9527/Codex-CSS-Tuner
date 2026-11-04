@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { existsSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
-import { getLocale, localeFrom, setLocale, type PanelToExt, type PropValue, type SelectionView } from '@css-tuner/protocol';
+import { getLocale, localeFrom, type PanelToExt, type PropValue, type SelectionView } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import { summarizeCheck } from './selfcheck';
 import { computeWrite } from './writer';
@@ -590,11 +590,9 @@ defineStep('screenshot', async (c, s) => {
   return { path: s.path };
 });
 
-/** 切换扩展这一侧的界面语言：之后生成的提示、改动说明和提示词都用这个语言 */
+/** 切换界面语言（不写进用户设置）：之后生成的提示、改动说明和提示词都用这个语言 */
 defineStep('locale', async (c, s) => {
-  setLocale(localeFrom(String(s.locale)));
-  c.state.locale = getLocale();
-  c.push();
+  c.applyLocale(localeFrom(String(s.locale)));
   return getLocale();
 });
 
@@ -619,7 +617,7 @@ defineStep('debugPlan', async (c, s) => {
   };
 });
 
-/** 切换改动范围（此处 / 源头），返回重新规划后的写回目标 */
+/** 切换改动范围（只改这个 / 全部），返回重新规划后的写回目标 */
 defineStep('scope', async (c, s) => {
   await c.handle({ t: 'setScope', scope: s.scope === 'source' ? 'source' : 'instance' });
   return { scope: c.state.scope, ...summarize(c.state.selection, (s.props as string[]) ?? []) };

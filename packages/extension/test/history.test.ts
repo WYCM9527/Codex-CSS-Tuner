@@ -95,6 +95,16 @@ describe('撤销 / 重做', () => {
     expect(h.labels().undo).toBe('padding-top 和另外 1 项');
   });
 
+  it('按钮提示跟着当前界面语言：中途换了语言，记下的步骤也换成新语言', () => {
+    h.record(...list.op(() => list.set('k5', rec({ id: 't1', key: 'k5', kind: 'text', propLabel: '文字' }))));
+    h.record(...list.op(() => list.set('k5', null)));
+    expect(h.labels().undo).toBe('重置 文字');
+    setLocale('en');
+    expect(h.labels().undo).toBe('reset Text');
+    list.replay(h.take('undo', list.find));
+    expect(h.labels()).toEqual({ undo: 'Text', redo: 'reset Text' });
+  });
+
   it('应用过的改动不再撤销：对不上的那步作废，更早的照样能撤', () => {
     h.record(...list.op(() => list.set('k1', rec({}))));
     h.record(...list.op(() => list.set('k2', rec({ id: 'b1', key: 'k2', propLabel: 'color' }))));

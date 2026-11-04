@@ -160,11 +160,11 @@ describe('换序写到哪', () => {
   it('写不回时交给 Agent 并说明原因', () => {
     const units = navUnits();
     const why = (us: OrderUnit[]) => planOrder(el(info(us)), ctx)!.view.reason;
-    expect(why([units[0], { ...units[1], source: null }])).toBe('找不到这组兄弟写在源码的哪里');
-    expect(why([units[0], unit('o', loc(OTHER, '<aside'), 'aside')])).toBe('这组兄弟写在不同的文件里');
+    expect(why([units[0], { ...units[1], source: null }])).toBe('找不到这几个元素在代码里的位置');
+    expect(why([units[0], unit('o', loc(OTHER, '<aside'), 'aside')])).toBe('这几个元素写在不同的文件里');
     expect(why([units[0], { ...units[1], name: 'button' }])).toMatch(/对不上/);
     const p = planOrder(el(info([units[0], { ...units[1], source: null }])), ctx)!;
-    expect(p.write([1, 0])).toEqual({ kind: 'agent', reason: '找不到这组兄弟写在源码的哪里' });
+    expect(p.write([1, 0])).toEqual({ kind: 'agent', reason: '找不到这几个元素在代码里的位置' });
     expect(p.view.kind).toBe('agent');
   });
 

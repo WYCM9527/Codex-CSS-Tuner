@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { t, type ChangeView, type OrderView, type PanelState, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
+import { changeName, t, type ChangeView, type Locale, type OrderView, type PanelState, type PanelToExt, type SelectionView } from '@css-tuner/protocol';
 import { displayValue, shortFile } from '../lib/format';
 import { IconToggle, targetHint } from './controls';
 import { Icon } from './icons';
@@ -26,6 +26,7 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
         <button className="btn" type="submit" disabled={state.connection === 'opening'}>
           {connected ? t('panel.reload') : t('panel.open')}
         </button>
+        <LocaleSwitch state={state} send={send} />
       </form>
       {connected && (
         <div className="tool-row">
@@ -33,7 +34,6 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
             <Icon.crosshair />
             {state.pickOn ? t('panel.picking') : t('panel.pick')}
           </button>
-          <HistoryButtons state={state} send={send} />
           <span className="spacer" />
           <IconToggle on={state.snap} title={state.snap ? t('panel.snap.on') : t('panel.snap.off')} onClick={() => send({ t: 'setSnap', on: !state.snap })}>
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3">
@@ -42,6 +42,29 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
           </IconToggle>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 界面语言：语言名各用自己的写法，选了记进设置 */
+function LocaleSwitch({ state, send }: { state: PanelState; send: Send }) {
+  const opt = (locale: Locale, label: string, title: string) => (
+    <button
+      type="button"
+      role="radio"
+      lang={locale}
+      aria-checked={state.locale === locale}
+      className={state.locale === locale ? 'on' : ''}
+      title={title}
+      onClick={() => state.locale !== locale && send({ t: 'setLocale', locale })}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="seg lang" role="radiogroup" aria-label={t('panel.lang')}>
+      {opt('zh-CN', '中', '简体中文')}
+      {opt('en', 'EN', 'English')}
     </div>
   );
 }
@@ -136,17 +159,17 @@ export function ElementHeader({ state, sel, send }: { state: PanelState; sel: Se
   );
 }
 
-/** 改动清单和提交按钮，固定在工具栏下面 */
+/** 改动清单、上一步 / 下一步和提交按钮，固定在工具栏下面；撤掉了最后一条也留着，好撤销回来 */
 export function ChangeList({ state, send, open, onToggle }: { state: PanelState; send: Send; open: boolean; onToggle: () => void }) {
   const changes = state.changes;
-  if (!changes.length) return null;
+  if (!changes.length && !state.history.undo && !state.history.redo) return null;
   const pending = changes.filter((c) => c.status === 'pending');
   const agentable = changes.filter((c) => (c.status === 'pending' && c.target.kind === 'agent') || c.status === 'failed' || c.status === 'conflict');
   const done = changes.filter((c) => c.status === 'reverted' || c.status === 'handoff' || c.status === 'applied');
   return (
-    <div className={`changes${open ? '' : ' is-closed'}`}>
+    <div className={`changes${open ? '' : ' is-closed'}${changes.length ? '' : ' is-empty'}`}>
       <header className="changes-head">
-        <button className="sec-toggle" onClick={onToggle} aria-expanded={open}>
+        <button className="sec-toggle" onClick={onToggle} aria-expanded={open} disabled={!changes.length}>
           <svg className={`chev${open ? ' open' : ''}`} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 4l4 4-4 4" />
           </svg>
@@ -165,13 +188,14 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
             {t('panel.handoff')}
           </button>
         )}
+        <HistoryButtons state={state} send={send} />
         {pending.some((c) => c.target.kind !== 'agent') && (
           <button className="btn primary" disabled={state.busy} onClick={() => send({ t: 'apply' })}>
             {t('panel.applyAll')}
           </button>
         )}
       </header>
-      {open && (
+      {open && changes.length > 0 && (
         <ul className="change-items">
           {changes.map((c) => (
             <ChangeItem key={c.id} c={c} busy={state.busy} send={send} />
@@ -229,7 +253,7 @@ function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Sen
     <li className={`change is-${c.status}`}>
       <div className="change-main">
         <span className={`status s-${c.status}`} title={t(`panel.status.${c.status}`)} />
-        <span className="change-prop">{c.propLabel}</span>
+        <span className="change-prop">{changeName(c)}</span>
         <span className="change-vals">
           <s title={from}>{from}</s>
           <span className="arrow">→</span>

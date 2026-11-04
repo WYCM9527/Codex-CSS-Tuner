@@ -63,7 +63,7 @@ describe('组件属性', () => {
 
   it('表达式、源码已经改过、同一行找错元素时不改', () => {
     const src = `const A = ({ v }) => <><Button variant={v} /><Badge tone="x" /></>;`;
-    expect(prop(src, 'Button', 'variant', 'a')).toMatch(/expression|表达式/);
+    expect(prop(src, 'Button', 'variant', 'a')).toMatch(/set by code|由代码决定/);
     expect(prop(src, 'Badge', 'tone', 'y', 'z')).toMatch(/has changed|已经变了/);
     const r = editJsxProp({ file: F, source: src, line: 1, column: 1, name: 'tone', value: 'y', tag: 'Badge' });
     expect(r.ok).toBe(false);

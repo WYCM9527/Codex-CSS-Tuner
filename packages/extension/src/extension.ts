@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { localeFrom, setLocale, t } from '@css-tuner/protocol';
+import { setLocale, t } from '@css-tuner/protocol';
 import { SCHEME } from './applier';
-import { Controller } from './controller';
+import { configuredLocale, Controller } from './controller';
 import { PanelProvider } from './panel';
 import { summarizeCheck } from './selfcheck';
 import { maybeRunSelfTest } from './selftest';
@@ -9,7 +9,7 @@ import { maybeRunSelfTest } from './selftest';
 let controller: Controller | null = null;
 
 export function activate(ctx: vscode.ExtensionContext) {
-  setLocale(localeFrom(vscode.env.language));
+  setLocale(configuredLocale());
   const out = vscode.window.createOutputChannel('CSS Tuner');
   const log = (msg: string) => out.appendLine(`[${new Date().toLocaleTimeString()}] ${msg}`);
   const c = new Controller(ctx, log);
