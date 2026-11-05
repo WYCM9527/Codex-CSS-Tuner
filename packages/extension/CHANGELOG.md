@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0
+
+- Apply now hands every change to the Agent, and the extension no longer edits your files itself. Apply and Apply All put a prompt into a new Agent chat; review it and press Enter to send it (it's copied to the clipboard too). The prompt says where each change is in your code and what it should become, without prescribing how to write it.
+- The page keeps showing the preview while the Agent works. Once the Agent has changed the code and the page has updated, the panel checks the page against the preview and marks the change *Applied*. If the page shows something else, the change says what it shows now, and *Send Again* adds that to the prompt.
+- Revert goes through the Agent too. *Compare* shows your file from when the change was handed off next to the file now.
+- A change is *Not applied*, *Waiting for the Agent*, *Applied*, *Waiting for the Agent to revert* or *Reverted*. *Discard* on a change that's still waiting removes it from the list and its preview from the page; *Don't Revert* stops waiting for a revert.
+- Removed the settings that only controlled writing back directly (`cssTuner.tailwind.arbitraryValues`, `cssTuner.css.strategy`, `cssTuner.vars.strategy`, `cssTuner.verifyTimeoutMs`) and the *Hand Remaining Changes to Agent* command, which Apply All now covers.
+- Images & video: a new section (after Variables, folded by default) lists the images, background images, SVGs and videos you can see in the selected element. Save one with *Save As…*, save them all into a folder with *Download All* (duplicate names get a number), copy an SVG's code, or find the file in your project. Images with a `srcset` are saved at their largest size. Saved SVG files use the colors shown on the page, while the copied code keeps `currentColor`. Streaming videos (MediaSource, HLS, DASH) can't be downloaded, but their poster can.
+- Ruler: measures the distance between the hovered element and the selected one, with the spacing scale's name next to each number. Click to select the hovered element, and press Esc to leave. With the ruler off, hold Alt while hovering. It's on the panel's toolbar and in the *Ruler: Measure Distances* command.
+- Viewport: view the page at phone (390px), tablet or desktop width; the tablet and desktop widths come from your theme's `md` and `lg` breakpoints. A page that doesn't fit is scaled down. The width stays when the page reloads or changes, and goes back when the panel is folded or closed.
+- With Phone, Tablet or Desktop picked, style changes only apply to that range of widths. The prompt asks for a breakpoint prefix in Tailwind (putting the original value back for wider widths when the base class changes) and for `@media` in plain CSS. The preview only shows at those widths, and the check switches the page to them.
+- Fixed: when hot reload replaced a stylesheet, the preview of a change waiting for the Agent disappeared.
+
 ## 0.9.0
 
 - Gradients for fill and stroke: the color popover switches between Solid, Linear and Radial. Set the angle (type it, or rotate by 90°), click the gradient bar to add a color stop, drag stops to move them, and press Delete to remove the selected one (at least two stay). The color picker below recolors the selected stop and offers your theme colors.
