@@ -1,20 +1,13 @@
 import { dirname, extname, join } from 'node:path';
 import { t as msg } from '@css-tuner/protocol';
 import { parseModule, walk, type Node } from '../ast';
-import { applyEdits, type EditResult, type TextEdit } from '../types';
-import { commonEnds, short } from './diff';
-import { findElement } from './jsx';
+import { findElement, short } from './jsx';
 
 /** 兄弟组里一项在 JSX 里的位置；name 是页面上的标签名（宿主元素）或组件名 */
 export interface OrderSite {
   line: number;
   column: number;
   name?: string;
-}
-
-interface Span {
-  start: number;
-  end: number;
 }
 
 interface Parsed {
@@ -36,61 +29,6 @@ function parsed(source: string, filename: string): Parsed | { error: string } {
   return { ast, parents };
 }
 
-const errorCount = (ast: Node) => (ast.errors as unknown[] | undefined)?.length ?? 0;
-
-/** order 是 0..n-1 的一个排列 */
-export function isPermutation(order: number[], n: number): boolean {
-  if (order.length !== n) return false;
-  const seen = new Set(order);
-  return seen.size === n && order.every((i) => Number.isInteger(i) && i >= 0 && i < n);
-}
-
-/** 新顺序第 k 个位置放原来的第 order[k] 项；项与项之间的原文（空白、逗号、不参与换序的子节点）留在原处 */
-export function permute(source: string, spans: Span[], order: number[]): TextEdit {
-  let text = '';
-  for (let k = 0; k < spans.length; k++) {
-    const s = spans[order[k]];
-    text += source.slice(s.start, s.end);
-    if (k + 1 < spans.length) text += source.slice(spans[k].end, spans[k + 1].start);
-  }
-  const start = spans[0].start;
-  const end = spans[spans.length - 1].end;
-  const { p, s } = commonEnds(source.slice(start, end), text);
-  return { start: start + p, end: end - s, text: text.slice(p, text.length - s) };
-}
-
-/** 只挪了一项（其余项的先后不变）时返回它原来的下标 */
-function singleMove(order: number[]): number | null {
-  for (let i = 0; i < order.length; i++) {
-    if (order[i] === i) continue;
-    for (const moved of [order[i], i]) {
-      const rest = order.filter((v) => v !== moved);
-      if (rest.every((v, k) => v === (k < moved ? k : k + 1))) return moved;
-    }
-    return null;
-  }
-  return null;
-}
-
-/** 改动说明：只挪了一项时说从第几到第几，否则列出新顺序（原来的位置，1 起） */
-export function orderSummary(order: number[]): string {
-  const moved = singleMove(order);
-  if (moved !== null) return msg('engine.order.moved', { from: moved + 1, to: order.indexOf(moved) + 1 });
-  return msg('engine.order.summary', { order: order.map((v) => v + 1).join(' ') });
-}
-
-/** 独占一行、紧挨在这一项前面的注释跟着它走；prevEnd 是上一项的结尾 */
-function withLeadingComments(source: string, node: Node, prevEnd: number): Span {
-  let start = node.start;
-  const lead = (node.leadingComments as Node[] | undefined) ?? [];
-  for (let i = lead.length - 1; i >= 0; i--) {
-    const c = lead[i];
-    if (c.start < prevEnd || !/^\s*$/.test(source.slice(c.end, start)) || !/\n/.test(source.slice(prevEnd, c.start))) break;
-    start = c.start;
-  }
-  return { start, end: node.end };
-}
-
 /* ---------- JSX 子节点 ---------- */
 
 /** 从 node 往上：每个在 children 里（直接或隔着 {…}、函数等）包含它的 JSX 元素 / 片段，以及那一层 children 里的那一项 */
@@ -109,31 +47,8 @@ const jsxName = (n: Node): string => {
   return '';
 };
 
-const isJsxComment = (n: Node) => n.type === 'JSXExpressionContainer' && n.expression.type === 'JSXEmptyExpression';
-const isBlank = (n: Node) => n.type === 'JSXText' && !n.value.trim();
-
-const isLineBreak = (n: Node | undefined) => !!n && isBlank(n) && /\n/.test(n.value);
-
-/** JSX 里的一项，连同独占一行、紧挨在它上面的 {/* 注释 *\/} */
-function jsxSpan(parent: Node, item: Node): Span {
-  const kids = parent.children as Node[];
-  let i = kids.indexOf(item);
-  let start = item.start;
-  while (i >= 3 && isLineBreak(kids[i - 1]) && isJsxComment(kids[i - 2]) && isLineBreak(kids[i - 3])) {
-    start = kids[i - 2].start;
-    i -= 2;
-  }
-  return { start, end: item.end };
-}
-
-interface JsxGroup {
-  parent: Node;
-  items: Node[];
-  spans: Span[];
-}
-
-/** 各项所在的那个 JSX 父元素，和每一项在它 children 里对应的节点；对不上（不是同一个父元素、顺序和页面不同）就报错 */
-function jsxGroup(p: Parsed, source: string, sites: OrderSite[]): JsxGroup | { error: string } {
+/** 各项所在的那个 JSX 父元素；对不上（不是同一个父元素、顺序和页面不同）就报错 */
+function jsxParent(p: Parsed, sites: OrderSite[]): { parent: Node } | { error: string } {
   if (sites.length < 2) return { error: msg('engine.order.tooFew') };
   const chains: Array<Array<{ parent: Node; item: Node }>> = [];
   for (const s of sites) {
@@ -150,67 +65,18 @@ function jsxGroup(p: Parsed, source: string, sites: OrderSite[]): JsxGroup | { e
     if (items[i] === items[i - 1] || items.indexOf(items[i]) !== i) return { error: msg('engine.order.noCommonParent') };
     if (items[i].start <= items[i - 1].start) return { error: msg('engine.order.mismatch') };
   }
-  return { parent, items, spans: items.map((it) => jsxSpan(parent, it)) };
+  return { parent };
 }
 
 /** 规划时用：这些位置是不是同一个 JSX 父元素下的几项；是的话给出父元素的写法和位置（行列从 1 开始） */
 export function jsxOrderCheck(source: string, filename: string, sites: OrderSite[]): { ok: true; parent: string; line: number; column: number } | { error: string } {
   const p = parsed(source, filename);
   if ('error' in p) return p;
-  const g = jsxGroup(p, source, sites);
-  if ('error' in g) return g;
-  const { line, column } = g.parent.loc.start;
-  return { ok: true, parent: g.parent.type === 'JSXFragment' ? '<>' : `<${jsxName(g.parent.openingElement.name)}>`, line, column: column + 1 };
-}
-
-export interface JsxOrderInput {
-  file: string;
-  source: string;
-  /** 各项在 JSX 里的位置，按页面上原来的顺序 */
-  sites: OrderSite[];
-  /** 新顺序第 k 个位置放原来的第 order[k] 项 */
-  order: number[];
-}
-
-export function editJsxOrder(input: JsxOrderInput): EditResult {
-  const { file, source, sites, order } = input;
-  if (!isPermutation(order, sites.length)) return { ok: false, reason: msg('engine.order.badOrder') };
-  const p = parsed(source, file);
-  if ('error' in p) return { ok: false, reason: p.error };
-  const g = jsxGroup(p, source, sites);
-  if ('error' in g) return { ok: false, reason: g.error };
-  const edit = permute(source, g.spans, order);
-  const after = applyEdits(source, [edit]);
-  const want = order.map((i) => source.slice(g.items[i].start, g.items[i].end));
-  if (!sameJsxChildren(after, file, g.parent.start, (g.parent.children as Node[]).length, want, errorCount(p.ast))) {
-    return { ok: false, reason: msg('engine.order.verifyFailed') };
-  }
-  return { ok: true, file, edits: [edit], summary: orderSummary(order) };
-}
-
-/** 改完重新解析：父元素还在原处、子节点数不变，参与换序的各项按新顺序出现 */
-function sameJsxChildren(src: string, file: string, at: number, count: number, want: string[], errors: number): boolean {
-  let ast: Node;
-  try {
-    ast = parseModule(src, file);
-  } catch {
-    return false;
-  }
-  if (errorCount(ast) > errors) return false;
-  let parent: Node | null = null;
-  walk(ast, (n) => {
-    if (!parent && n.start === at && (n.type === 'JSXElement' || n.type === 'JSXFragment')) parent = n;
-  });
-  const kids = (parent as Node | null)?.children as Node[] | undefined;
-  if (!kids || kids.length !== count) return false;
-  const texts = kids.map((k) => src.slice(k.start, k.end));
-  let from = 0;
-  for (const w of want) {
-    const i = texts.indexOf(w, from);
-    if (i < 0) return false;
-    from = i + 1;
-  }
-  return true;
+  const found = jsxParent(p, sites);
+  if ('error' in found) return found;
+  const { parent } = found;
+  const { line, column } = parent.loc.start;
+  return { ok: true, parent: parent.type === 'JSXFragment' ? '<>' : `<${jsxName(parent.openingElement.name)}>`, line, column: column + 1 };
 }
 
 /* ---------- .map() 渲染的数组 ---------- */
@@ -363,18 +229,12 @@ function fromModule(from: string, spec: string, name: string, ctx: Ctx): FoundAr
   return { error: msg('engine.order.importNotFound', { name, file: spec }) };
 }
 
-/** 数组每一项的范围（带上独占一行的前置注释）；有展开、空位，或项数和页面上对不上就报错 */
-function arraySpans(a: FoundArray, count: number): Span[] | { error: string } {
+/** 数组有展开、空位，或项数和页面上对不上：照着换顺序对不上页面 */
+function arrayMismatch(a: FoundArray, count: number): { error: string } | null {
   const els = a.node.elements as Array<Node | null>;
   if (els.some((e) => !e || e.type === 'SpreadElement')) return { error: msg('engine.order.spread') };
   if (els.length !== count) return { error: msg('engine.order.countMismatch', { n: els.length, count }) };
-  const spans: Span[] = [];
-  let prevEnd = a.node.start + 1;
-  for (const e of els as Node[]) {
-    spans.push(withLeadingComments(a.source, e, prevEnd));
-    prevEnd = e.end;
-  }
-  return spans;
+  return null;
 }
 
 export interface ArrayOrderInput {
@@ -393,38 +253,5 @@ export interface ArrayOrderInput {
 export function arrayOrderSite(input: ArrayOrderInput): { file: string; line: number; column: number; name: string } | { error: string } {
   const a = mappedArray(input.source, input.file, input.line, input.column, { read: input.read, depth: 0 });
   if ('error' in a) return a;
-  const spans = arraySpans(a, input.count);
-  if ('error' in spans) return spans;
-  return { file: a.file, line: a.node.loc.start.line, column: a.node.loc.start.column + 1, name: a.name };
-}
-
-export function editArrayOrder(input: ArrayOrderInput & { order: number[] }): EditResult {
-  const { order, count } = input;
-  if (!isPermutation(order, count)) return { ok: false, reason: msg('engine.order.badOrder') };
-  const a = mappedArray(input.source, input.file, input.line, input.column, { read: input.read, depth: 0 });
-  if ('error' in a) return { ok: false, reason: a.error };
-  const spans = arraySpans(a, count);
-  if ('error' in spans) return { ok: false, reason: spans.error };
-  const edit = permute(a.source, spans, order);
-  const after = applyEdits(a.source, [edit]);
-  const els = a.node.elements as Node[];
-  const want = order.map((i) => a.source.slice(els[i].start, els[i].end));
-  if (!sameArray(after, a.file, a.node.start, want, errorCount(a.ast))) return { ok: false, reason: msg('engine.order.verifyFailed') };
-  return { ok: true, file: a.file, edits: [edit], summary: orderSummary(order) };
-}
-
-function sameArray(src: string, file: string, at: number, want: string[], errors: number): boolean {
-  let ast: Node;
-  try {
-    ast = parseModule(src, file);
-  } catch {
-    return false;
-  }
-  if (errorCount(ast) > errors) return false;
-  let arr: Node | null = null;
-  walk(ast, (n) => {
-    if (!arr && n.start === at && n.type === 'ArrayExpression') arr = n;
-  });
-  const els = (arr as Node | null)?.elements as Node[] | undefined;
-  return !!els && els.length === want.length && els.every((e, i) => src.slice(e.start, e.end) === want[i]);
+  return arrayMismatch(a, input.count) ?? { file: a.file, line: a.node.loc.start.line, column: a.node.loc.start.column + 1, name: a.name };
 }

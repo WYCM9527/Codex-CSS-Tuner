@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import type { ChangeView } from '@css-tuner/protocol';
 import { recordView, upgradeRecord, type ChangeRecord, type StoredRecord } from './records';
 
-export type { AppliedPatch, ChangeRecord, PatchEdit } from './records';
+export type { ChangeRecord } from './records';
 
 const KEY = 'cssTuner.changes';
 
@@ -26,6 +26,16 @@ export class Journal {
 
   pending(): ChangeRecord[] {
     return this.records.filter((r) => r.status === 'pending');
+  }
+
+  /** 预览留在页面上的：还没应用的，和交给 Agent 还没核对上的 */
+  previewing(): ChangeRecord[] {
+    return this.records.filter((r) => r.status === 'pending' || r.status === 'handoff');
+  }
+
+  /** 交给 Agent、在等它改代码的（应用或还原） */
+  waiting(): ChangeRecord[] {
+    return this.records.filter((r) => r.status === 'handoff' || r.status === 'reverting');
   }
 
   findPending(key: string): ChangeRecord | undefined {
@@ -68,7 +78,7 @@ export class Journal {
   }
 
   clearDone() {
-    this.records = this.records.filter((r) => r.status === 'pending' || r.status === 'failed' || r.status === 'conflict' || r.status === 'unverified');
+    this.records = this.records.filter((r) => r.status !== 'applied' && r.status !== 'reverted');
     this.save();
   }
 

@@ -213,6 +213,12 @@ async function doPreview(id: string, target: PreviewTarget, decls: Record<string
     clearPreview(id);
     entry = undefined;
   }
+  // 挂着的规则 / 元素都不在页面上了（热更新换掉了样式表、重建了元素）：按目标重新找，之前设的值接着用
+  if (entry && entry.holders.length && !entry.holders.some(holderLive)) {
+    decls = { ...entry.decls, ...decls };
+    clearPreview(id);
+    entry = undefined;
+  }
   if (!entry) {
     const holders = await holdersFor(target);
     for (const h of holders) save(h);
@@ -256,6 +262,40 @@ export function hasPreview(id: string): boolean {
   return entries.has(id) || hasTextPreview(id) || hasPropPreview(id);
 }
 
+/** 样式预览还作用在页面上：内联预览挂在 el（或任一个还在页面上的元素）上，规则预览的规则没被热更新换掉 */
+export function previewAttached(id: string, el?: Element | null): boolean {
+  const e = entries.get(id);
+  if (!e) return false;
+  return e.holders.some((h) => holderLive(h) && (h.kind === 'rule' || !el || h.el === el));
+}
+
+/** 热更新换掉了样式表：挂在旧规则上的预览到新样式表里找回同一条规则，重新挂上 */
+export function reattachRules() {
+  for (const e of Array.from(entries.values())) {
+    if (e.target.kind !== 'rule' || !e.holders.length || e.holders.some(holderLive)) continue;
+    const style = resolveRule(e.target.rule);
+    if (!style) continue;
+    e.holders = [{ kind: 'rule', style }];
+    save(e.holders[0]);
+    reapply(style);
+  }
+}
+
+/** 读预览底下源码给的样式：临时撤下全部样式预览，读完按撤下前的样子放回（同一个任务里做完，页面不会闪） */
+export function beneath<T>(read: () => T): T {
+  const was = Array.from(saved.keys(), (k) => [k, k instanceof CSSStyleDeclaration ? k.cssText : k.getAttribute('style')] as const);
+  for (const [k] of was) restore(k);
+  try {
+    return read();
+  } finally {
+    for (const [k, text] of was) {
+      if (k instanceof CSSStyleDeclaration) k.cssText = text ?? '';
+      else if (text == null) k.removeAttribute('style');
+      else k.setAttribute('style', text);
+    }
+  }
+}
+
 /** 热更新替换 <style> 后，旧 CSSOM 规则就脱离了文档 */
 function isLive(style: CSSStyleDeclaration): boolean {
   const rule = style.parentRule;
@@ -265,9 +305,11 @@ function isLive(style: CSSStyleDeclaration): boolean {
   return !!sheet && Array.from(document.styleSheets).includes(sheet);
 }
 
+const holderLive = (h: Holder) => (h.kind === 'inline' ? h.el.isConnected : isLive(h.style));
+
 /** 页面刷新或 DOM 重建后清掉指向失效节点的记录 */
 export function prune() {
   for (const [k, s] of Array.from(saved.entries())) {
-    if (s.holder.kind === 'inline' ? !s.holder.el.isConnected : !isLive(s.holder.style)) saved.delete(k);
+    if (!holderLive(s.holder)) saved.delete(k);
   }
 }

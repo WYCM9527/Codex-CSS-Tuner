@@ -100,6 +100,11 @@ export function hasTextPreview(id: string): boolean {
   return entries.has(id);
 }
 
+/** 文字预览还套在页面上的文本节点上（元素整个被重建后会掉） */
+export function textAttached(id: string): boolean {
+  return !!entries.get(id)?.nodes.some((n) => n.isConnected);
+}
+
 export async function previewText(id: string, target: TextTarget, value: string): Promise<number> {
   let e = entries.get(id);
   if (e && JSON.stringify(e.target) !== JSON.stringify(target)) {
@@ -139,7 +144,7 @@ export function clearTextPreview(id: string): boolean {
   return true;
 }
 
-/** 写回纯 HTML 后页面不刷新：去掉预览记录，但页面上保留 value */
+/** 纯 HTML 文件改了页面不刷新：核对上之后去掉预览记录，但页面上保留 value */
 export function commitTextPreview(id: string, value: string | null) {
   const e = entries.get(id);
   if (!e) return;
@@ -262,7 +267,7 @@ export async function textInfo(el: Element, source: SourceLoc | null): Promise<T
   return { segments, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null, lang: document.documentElement.lang || null };
 }
 
-/** 不刷新页面，重新取一次页面 HTML，按路径读出那段文字（纯 HTML 写回后校验用） */
+/** 不刷新页面，重新取一次页面 HTML，按路径读出那段文字（纯 HTML 核对用） */
 export async function fetchedText(path: number[], segment: number): Promise<string | null> {
   try {
     const html = await (await fetch(location.href, { cache: 'no-store' })).text();

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setLocale, type RuleRef } from '@css-tuner/protocol';
 import { buildPrompt } from '../src/prompt';
-import { applyFirst, recordView, samePage, upgradeRecord, type ChangeRecord, type StoredRecord } from '../src/records';
+import { recordView, samePage, upgradeRecord, type ChangeRecord, type StoredRecord } from '../src/records';
 
 const project = { label: (f: string) => f.replace('/repo/', '') };
 
@@ -37,23 +37,22 @@ describe('改动记录', () => {
     expect(upgradeRecord({ ...old, kind: 'text' }).kind).toBe('text');
   });
 
-  it('改动清单的视图带上类型', () => {
-    expect(recordView(rec({ kind: 'reorder', from: '2', to: '1' }))).toMatchObject({ id: 'a1', kind: 'reorder', from: '2', to: '1', target: { kind: 'agent' } });
-    expect(recordView(rec({})).remove).toBeUndefined();
-    expect(recordView(rec({ removal: { values: { 'padding-top': '0px' } } })).remove).toBe(true);
+  it('0.10.0 以前扩展自己写回的记录：状态换成交给 Agent 的那一套，写回前的文件留着对比', () => {
+    const patch = { file: '/repo/src/App.tsx', hashBefore: 'h0' };
+    expect(upgradeRecord({ ...rec({}), status: 'unverified', patch })).toMatchObject({ status: 'applied', snapshot: { file: '/repo/src/App.tsx', hash: 'h0' } });
+    expect(upgradeRecord({ ...rec({}), status: 'conflict', patch }).status).toBe('applied');
+    expect(upgradeRecord({ ...rec({}), status: 'failed' }).status).toBe('pending');
+    const up = upgradeRecord({ ...rec({}), status: 'applied', patch });
+    expect(up.status).toBe('applied');
+    expect('patch' in up).toBe(false);
   });
 
-  it('同一批里样式和文字先改，换序按里层先、外层后', () => {
-    const site = (line: number) => ({ line, column: 7, name: 'section' });
-    const recs = [
-      rec({ id: 'outer', kind: 'reorder', write: { kind: 'jsxOrder', file: 'f', sites: [site(10), site(30)], order: [1, 0] } }),
-      rec({ id: 'style' }),
-      rec({ id: 'inner', kind: 'reorder', write: { kind: 'arrayOrder', file: 'f', line: 34, column: 9, count: 3, order: [2, 0, 1] } }),
-      rec({ id: 'html-outer', kind: 'reorder', write: { kind: 'htmlOrder', file: 'h', path: [1], tags: ['nav', 'main'], order: [1, 0] } }),
-      rec({ id: 'html-inner', kind: 'reorder', write: { kind: 'htmlOrder', file: 'h', path: [1, 0], tags: ['a', 'a'], order: [1, 0] } }),
-      rec({ id: 'text', kind: 'text' }),
-    ];
-    expect(recs.sort(applyFirst).map((r) => r.id)).toEqual(['style', 'text', 'inner', 'outer', 'html-inner', 'html-outer']);
+  it('改动清单的视图带上类型；换序在等 Agent 时也还是模拟的', () => {
+    expect(recordView(rec({ kind: 'reorder', from: '2', to: '1' }))).toMatchObject({ id: 'a1', kind: 'reorder', from: '2', to: '1', target: { kind: 'agent' }, simulated: true });
+    expect(recordView(rec({ kind: 'reorder', status: 'handoff' })).simulated).toBe(true);
+    expect(recordView(rec({ kind: 'reorder', status: 'applied' })).simulated).toBeUndefined();
+    expect(recordView(rec({})).remove).toBeUndefined();
+    expect(recordView(rec({ removal: { values: { 'padding-top': '0px' } } })).remove).toBe(true);
   });
 
   it('同一个页面：查询参数和普通锚点不算，hash 路由算', () => {
@@ -89,19 +88,44 @@ describe('交给 Agent 的提示词', () => {
     expect(p).toContain('   - Where the text comes from: messages/en.json hero.title');
   });
 
-  it('换序写出位置和兄弟的新顺序', () => {
-    const p = buildPrompt([rec({ kind: 'reorder', props: [], from: '3', to: '1', value: '0', detail: { order: ['Team', 'Starter', 'Pro'] } })], ctx);
+  it('换序写出位置和兄弟的新顺序；还原时给出要恢复的顺序', () => {
+    const reorder = { kind: 'reorder' as const, props: [], from: '3', to: '1', value: '0', detail: { order: ['Team', 'Starter', 'Pro'], was: ['Starter', 'Pro', 'Team'] } };
+    const p = buildPrompt([rec(reorder)], ctx);
     expect(p).toContain('move it from position 3 to position 1 within the same parent');
     expect(p).toContain('   - New order of the siblings: Team, Starter, Pro');
     expect(p).toContain('when the list is rendered from an array, reorder the array');
+    const back = buildPrompt([rec({ ...reorder, status: 'applied' })], ctx, 'revert');
+    expect(back).toContain('   - Order of the siblings to restore: Starter, Pro, Team');
+    expect(back).not.toContain('New order');
   });
 
-  it('删属性写成去掉声明；冲突时要求加回来', () => {
+  it('一处代码影响页面上几处时写明，按要改的这处代码算，不按元素本身算', () => {
+    const shared = { kind: 'tailwind' as const, label: 'src/Card.tsx:5 className', affects: 2 };
+    expect(buildPrompt([rec({ view: shared })], ctx)).toContain('changing this code affects 2 places on the page');
+    const callSite = rec({ kind: 'prop', props: ['size'], element: { ...rec({}).element, sameSource: 3 }, view: { kind: 'source', label: 'src/Buttons.tsx:10 <Button> size', affects: 1 } });
+    expect(buildPrompt([callSite], ctx)).not.toContain('places on the page');
+  });
+
+  it('删属性写成去掉声明；还原时要求加回来', () => {
     const removal = { propLabel: 'border', props: ['border-top-width', 'border-top-style'], from: 'border border-brand', to: 'removed', value: '', removal: { values: { 'border-top-width': '0px' }, classes: ['border', 'border-brand'] } };
     const p = buildPrompt([rec(removal)], ctx);
     expect(p).toContain('   - Remove the declaration of border (now border border-brand) so the element falls back to what it would be without it');
     expect(p).not.toContain('border-top-width');
-    expect(buildPrompt([rec({ ...removal, status: 'conflict' })], ctx)).toContain('   - Put back the removed declaration of border (it was border border-brand)');
+    expect(buildPrompt([rec({ ...removal, status: 'applied' })], ctx, 'revert')).toContain('   - Put back the removed declaration of border (it was border border-brand)');
+  });
+
+  it('只说要改成什么样：有代码位置时给出位置，找不到位置时给出说明，不提「没能自动写回」', () => {
+    const located = buildPrompt([rec({ view: { kind: 'tailwind', label: 'src/App.tsx:12 className', affects: 1 }, write: { kind: 'tailwind', file: '/repo/src/App.tsx', line: 12, column: 7, utility: 'pt-4', entry: null } })], ctx);
+    expect(located).toContain('   - Location in the code: src/App.tsx:12 className');
+    expect(located).not.toContain('Note:');
+    expect(located).not.toMatch(/written back|write-back/i);
+    expect(buildPrompt([rec({})], ctx)).toContain('   - Note: why');
+  });
+
+  it('再发一次时附上上一次改完页面上是什么样', () => {
+    const p = buildPrompt([rec({ status: 'handoff', note: 'The code changed, but the page now shows padding-top: 20px' })], ctx);
+    expect(p).toContain('   - After the previous attempt: The code changed, but the page now shows padding-top: 20px');
+    expect(buildPrompt([rec({ note: 'old' })], ctx)).not.toContain('After the previous attempt');
   });
 
   it('props 写出组件和属性名；交给 Agent 时附上调用处，并要求只改调用处', () => {
@@ -112,7 +136,7 @@ describe('交给 Agent 的提示词', () => {
     expect(p).not.toContain('Tailwind');
   });
 
-  it('冲突的条目要求改回原样，并给出当初写入的内容', () => {
+  it('还原：要求改回原样，只改这几处', () => {
     const rule: RuleRef = {
       sheet: { index: 0, devId: null, href: null },
       path: [0],
@@ -124,19 +148,20 @@ describe('交给 Agent 的提示词', () => {
       matchCount: 2,
       utility: null,
     };
-    const patch = { file: '/repo/src/app.css', hashBefore: '', hashAfter: '', edits: [], summary: '.card { padding: 16px → 24px }', appliedAt: 0 };
     const p = buildPrompt(
       [
-        rec({ status: 'conflict', patch, preview: { kind: 'rule', rule, uid: 'u1' } }),
-        rec({ id: 'b2', kind: 'text', status: 'conflict', props: [], from: 'Old', to: 'New', value: 'New', patch }),
+        rec({ status: 'applied', preview: { kind: 'rule', rule, uid: 'u1' } }),
+        rec({ id: 'b2', kind: 'text', status: 'applied', props: [], from: 'Old', to: 'New', value: 'New' }),
       ],
       { ...ctx, tailwindEntry: null },
+      'revert',
     );
+    expect(p).toContain('Please change the 2 changes below back in the source code');
     expect(p).toContain('   - Change it back: padding-top is now 24px; restore 16px');
     expect(p).toContain('   - Active rule: `@media (width >= 48rem) .card`');
     expect(p).toContain('   - Change the text back: it is now "New"; restore "Old"');
-    expect(p.match(/What was written: \.card \{ padding: 16px → 24px \} \(src\/app\.css\)/g)).toHaveLength(2);
-    expect(p).toContain('Prefer the CSS variables');
+    expect(p).toContain('- Change back only the spots listed above; keep any later edits');
+    expect(p).not.toContain('Prefer the CSS variables');
   });
 
   it('跟随界面语言', () => {

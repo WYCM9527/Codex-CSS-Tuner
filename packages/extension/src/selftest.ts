@@ -5,11 +5,10 @@ import WebSocket from 'ws';
 import { getLocale, localeFrom, type PanelToExt, type PropValue, type SelectionView, type ViewportPreset } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import { summarizeCheck } from './selfcheck';
-import { computeWrite } from './writer';
 
 /**
  * 开发宿主里的端到端自测：扩展目录下有 selftest.json 时按步骤执行并把结果写到 out，
- * 用来在真实 Cursor 里验证注入、通道、选中、写回和还原，不依赖人工点击。
+ * 用来在真实 Cursor 里验证注入、通道、选中、交给 Agent 后的核对和还原，不依赖人工点击。
  */
 export interface Step {
   do: string;
@@ -312,7 +311,7 @@ const pageTexts = (c: Controller, selector: unknown) =>
     ? c.browser.exec<string[]>(c.session!.browserId, `[...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => e.textContent.replace(/\\s+/g, ' ').trim())`)
     : Promise.resolve(undefined);
 
-/** 选中元素每段文字的写回目标 */
+/** 选中元素每段文字在代码里的位置 */
 defineStep('texts', async (c) => ({ texts: textLines(c.state.selection), segments: c.state.selection?.el.text ?? null }));
 
 /** 在面板上改选中元素的第 segment 段文字 */
@@ -376,7 +375,7 @@ defineStep('pageEdit', async (c, s) => {
   return { hit, typed, live, after: await pageTexts(c, s.read), editorsLeft: left, texts: textLines(c.state.selection), changes: changeLines(c) };
 });
 
-/** 选中元素所在兄弟组：现在的顺序、选中的是第几个、写回目标 */
+/** 选中元素所在兄弟组：现在的顺序、选中的是第几个、代码位置 */
 const orderLine = (sel: SelectionView | null) => {
   const o = sel?.order;
   if (!o) return null;
@@ -413,7 +412,7 @@ defineStep('reorder', async (c, s) => {
   return { order: orderLine(c.state.selection), page: await visualOrder(c, s.read), changes: changeLines(c) };
 });
 
-/** 选中元素所属组件的属性：每项的类型、值、可选值、写回目标 */
+/** 选中元素所属组件的属性：每项的类型、值、可选值、代码位置 */
 const propsLines = (sel: SelectionView | null) => {
   const p = sel?.props;
   if (!p) return null;
@@ -547,16 +546,6 @@ defineStep('execFallback', async (c, s) => {
 
 defineStep('trace', async (c) => c.trace.splice(0));
 
-/** 只计算、不落盘：每条未应用改动交给引擎后得到的写回结果 */
-defineStep('planWrites', async (c) => {
-  const out: unknown[] = [];
-  for (const rec of c.journal.pending()) {
-    const r = await computeWrite(rec, c.tailwind, c.remBase);
-    out.push(r.ok ? { prop: rec.propLabel, file: r.file.split('/').slice(-3).join('/'), summary: r.summary, edits: r.edits.length } : { prop: rec.propLabel, reason: r.reason });
-  }
-  return { scales: c.state.scales?.mode, spacing: c.state.scales?.spacing.length, colors: c.state.scales?.colors.length, writes: out };
-});
-
 const changeLines = (c: Controller) => c.state.changes.map((ch) => `${ch.status} ${ch.propLabel} ${ch.from}→${ch.to}${ch.note ? ` (${ch.note})` : ''}`);
 
 /** 自测前备份要改的源码，结束时比对：还原必须字节级一致；不一致就按备份恢复并报告 */
@@ -580,23 +569,32 @@ defineStep('compareFiles', async (_c, s) => {
   return out;
 });
 
-/** 应用改动：ids 用改动清单里的序号（0 是最新的），不给就是全部 */
+/**
+ * 应用（交给 Agent）：只整理提示词、改状态开始核对，不打开对话、不碰剪贴板。
+ * ids 用改动清单里的序号（0 是最新的），不给就是全部未应用的
+ */
 defineStep('apply', async (c, s) => {
   const ids = Array.isArray(s.indexes) ? (s.indexes as number[]).map((i) => c.state.changes[i]?.id).filter(Boolean) : undefined;
-  const report = await c.applier.apply(ids);
-  lastWrite = report.writtenAt ?? Date.now();
+  const prompt = await c.applier.apply(ids, { dry: true });
   const read = s.read as { props: string[] } | undefined;
-  return { report, changes: changeLines(c), computed: read ? await readComputed(c, read.props) : undefined };
+  return { prompt: prompt?.split('\n') ?? null, changes: changeLines(c), computed: read ? await readComputed(c, read.props) : undefined };
 });
 
+/** 还原（交给 Agent）：同 apply，只整理提示词 */
 defineStep('revert', async (c, s) => {
   const ch = c.state.changes[Number(s.index) || 0];
   if (!ch) return 'no change';
+  const prompt = await c.applier.revert(ch.id, { dry: true });
+  return { prompt: prompt?.split('\n') ?? null, changes: changeLines(c) };
+});
+
+/** 等交给 Agent 的改动核对完（都不在等了，或者到了时限），返回用了多久、清单和页面上的值 */
+defineStep('settle', async (c, s) => {
   const t0 = Date.now();
-  lastWrite = t0;
-  const how = await c.applier.revert(ch.id);
+  const ms = Number(s.timeoutMs) || 15000;
+  while (c.journal.waiting().length && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 100));
   const read = s.read as { props: string[] } | undefined;
-  return { how, ms: Date.now() - t0, changes: changeLines(c), computed: read ? await readComputed(c, read.props) : undefined };
+  return { ms: Date.now() - t0, waiting: c.journal.waiting().length, changes: changeLines(c), computed: read ? await readComputed(c, read.props) : undefined };
 });
 
 /** 打开对比视图，返回当前标签页的左右两侧 */
@@ -667,10 +665,13 @@ defineStep('hmrTimeline', async (c) => {
     });
 });
 
-/** 改一下源码（模拟应用之后用户手动改过文件） */
+/** 改一下源码（模拟 Agent 照提示词改代码）：find 找不到时返回 false */
 defineStep('touchFile', async (_c, s) => {
   const f = String(s.file);
-  writeFileSync(f, readFileSync(f, 'utf8').replace(String(s.find), String(s.replace)));
+  const text = readFileSync(f, 'utf8');
+  if (!text.includes(String(s.find))) return false;
+  lastWrite = Date.now();
+  writeFileSync(f, text.replace(String(s.find), String(s.replace)));
   await new Promise((r) => setTimeout(r, Number(s.settleMs) || 600));
   return true;
 });
@@ -693,18 +694,14 @@ defineStep('prefillProbe', async (_c, s) => {
   return { error, newIds: after.filter((id) => !before.includes(id)) };
 });
 
-/** 只生成交给 Agent 的提示词：不打开对话，也不碰剪贴板 */
-defineStep('prompt', async (c) => {
-  const recs = c.journal.all().filter((r) => (c.constructor as typeof Controller).agentable(r));
-  return recs.length ? c.handoffPrompt(recs).split('\n') : null;
-});
-
-defineStep('handoff', async (c) => {
-  const before = await composerIds();
-  const r = await c.handoff();
-  await new Promise((res) => setTimeout(res, 1500));
-  const after = await composerIds();
-  return { how: r?.how, prompt: r?.prompt, newIds: after.filter((id) => !before.includes(id)), changes: changeLines(c), notice: c.state.notice };
+/** 只生成提示词，不改状态：应用是全部未应用的，还原是清单里第 index 条 */
+defineStep('prompt', async (c, s) => {
+  if (s.mode === 'revert') {
+    const rec = c.journal.get(c.state.changes[Number(s.index) || 0]?.id ?? '');
+    return rec ? c.handoffPrompt([rec], 'revert').split('\n') : null;
+  }
+  const recs = [...c.journal.pending()].reverse();
+  return recs.length ? c.handoffPrompt(recs, 'apply').split('\n') : null;
 });
 
 defineStep('serveStatic', async (c, s) => {
@@ -757,7 +754,7 @@ defineStep('debugPlan', async (c, s) => {
   };
 });
 
-/** 切换改动范围（只改这个 / 全部），返回重新规划后的写回目标 */
+/** 切换改动范围（只改这个 / 全部），返回重新规划后的代码位置 */
 defineStep('scope', async (c, s) => {
   await c.handle({ t: 'setScope', scope: s.scope === 'source' ? 'source' : 'instance' });
   return { scope: c.state.scope, ...summarize(c.state.selection, (s.props as string[]) ?? []) };

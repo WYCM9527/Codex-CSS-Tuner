@@ -29,8 +29,8 @@ export function pendingSet(records: ChangeRecord[]): PendingSet {
 
 /**
  * 面板上的上一步 / 下一步，只管还没应用的改动：每步记下操作前后改动清单里变了的那几条，
- * 撤销放回之前的样子，重做放回之后的样子。中间应用、交给 Agent 或清掉了的，现在的清单和记下的对不上，
- * 这一步就作废，已经写回源码的改动只能在清单里还原
+ * 撤销放回之前的样子，重做放回之后的样子。中间应用（交给 Agent）或清掉了的，现在的清单和记下的对不上，
+ * 这一步就作废，已经交给 Agent 的改动只能在清单里还原
  */
 export class History {
   private undos: Step[] = [];

@@ -1,7 +1,5 @@
 import { findNodeAtLocation, parseTree, type Node as JsonNode, type ParseError } from 'jsonc-parser';
 import { t as msg } from '@css-tuner/protocol';
-import { applyEdits, type EditResult } from '../types';
-import { commonEnds, short } from './diff';
 import type { MessageRef } from './jsx';
 
 /**
@@ -26,13 +24,6 @@ function tree(source: string): JsonNode | null {
   const errors: ParseError[] = [];
   const root = parseTree(source, errors, { allowTrailingComma: true, disallowComments: false });
   return root && !errors.length ? root : null;
-}
-
-/** keyPath 处的字符串值，不是字符串或不存在时为 null */
-export function readMessage(source: string, keyPath: string[]): string | null {
-  const root = tree(source);
-  const node = root && findNodeAtLocation(root, keyPath);
-  return node?.type === 'string' ? (node.value as string) : null;
 }
 
 export interface MessageMatch {
@@ -93,31 +84,4 @@ export function matchMessage(
     if (best > 0 && top.length === 1) return top[0];
   }
   return { reason: msg('engine.message.ambiguous', { key: ref.key, n: hits.length }) };
-}
-
-export interface MessageEditInput {
-  file: string;
-  source: string;
-  keyPath: string[];
-  /** 页面上原来的文字，文件里对不上就不改 */
-  from: string;
-  value: string;
-}
-
-/** 改 JSON 里一条消息的值：保留原值首尾的空白，只替换变化的那几个字符 */
-export function editMessage(input: MessageEditInput): EditResult {
-  const { file, source, keyPath, from, value } = input;
-  const root = tree(source);
-  if (!root) return { ok: false, reason: msg('engine.message.parseFailed', { file }) };
-  const node = findNodeAtLocation(root, keyPath);
-  if (node?.type !== 'string') return { ok: false, reason: msg('engine.message.notFound', { key: keyPath.join('.') }) };
-  const old = node.value as string;
-  if (old.trim() !== from.trim()) return { ok: false, reason: msg('engine.text.changed', { now: short(old) }) };
-  const next = /^\s*/.exec(old)![0] + value + /\s*$/.exec(old)![0];
-  const oldToken = source.slice(node.offset, node.offset + node.length);
-  const token = JSON.stringify(next);
-  const { p, s } = commonEnds(oldToken, token);
-  const edit = { start: node.offset + p, end: node.offset + oldToken.length - s, text: token.slice(p, token.length - s) };
-  if (readMessage(applyEdits(source, [edit]), keyPath) !== next) return { ok: false, reason: msg('engine.text.verifyFailed') };
-  return { ok: true, file, edits: [edit], summary: msg('engine.message.summary', { key: keyPath.join('.'), from: short(from), to: short(value) }) };
 }

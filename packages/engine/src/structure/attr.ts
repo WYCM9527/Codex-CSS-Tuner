@@ -1,7 +1,5 @@
 import { t as msg, type PropValue } from '@css-tuner/protocol';
 import { parseModule, walk, type Node } from '../ast';
-import { applyEdits, type EditResult, type TextEdit } from '../types';
-import { commonEnds, short } from './diff';
 import { findElement } from './jsx';
 
 /** 组件调用处一个属性的写法 */
@@ -80,68 +78,6 @@ export function jsxPropSite(source: string, filename: string, line: number, colu
   if ('error' in at) return at;
   const attr = attrsNamed(at.el, name).pop() ?? null;
   return { site: attr ? literalOf(attr, source) : { kind: 'missing' }, spread: spreadOf(at.el, attr) };
-}
-
-/** JSX 属性字符串不处理反斜杠转义、会解码实体：含引号、换行、实体时写成 {"..."} */
-const ATTR_UNSAFE = /[\r\n"]|&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i;
-
-/** 值写成属性：字符串用双引号，写不了的用 {"..."}；true 只写属性名 */
-function attrText(name: string, value: PropValue): string {
-  if (value === true) return name;
-  if (typeof value === 'string') return ATTR_UNSAFE.test(value) ? `${name}={${JSON.stringify(value)}}` : `${name}="${value}"`;
-  return `${name}={${value === null ? 'null' : String(value)}}`;
-}
-
-const shown = (v: PropValue) => (typeof v === 'string' ? JSON.stringify(v) : String(v));
-
-export interface JsxPropEditInput {
-  file: string;
-  source: string;
-  /** 组件调用处 JSX 开标签的位置 */
-  line: number;
-  column: number;
-  name: string;
-  value: PropValue;
-  /** 页面上原来的值：调用处写着别的字面量就不改（源码在别处被改过）；属性没写时不核对 */
-  from?: PropValue;
-  /** 组件名，列号对不上时核对标签 */
-  tag?: string;
-}
-
-/** 把组件调用处的属性改成字面量 value：已有的字面量就地改，没写的加在最后；表达式不改（会影响所有用到它的地方） */
-export function editJsxProp(input: JsxPropEditInput): EditResult {
-  const { file, source, line, column, name, value } = input;
-  if (typeof value === 'number' && !Number.isFinite(value)) return { ok: false, reason: msg('engine.prop.verifyFailed') };
-  const p = parsed(source, file);
-  if ('error' in p) return { ok: false, reason: p.error };
-  const at = elementAt(p.ast, line, column, input.tag);
-  if ('error' in at) return { ok: false, reason: at.error };
-  const el = at.el;
-  const attr = attrsNamed(el, name).pop() ?? null;
-  let edit: TextEdit;
-  let from = msg('engine.prop.unset');
-  if (attr) {
-    const site = literalOf(attr, source);
-    if (site.kind !== 'literal') return { ok: false, reason: msg('engine.prop.dynamic', { name, code: short(site.kind === 'dynamic' ? site.code : '') }) };
-    if (input.from !== undefined && site.value !== input.from) return { ok: false, reason: msg('engine.prop.changed', { name, now: short(shown(site.value)) }) };
-    from = shown(site.value);
-    const v = attr.value;
-    const raw = v?.type === 'StringLiteral' ? source.slice(v.start + 1, v.end - 1) : null;
-    if (typeof value === 'string' && raw !== null && raw === v.value && !ATTR_UNSAFE.test(value) && !value.includes(source[v.start])) {
-      const { p: pre, s } = commonEnds(raw, value);
-      edit = { start: v.start + 1 + pre, end: v.end - 1 - s, text: value.slice(pre, value.length - s) };
-    } else {
-      edit = { start: attr.start, end: attr.end, text: attrText(name, value) };
-    }
-  } else {
-    const open = el.openingElement;
-    const attrs: Node[] = open.attributes;
-    const at = attrs.length ? attrs[attrs.length - 1].end : (open.typeArguments ?? open.typeParameters ?? open.name).end;
-    edit = { start: at, end: at, text: ` ${attrText(name, value)}` };
-  }
-  const back = jsxPropSite(applyEdits(source, [edit]), file, line, column, name);
-  if ('error' in back || back.site.kind !== 'literal' || back.site.value !== value) return { ok: false, reason: msg('engine.prop.verifyFailed') };
-  return { ok: true, file, edits: [edit], summary: msg('engine.prop.summary', { name, from, to: shown(value) }) };
 }
 
 /* ---------- cva / tv 配方 ---------- */

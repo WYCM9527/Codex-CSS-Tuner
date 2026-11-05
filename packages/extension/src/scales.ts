@@ -55,7 +55,7 @@ function bucketOf(v: CssVar): Bucket | null {
   return 'spacing';
 }
 
-/** 普通 CSS 项目：刻度来自 :root 上的自定义属性，写回时用 var(--x) */
+/** 普通 CSS 项目：刻度来自 :root 上的自定义属性，选了刻度的值写成 var(--x) */
 export function cssScales(page: PageInfo, rem: number): Scales {
   const s = emptyScales(rem, 'css');
   for (const v of page.rootVars) {

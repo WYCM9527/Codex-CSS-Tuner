@@ -167,32 +167,6 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * 等条件成立：DOM 一有变化（className、热更新替换 <style>）就检查。
- * 不能只靠定时器轮询——页面在后台时浏览器把定时器限到每秒一次，校验会被拖到整秒。
- */
-export function waitUntil(cond: () => boolean, timeoutMs: number): Promise<boolean> {
-  if (cond()) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (v: boolean) => {
-      if (done) return;
-      done = true;
-      mo.disconnect();
-      clearInterval(iv);
-      clearTimeout(to);
-      resolve(v);
-    };
-    const check = () => {
-      if (cond()) finish(true);
-    };
-    const mo = new MutationObserver(check);
-    mo.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
-    const iv = setInterval(check, 40);
-    const to = setTimeout(() => finish(cond()), timeoutMs);
-  });
-}
-
 export function nextFrame(): Promise<void> {
   return new Promise((r) => requestAnimationFrame(() => r()));
 }

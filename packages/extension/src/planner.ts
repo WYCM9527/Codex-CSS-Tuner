@@ -3,7 +3,7 @@ import type { MessageRef, OrderSite, PropSite, PropSiteInfo, TextSite } from '@c
 import type { ProjectResolver } from './project';
 import type { LiteralInfo, SiteInfo } from './sites';
 
-/** 引擎写回需要的全部信息 */
+/** 改动在代码里的位置，写进给 Agent 的提示词 */
 export type WriteSpec =
   | {
       kind: 'tailwind';
@@ -18,8 +18,6 @@ export type WriteSpec =
       literal?: boolean;
       /** 在调用处追加覆盖类，只改这一处实例 */
       override?: boolean;
-      /** 只改视口的一档：写到哪个断点、在哪个断点补回原值（见引擎的 TailwindBand） */
-      band?: { prefix: string; keep: string | null; inBand: string[] };
     }
   | {
       kind: 'css';
@@ -62,8 +60,6 @@ export interface Plan {
 export interface PlanContext {
   page: PageInfo;
   project: ProjectResolver;
-  strategy: 'editRule' | 'agent';
-  varStrategy: 'editDefinition' | 'agent';
   /** instance：尽量只改这一处实例；source：改组件定义 / 变体，所有用到的地方一起变 */
   scope: Scope;
   /** JSX 位置上 className 的静态信息，读不到或解析不了时为 null */
@@ -134,7 +130,7 @@ export function sourceKeyOf(el: ElementSnapshot): string | null {
   return el.source ? `${el.source.path}:${el.source.line}:${el.source.column}` : null;
 }
 
-/** 给选中元素的某个属性决定写回目标和预览方式；值来自作者写的声明时标上 declared（面板上可以删） */
+/** 给选中元素的某个属性找到代码位置、决定预览方式；值来自作者写的声明时标上 declared（面板上可以删） */
 export function plan(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {
   const p = planTarget(el, prop, ctx);
   const w = el.winners[prop];
@@ -278,7 +274,6 @@ function planTarget(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {
   const css = (ref: RuleRef, mode: 'edit' | 'add', via: string | null): Plan => {
     const file = project.sheetFile(pageUrl, ref.sheet);
     if (!file) return agent(t('plan.noRuleFile'), { kind: 'rule', rule: ref, uid: el.uid });
-    if (ctx.strategy === 'agent') return agent(t('plan.cssToAgent'), { kind: 'rule', rule: ref, uid: el.uid });
     const src = ctx.ruleSource(file, ref);
     const real = src?.file ?? file;
     return {
@@ -308,7 +303,7 @@ function planTarget(el: ElementSnapshot, prop: string, ctx: PlanContext): Plan {
 
 /**
  * 改元素用到的 CSS 变量：预览改定义它的那条规则，页面上用到它的地方一起变；
- * 写回改定义处，Tailwind 的主题变量改 @theme。
+ * 代码里要改的是定义处，Tailwind 的主题变量在 @theme 里。
  */
 export function planVar(el: ElementSnapshot, name: string, ctx: PlanContext): Plan {
   const { page, project } = ctx;
@@ -321,7 +316,6 @@ export function planVar(el: ElementSnapshot, name: string, ctx: PlanContext): Pl
   if (!w || w.origin === 'initial') return agent(t('plan.varNotFound'));
   if (!w.rule) return agent(t('plan.varInline'));
   const preview: PreviewTarget = { kind: 'rule', rule: w.rule, uid: el.uid };
-  if (ctx.varStrategy === 'agent') return agent(t('plan.varToAgent'), preview);
   const file = project.sheetFile(page.url, w.rule.sheet);
   if (!file) return agent(t('plan.varNoFile'), preview);
   if (sheetOf(page, w.rule)?.tailwind && w.rule.layer?.split('.')[0] === 'theme') {
@@ -487,7 +481,7 @@ export interface OrderPlan {
 
 const locOf = (s: SourceLoc) => `${s.path}:${s.line}:${s.column}`;
 
-/** Vue / Svelte 组件：目前只写回样式（类名和样式块），文字、换序和属性交给 Agent */
+/** Vue / Svelte 组件：只定位样式（类名和样式块），文字、换序和属性让 Agent 自己找 */
 const isSfc = (path: string) => /\.(?:vue|svelte)(?:[?#]|$)/i.test(path);
 
 /** 标签上显示的类名属性名 */
@@ -575,7 +569,7 @@ export interface PropContext {
 }
 
 export interface PropPlan extends Plan {
-  /** 调用处现在的写法，写回目标是 Agent 时没有 */
+  /** 调用处现在的写法，找不到位置时没有 */
   site?: PropSite;
   /** 调用处有 {...spread} 时的提醒 */
   warn?: string;

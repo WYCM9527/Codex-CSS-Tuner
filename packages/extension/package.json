@@ -70,7 +70,6 @@
       { "command": "cssTuner.toggleMeasure", "title": "%command.toggleMeasure%", "category": "CSS Tuner" },
       { "command": "cssTuner.applyAll", "title": "%command.applyAll%", "category": "CSS Tuner" },
       { "command": "cssTuner.serveStatic", "title": "%command.serveStatic%", "category": "CSS Tuner" },
-      { "command": "cssTuner.handoff", "title": "%command.handoff%", "category": "CSS Tuner" },
       { "command": "cssTuner.selfCheck", "title": "%command.selfCheck%", "category": "CSS Tuner" }
     ],
     "menus": {
@@ -113,37 +112,10 @@
           "default": "instance",
           "description": "%config.tailwind.scope%"
         },
-        "cssTuner.tailwind.arbitraryValues": {
-          "type": "string",
-          "enum": ["allow", "agent"],
-          "enumDescriptions": ["%config.tailwind.arbitraryValues.allow%", "%config.tailwind.arbitraryValues.agent%"],
-          "default": "allow",
-          "description": "%config.tailwind.arbitraryValues%"
-        },
-        "cssTuner.css.strategy": {
-          "type": "string",
-          "enum": ["editRule", "agent"],
-          "enumDescriptions": ["%config.css.strategy.editRule%", "%config.css.strategy.agent%"],
-          "default": "editRule",
-          "description": "%config.css.strategy%"
-        },
-        "cssTuner.vars.strategy": {
-          "type": "string",
-          "enum": ["editDefinition", "agent"],
-          "enumDescriptions": ["%config.vars.strategy.editDefinition%", "%config.vars.strategy.agent%"],
-          "default": "editDefinition",
-          "description": "%config.vars.strategy%"
-        },
         "cssTuner.snap": {
           "type": "boolean",
           "default": true,
           "description": "%config.snap%"
-        },
-        "cssTuner.verifyTimeoutMs": {
-          "type": "number",
-          "default": 8000,
-          "minimum": 1000,
-          "description": "%config.verifyTimeoutMs%"
         }
       }
     }

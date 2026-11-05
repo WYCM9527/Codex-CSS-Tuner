@@ -5,7 +5,6 @@
   "command.toggleMeasure": "Ruler: Measure Distances",
   "command.applyAll": "Apply All Changes",
   "command.serveStatic": "Open HTML File with Built-in Server",
-  "command.handoff": "Hand Remaining Changes to Agent",
   "command.selfCheck": "Self-Check",
   "config.language": "Language of the panel and its messages. You can also switch it with 中 / EN at the top of the panel.",
   "config.language.auto": "Follow Cursor's display language",
@@ -16,15 +15,5 @@
   "config.tailwind.scope": "In Tailwind projects, whether a change applies to just the element you picked or to every place that uses the same component by default.",
   "config.tailwind.scope.instance": "This one: change only the element you picked",
   "config.tailwind.scope.source": "All: change the component itself, so every place that uses it changes",
-  "config.tailwind.arbitraryValues": "In Tailwind projects, what to do when a value isn't one of the theme's values.",
-  "config.tailwind.arbitraryValues.allow": "Write the exact value into the class (such as px-[13.5px])",
-  "config.tailwind.arbitraryValues.agent": "Don't write exact values into classes; hand those changes to the Agent",
-  "config.css.strategy": "How changes to regular CSS (not Tailwind) are saved.",
-  "config.css.strategy.editRule": "Edit the CSS rule the element uses",
-  "config.css.strategy.agent": "Don't edit files; hand the change to the Agent",
-  "config.vars.strategy": "How changes to CSS variables are saved.",
-  "config.vars.strategy.editDefinition": "Edit where the variable is defined (@theme in Tailwind), so everything that uses it changes too",
-  "config.vars.strategy.agent": "Don't edit files; hand the change to the Agent",
-  "config.snap": "Snap numbers to the theme's values and CSS variables (hold Alt to use any value).",
-  "config.verifyTimeoutMs": "After applying, how long to wait for the page to refresh before checking that it matches the preview (styles and text), in milliseconds. If time runs out, it keeps waiting one more round in the background and marks the change as live when the page refreshes."
+  "config.snap": "Snap numbers to the theme's values and CSS variables (hold Alt to use any value)."
 }

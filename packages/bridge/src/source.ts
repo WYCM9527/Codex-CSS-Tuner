@@ -6,7 +6,7 @@ import { vueLocator } from './vue-source';
 
 export { fiberOf, fiberSource, hasReact, nameOf, ownerOf, propsChain, type DebugNode } from './react-source';
 
-/** 纯 HTML：没有框架信息，文字和换序按元素在 HTML 文件里的路径写回（htmlPathOf） */
+/** 纯 HTML：没有框架信息，文字和换序按元素在 HTML 文件里的路径定位（htmlPathOf） */
 const htmlLocator: Locator = {
   owns: () => true,
   sourceOf: async () => null,

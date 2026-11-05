@@ -8,12 +8,12 @@ import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './ov
 import { pageInfo } from './page';
 import { disposeMeasure, initMeasure, measureOn, setMeasure, setMeasureSteps } from './measure';
 import { pickOn, setPick } from './pick';
-import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders } from './preview';
+import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders, reattachRules } from './preview';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
-import { verify } from './verify';
+import { probe } from './verify';
 
 export interface BootConfig {
   port: number;
@@ -245,7 +245,10 @@ class Bridge {
     clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(async () => {
       prune();
-      if (cssChanged) this.sendPage();
+      if (cssChanged) {
+        reattachRules();
+        this.sendPage();
+      }
       if (this.selected && !this.selected.isConnected) {
         const again = await this.refind();
         if (again) this.selected = again;
@@ -390,8 +393,8 @@ class Bridge {
       setHover(el);
       return !!el;
     },
-    verify: ({ id, target, expected, timeoutMs, source }) =>
-      verify(id, target, expected, timeoutMs, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind())),
+    probe: ({ id, target, expected, source }) =>
+      probe(id, target, expected, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind())),
     reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
     assets: async () => (this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false }),
     assetData: ({ id, as }) => assetData(id, as),

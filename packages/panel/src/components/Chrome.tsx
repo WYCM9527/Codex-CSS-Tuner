@@ -222,8 +222,7 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
   const changes = state.changes;
   if (!changes.length && !state.history.undo && !state.history.redo) return null;
   const pending = changes.filter((c) => c.status === 'pending');
-  const agentable = changes.filter((c) => (c.status === 'pending' && c.target.kind === 'agent') || c.status === 'failed' || c.status === 'conflict');
-  const done = changes.filter((c) => c.status === 'reverted' || c.status === 'handoff' || c.status === 'applied');
+  const done = changes.filter((c) => c.status === 'applied' || c.status === 'reverted');
   return (
     <div className={`changes${open ? '' : ' is-closed'}${changes.length ? '' : ' is-empty'}`}>
       <header className="changes-head">
@@ -240,15 +239,10 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
             {t('panel.clear')}
           </button>
         )}
-        {agentable.length > 0 && (
-          <button className="btn ghost" onClick={() => send({ t: 'handoff', ids: agentable.map((c) => c.id) })} title={t('panel.handoff.title')}>
-            <Icon.agent />
-            {t('panel.handoff')}
-          </button>
-        )}
         <HistoryButtons state={state} send={send} />
-        {pending.some((c) => c.target.kind !== 'agent') && (
-          <button className="btn primary" disabled={state.busy} onClick={() => send({ t: 'apply' })}>
+        {pending.length > 0 && (
+          <button className="btn primary" disabled={state.busy} onClick={() => send({ t: 'apply' })} title={t('panel.applyAll.title')}>
+            <Icon.agent />
             {t('panel.applyAll')}
           </button>
         )}
@@ -298,25 +292,30 @@ function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Sen
           </span>
         )}
       </div>
-      {c.note && <div className={`change-note${c.status === 'failed' || c.status === 'conflict' ? ' is-error' : ''}`}>{c.note}</div>}
+      {c.note && <div className="change-note">{c.note}</div>}
       <div className="change-actions">
-        {c.status === 'pending' && c.target.kind !== 'agent' && (
+        {c.status === 'pending' && (
           <button className="mini" disabled={busy} onClick={() => send({ t: 'apply', ids: [c.id] })} title={t('panel.apply.title')}>
             <Icon.check /> {t('panel.apply')}
           </button>
         )}
-        {(c.status === 'applied' || c.status === 'unverified') && (
+        {c.status === 'handoff' && (
+          <button className="mini" disabled={busy} onClick={() => send({ t: 'apply', ids: [c.id] })} title={t('panel.resend.title')}>
+            <Icon.agent /> {t('panel.resend')}
+          </button>
+        )}
+        {c.status === 'applied' && (
           <button className="mini" disabled={busy} onClick={() => send({ t: 'revert', id: c.id })} title={t('panel.revert.title')}>
             <Icon.undo /> {t('panel.revert')}
           </button>
         )}
-        {c.status === 'pending' && c.target.kind !== 'agent' && (
-          <button className="mini" onClick={() => send({ t: 'diff', id: c.id })} title={t('panel.diff.pending.title')}>
-            <Icon.diff /> {t('panel.diff')}
+        {c.status === 'reverting' && (
+          <button className="mini" disabled={busy} onClick={() => send({ t: 'revert', id: c.id })} title={t('panel.resend.revert.title')}>
+            <Icon.agent /> {t('panel.resend')}
           </button>
         )}
-        {(c.status === 'applied' || c.status === 'unverified' || c.status === 'conflict' || c.status === 'reverted') && (
-          <button className="mini" onClick={() => send({ t: 'diff', id: c.id })} title={t('panel.diff.applied.title')}>
+        {c.status !== 'pending' && (
+          <button className="mini" onClick={() => send({ t: 'diff', id: c.id })} title={t('panel.diff.title')}>
             <Icon.diff /> {t('panel.diff')}
           </button>
         )}
@@ -325,9 +324,14 @@ function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Sen
             <Icon.file /> {t('panel.openSource')}
           </button>
         )}
-        {(c.status === 'pending' || c.status === 'failed' || c.status === 'conflict') && (
-          <button className="mini" onClick={() => send({ t: 'discard', id: c.id })} title={t('panel.discard.title')}>
+        {(c.status === 'pending' || c.status === 'handoff') && (
+          <button className="mini" onClick={() => send({ t: 'discard', id: c.id })} title={t(c.status === 'handoff' ? 'panel.discard.handoff.title' : 'panel.discard.title')}>
             <Icon.x /> {t('panel.discard')}
+          </button>
+        )}
+        {c.status === 'reverting' && (
+          <button className="mini" onClick={() => send({ t: 'discard', id: c.id })} title={t('panel.cancelRevert.title')}>
+            <Icon.x /> {t('panel.cancelRevert')}
           </button>
         )}
       </div>

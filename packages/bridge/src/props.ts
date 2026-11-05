@@ -1,7 +1,7 @@
 import type { PreviewTarget, PropInfo, PropsInfo, PropValue, SourceLoc } from '@css-tuner/protocol';
 import { canOverride, onCommit, replaceProps } from './devtools';
 import { fiberOf, fiberSource, findBySource, locKey, nameOf, ownerOf, type DebugNode } from './source';
-import { elOf, sleep } from './util';
+import { elOf } from './util';
 
 type PropsTarget = Extract<PreviewTarget, { kind: 'props' }>;
 type Props = Record<string, unknown>;
@@ -349,33 +349,33 @@ export async function propsInfo(el: Element): Promise<PropsInfo | undefined> {
   };
 }
 
-/* ---------- 应用后校验 ---------- */
+/* ---------- 交给 Agent 后核对 ---------- */
 
 const asJson = (v: unknown) => (v === undefined ? 'undefined' : (JSON.stringify(v) ?? 'null'));
 
 /**
- * 写回后等组件收到源码里的新值：客户端组件要等父组件重新渲染过（props 不再是我们换上去的那份），
- * 服务端组件等新的调试信息；等到了再撤掉预览
+ * 组件现在从源码收到的值：客户端组件要等父组件重新渲染过（props 不再是我们换上去的那份）才算数，
+ * 服务端组件看最新的调试信息。对上了才撤掉预览
  */
-export async function verifyProp(id: string, target: PropsTarget, expected: Record<string, string>, timeoutMs: number, refind: () => Promise<Element | null>) {
-  const t0 = performance.now();
-  const elapsed = () => performance.now() - t0;
+export async function probeProp(id: string, target: PropsTarget, expected: Record<string, string>, refind: () => Promise<Element | null>) {
   const want = expected[target.name];
-  const read = async (): Promise<{ value: string | null; fresh: boolean }> => {
-    const known = elOf(target.uid);
-    const el = known?.isConnected ? known : await refind();
-    const owner = el && (await propsOwner(el));
-    if (!owner) return { value: null, fresh: false };
-    if (!isFiber(owner.node)) return { value: asJson((owner.node.props as Props | undefined)?.[target.name]), fresh: true };
+  const known = elOf(target.uid);
+  const el = known?.isConnected ? known : await refind();
+  const owner = el && (await propsOwner(el));
+  let value: string | null = null;
+  let fresh = false;
+  if (owner && !isFiber(owner.node)) {
+    value = asJson((owner.node.props as Props | undefined)?.[target.name]);
+    fresh = true;
+  } else if (owner) {
     const cur = currentFiber(owner.node);
     const props = cur?.memoizedProps as Props | undefined;
-    return cur && props ? { value: asJson(props[target.name]), fresh: !isOurs(cur) } : { value: null, fresh: false };
-  };
-  let r = await read();
-  while (!(r.fresh && r.value === want) && elapsed() < timeoutMs) {
-    await sleep(Math.min(120, Math.max(0, timeoutMs - elapsed())));
-    r = await read();
+    if (cur && props) {
+      value = asJson(props[target.name]);
+      fresh = !isOurs(cur);
+    }
   }
-  clearProp(id);
-  return { ok: r.fresh && r.value === want, actual: { [target.name]: r.value ?? '' }, waitedMs: Math.round(elapsed()) };
+  const ok = fresh && value === want;
+  if (ok) clearProp(id);
+  return { ok, actual: { [target.name]: value ?? '' }, attached: ok || entries.has(id), found: !!el };
 }

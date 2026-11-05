@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyEdits, arrayOrderSite, editArrayOrder, editJsxOrder, jsxOrderCheck } from '@css-tuner/engine';
+import { arrayOrderSite, jsxOrderCheck } from '@css-tuner/engine';
 import { setLocale, type ElementSnapshot, type OrderInfo, type OrderUnit, type PageInfo, type SourceLoc } from '@css-tuner/protocol';
 import { planOrder, type OrderContext } from '../src/planner';
 import type { ProjectResolver } from '../src/project';
@@ -114,17 +114,12 @@ const info = (units: OrderUnit[], over: Partial<OrderInfo> = {}): OrderInfo => (
 beforeEach(() => setLocale('zh-CN'));
 afterEach(() => setLocale('en'));
 
-describe('换序写到哪', () => {
-  it('写死的兄弟改 JSX：目标显示父元素的位置，写回按新顺序排子节点', () => {
+describe('换序在代码里的位置', () => {
+  it('写死的兄弟：目标显示父元素的位置，记下各项的位置和新顺序', () => {
     const p = planOrder(el(info(navUnits())), ctx)!;
     expect(p.view).toMatchObject({ kind: 'source', label: 'src/Nav.tsx:5 <nav>', file: NAV, line: 5, column: 5 });
     expect(p.key).toBe(`order|jsx|${NAV}|6:7,7:7,8:7`);
-    const w = p.write([1, 0, 2]);
-    expect(w).toMatchObject({ kind: 'jsxOrder', file: NAV, order: [1, 0, 2] });
-    if (w.kind !== 'jsxOrder') throw new Error(w.kind);
-    const r = editJsxOrder({ file: w.file, source: read(NAV), sites: w.sites, order: w.order });
-    if (!r.ok) throw new Error(r.reason);
-    expect(applyEdits(read(NAV), r.edits)).toContain('<a href="/docs">文档</a>\n      <a href="/">首页</a>\n      <Footer />');
+    expect(p.write([1, 0, 2])).toEqual({ kind: 'jsxOrder', file: NAV, order: [1, 0, 2], sites: [{ line: 6, column: 7, name: 'a' }, { line: 7, column: 7, name: 'a' }, { line: 8, column: 7, name: 'Footer' }] });
   });
 
   it('预览带上选中元素的源码位置，刷新后据此找回这一组', () => {
@@ -139,13 +134,7 @@ describe('换序写到哪', () => {
     const p = planOrder(el(info(units, { mapped: `/src/Nav.tsx:${li.line}:${li.column}`, axis: 'y' })), ctx)!;
     expect(p.view).toMatchObject({ kind: 'source', label: 'src/links.ts:1 links', file: LINKS, line: 1 });
     expect(p.key).toBe(`order|array|${LINKS}|1|22`);
-    const w = p.write([2, 0, 1]);
-    expect(w).toEqual({ kind: 'arrayOrder', file: NAV, line: li.line, column: li.column, count: 3, order: [2, 0, 1] });
-    if (w.kind !== 'arrayOrder') throw new Error(w.kind);
-    const r = editArrayOrder({ ...w, source: read(NAV), read: readOrNull });
-    if (!r.ok) throw new Error(r.reason);
-    expect(r.file).toBe(LINKS);
-    expect(applyEdits(read(LINKS), r.edits).replace(/\s+/g, ' ')).toContain("{ href: '/c', label: 'C' }, { href: '/a', label: 'A' }, { href: '/b', label: 'B' },");
+    expect(p.write([2, 0, 1])).toEqual({ kind: 'arrayOrder', file: NAV, line: li.line, column: li.column, count: 3, order: [2, 0, 1] });
   });
 
   it('纯 HTML 页面改 HTML 文件里父元素的子元素', () => {
@@ -157,7 +146,7 @@ describe('换序写到哪', () => {
     expect(p.write([2, 0, 1])).toEqual({ kind: 'htmlOrder', file: html, path: [1, 0], tags: ['li', 'li', 'p'], order: [2, 0, 1] });
   });
 
-  it('写不回时交给 Agent 并说明原因', () => {
+  it('找不到位置时让 Agent 自己找，并说明原因', () => {
     const units = navUnits();
     const why = (us: OrderUnit[]) => planOrder(el(info(us)), ctx)!.view.reason;
     expect(why([units[0], { ...units[1], source: null }])).toBe('找不到这几个元素在代码里的位置');

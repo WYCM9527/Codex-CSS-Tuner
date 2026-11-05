@@ -43,7 +43,7 @@ function statOf(p: string) {
 
 /**
  * 没有开发服务器的静态页：在 127.0.0.1 上起一个不缓存的文件服务。
- * 没有热更新，写回 CSS 后由扩展让页面重新加载对应的 <link> 样式表。
+ * 没有热更新，CSS 文件改了以后由扩展让页面重新加载对应的 <link> 样式表。
  */
 export class StaticServer {
   private readonly servers = new Map<string, { server: Server; origin: string }>();

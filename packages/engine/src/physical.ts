@@ -68,11 +68,6 @@ export function isSubset<T>(a: Set<T>, b: Set<T>): boolean {
   return true;
 }
 
-export function intersects<T>(a: Set<T>, b: Set<T>): boolean {
-  for (const x of a) if (b.has(x)) return true;
-  return false;
-}
-
 export function sameSet<T>(a: Set<T>, b: Set<T>): boolean {
   return a.size === b.size && isSubset(a, b);
 }

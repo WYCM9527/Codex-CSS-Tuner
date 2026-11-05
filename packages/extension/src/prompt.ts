@@ -44,9 +44,11 @@ function bandLine(b: RecordBand): string {
   return t('handoff.band.between', { min: b.min, last: b.max - 1 });
 }
 
-/** 这一条要做的改动；冲突（应用后源码被改过、无法安全还原）的条目要求改回原样 */
-function changeLines(rec: ChangeRecord, tw: boolean): string[] {
-  const back = rec.status === 'conflict';
+/** 应用：照预览改进源码；还原：把之前应用的改回原样 */
+export type PromptMode = 'apply' | 'revert';
+
+/** 这一条要做的改动；back 是改回原样 */
+function changeLines(rec: ChangeRecord, tw: boolean, back: boolean): string[] {
   switch (rec.kind) {
     case 'text': {
       const from = JSON.stringify(rec.from);
@@ -57,7 +59,8 @@ function changeLines(rec: ChangeRecord, tw: boolean): string[] {
     }
     case 'reorder': {
       const lines = [back ? t('handoff.reorder.revert', { from: rec.from, to: rec.to }) : t('handoff.reorder', { from: rec.from, to: rec.to })];
-      if (rec.detail?.order?.length) lines.push(t('handoff.reorder.order', { order: rec.detail.order.join(t('common.listSep')) }));
+      const order = back ? rec.detail?.was : rec.detail?.order;
+      if (order?.length) lines.push(t(back ? 'handoff.reorder.was' : 'handoff.reorder.order', { order: order.join(t('common.listSep')) }));
       return lines;
     }
     case 'prop': {
@@ -77,14 +80,15 @@ function changeLines(rec: ChangeRecord, tw: boolean): string[] {
 }
 
 /**
- * 交给 Agent 的结构化提示词：每条写清元素在哪、改什么、原值 → 新值、为什么没能自动写回。
- * 冲突的条目要求改回原值。
+ * 交给 Agent 的结构化提示词：每条写清元素在哪、原值 → 新值（还原时反过来）、管哪个宽度，
+ * 只说要改成什么样，怎么写由 Agent 按项目的写法决定
  */
-export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
+export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext, mode: PromptMode = 'apply'): string {
   const tw = !!ctx.tailwindEntry;
+  const back = mode === 'revert';
   const has = (kind: ChangeRecord['kind']) => recs.some((r) => r.kind === kind);
   const lines: string[] = [];
-  lines.push(t('handoff.intro', { n: recs.length }));
+  lines.push(t(back ? 'handoff.revert.intro' : 'handoff.intro', { n: recs.length }));
   lines.push('');
   if (ctx.pageUrl) lines.push(t('handoff.page', { url: ctx.pageUrl }));
   if (ctx.tailwindEntry && has('style')) {
@@ -99,26 +103,26 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
         i: i + 1,
         label: rec.element.label,
         loc: loc ? t('common.paren', { text: loc }) : '',
-        same: rec.element.sameSource > 1 ? t('handoff.sameSource', { n: rec.element.sameSource }) : '',
+        same: rec.view.affects > 1 ? t('handoff.sameSource', { n: rec.view.affects }) : '',
       }),
     );
-    lines.push(...changeLines(rec, tw));
+    lines.push(...changeLines(rec, tw, back));
     if (rec.band) lines.push(bandLine(rec.band));
-    if (rec.status === 'conflict' && rec.patch) lines.push(t('handoff.written', { summary: rec.patch.summary, file: ctx.project.label(rec.patch.file) }));
     const rule = rec.kind === 'style' ? ruleText(rec) : null;
     if (rule) lines.push(t('handoff.rule', { rule }));
     else if (rec.view.label && rec.view.kind !== 'agent') lines.push(t('handoff.target', { label: rec.view.label }));
-    const why = rec.note ?? (rec.write.kind === 'agent' ? rec.write.reason : null);
-    if (why) lines.push(t('handoff.why', { why }));
+    if (rec.write.kind === 'agent') lines.push(t('handoff.why', { why: rec.write.reason }));
+    // 再发一次：上一次改完页面上是什么样
+    if (rec.note && (rec.status === 'handoff' || rec.status === 'reverting')) lines.push(t('handoff.last', { note: rec.note }));
   });
   lines.push('');
   lines.push(t('handoff.requirements'));
-  lines.push(t('handoff.req.only'));
-  if (has('style')) lines.push(t(tw ? 'handoff.req.twTokens' : 'handoff.req.cssVars'));
+  lines.push(t(back ? 'handoff.req.revertOnly' : 'handoff.req.only'));
+  if (!back && has('style')) lines.push(t(tw ? 'handoff.req.twTokens' : 'handoff.req.cssVars'));
   if (has('text')) lines.push(t('handoff.req.text'));
-  if (has('reorder')) lines.push(t('handoff.req.reorder'));
+  if (!back && has('reorder')) lines.push(t('handoff.req.reorder'));
   if (has('prop')) lines.push(t('handoff.req.prop'));
-  if (recs.some((r) => r.band)) lines.push(t(tw ? 'handoff.req.bandTw' : 'handoff.req.bandCss'));
+  if (!back && recs.some((r) => r.band)) lines.push(t(tw ? 'handoff.req.bandTw' : 'handoff.req.bandCss'));
   lines.push(t('handoff.req.scope'));
   lines.push(t('handoff.req.report'));
   return lines.join('\n');

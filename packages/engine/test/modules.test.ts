@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyEdits, editCssRule, indexCssRules, lookupCssRule, type CssRuleSpec } from '../src';
+import { indexCssRules, lookupCssRule, type CssRuleSpec } from '../src';
 import { localClasses, localizeClass, localizeSelector } from '../src/css/modules';
 
 const BADGE = join(__dirname, '../../../fixtures/react-css/src/styles/Badge.module.css');
@@ -39,29 +39,19 @@ describe('CSS Modules 哈希类名还原', () => {
   });
 });
 
-describe('CSS Modules 写回（fixtures/react-css Badge.module.css）', () => {
-  it('页面上的哈希选择器找到源文件里的规则', () => {
-    const r = editCssRule({ file: BADGE, read: disk, spec: spec('._badge_2qmet_1'), props: ['padding-left'], value: '12px' });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.summary).toBe('.badge { padding: 2px 8px → 2px 8px 2px 12px }');
-    expect(applyEdits(disk(BADGE)!, r.edits)).toContain('  padding: 2px 8px 2px 12px;\n');
-  });
+describe('CSS Modules 定位（fixtures/react-css Badge.module.css）', () => {
+  const index = indexCssRules(BADGE, disk);
 
-  it('组合选择器、长名字优先', () => {
-    const muted = editCssRule({ file: BADGE, read: disk, spec: spec('._badge-muted_2qmet_10'), props: ['background-color'], value: '#999' });
-    expect(muted.ok && muted.summary).toBe('.badge-muted { background: var(--color-muted) → #999 }');
-    const nested = editCssRule({ file: BADGE, read: disk, spec: spec('._list_2qmet_14 ._badge_2qmet_1'), props: ['margin-left'], value: '8px' });
-    expect(nested.ok && nested.summary).toBe('.list .badge { margin-left: 6px → 8px }');
-  });
-
-  it('lookupCssRule 给出源文件里的选择器写法', () => {
-    const index = indexCssRules(BADGE, disk);
+  it('页面上的哈希选择器找到源文件里的规则，给出源文件里的写法', () => {
+    expect(lookupCssRule(index, spec('._badge_2qmet_1'))).toEqual({ file: BADGE, line: 1, selector: '.badge' });
     expect(lookupCssRule(index, spec('._list_2qmet_14 ._badge_2qmet_1'))).toEqual({ file: BADGE, line: 14, selector: '.list .badge' });
   });
 
+  it('长名字优先', () => {
+    expect(lookupCssRule(index, spec('._badge-muted_2qmet_10'))).toEqual({ file: BADGE, line: 10, selector: '.badge-muted' });
+  });
+
   it('普通 CSS 文件不做还原', () => {
-    const r = editCssRule({ file: '/p/a.css', read: () => '.badge { color: red; }\n', spec: spec('._badge_2qmet_1'), props: ['color'], value: 'blue' });
-    expect(r.ok).toBe(false);
+    expect(lookupCssRule(indexCssRules('/p/a.css', () => '.badge { color: red; }\n'), spec('._badge_2qmet_1'))).toHaveProperty('error');
   });
 });

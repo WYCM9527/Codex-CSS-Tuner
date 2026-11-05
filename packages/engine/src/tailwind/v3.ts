@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import type { AtRule, ChildNode, Declaration, Rule } from 'postcss';
 import { toPx } from '@css-tuner/protocol';
 import type { RawDesignSystem } from './design';
-import { splitCandidate } from './edit';
+import { splitCandidate } from './classes';
 
 /**
  * Tailwind 3 的设计系统：用项目自己装的 tailwindcss 读 tailwind.config，按候选类生成 CSS，

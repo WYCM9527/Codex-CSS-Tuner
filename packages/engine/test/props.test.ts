@@ -1,6 +1,5 @@
-import type { PropValue } from '@css-tuner/protocol';
 import { describe, expect, it } from 'vitest';
-import { applyEdits, editJsxProp, jsxPropSite, recipeVariants } from '../src';
+import { jsxPropSite, recipeVariants } from '../src';
 
 const F = '/p/src/App.tsx';
 
@@ -10,11 +9,6 @@ function at(source: string, tag: string, n = 0): { line: number; column: number 
   for (let k = 0; k <= n; k++) i = source.indexOf(`<${tag}`, i + 1);
   const before = source.slice(0, i).split('\n');
   return { line: before.length, column: before[before.length - 1].length + 1 };
-}
-
-function prop(source: string, tag: string, name: string, value: PropValue, from?: PropValue) {
-  const r = editJsxProp({ file: F, source, ...at(source, tag), name, value, from, tag: tag.split('.').pop() });
-  return r.ok ? applyEdits(source, r.edits) : r.reason;
 }
 
 describe('组件属性', () => {
@@ -35,39 +29,11 @@ describe('组件属性', () => {
     expect(site('nope')).toEqual({ site: { kind: 'missing' }, spread: 'before' });
   });
 
-  it('字符串就地改，只动变化的部分，保留原来的引号', () => {
-    const src = `const A = () => <Button variant='primary' size="sm">Go</Button>;`;
-    const r = editJsxProp({ file: F, source: src, ...at(src, 'Button'), name: 'variant', value: 'outline', from: 'primary' });
-    expect(r.ok && r.edits).toEqual([{ start: src.indexOf('primary'), end: src.indexOf('primary') + 7, text: 'outline' }]);
-    expect(r.ok && r.summary).toMatch(/variant[:：] ?"primary" → "outline"/);
-    expect(prop(src, 'Button', 'size', 'lg', 'sm')).toBe(`const A = () => <Button variant='primary' size="lg">Go</Button>;`);
-  });
-
-  it('换成数字、布尔、null，或者写不进引号里的字符串', () => {
-    const src = `const A = () => <Card title="Hi" count={3} done />;`;
-    expect(prop(src, 'Card', 'count', 5, 3)).toBe(`const A = () => <Card title="Hi" count={5} done />;`);
-    expect(prop(src, 'Card', 'done', false, true)).toBe(`const A = () => <Card title="Hi" count={3} done={false} />;`);
-    expect(prop(src, 'Card', 'title', 'Say "hi"', 'Hi')).toBe(`const A = () => <Card title={"Say \\"hi\\""} count={3} done />;`);
-    expect(prop(src, 'Card', 'title', 'a\nb', 'Hi')).toBe(`const A = () => <Card title={"a\\nb"} count={3} done />;`);
-    expect(prop(src, 'Card', 'title', null, 'Hi')).toBe(`const A = () => <Card title={null} count={3} done />;`);
-    expect(prop(src, 'Card', 'count', '3', 3)).toBe(`const A = () => <Card title="Hi" count="3" done />;`);
-    expect(prop(`const A = () => <Card on={false} />;`, 'Card', 'on', true, false)).toBe(`const A = () => <Card on />;`);
-  });
-
-  it('没写的属性加在最后一个属性后面，没有属性时加在标签名后面', () => {
-    expect(prop(`const A = () => <Card title="Hi" />;`, 'Card', 'pill', true)).toBe(`const A = () => <Card title="Hi" pill />;`);
-    expect(prop(`const A = () => <Card>x</Card>;`, 'Card', 'tone', 'brand')).toBe(`const A = () => <Card tone="brand">x</Card>;`);
-    expect(prop(`const A = () => <ui.Card\n  a="1"\n>x</ui.Card>;`, 'ui.Card', 'n', 2)).toBe(`const A = () => <ui.Card\n  a="1" n={2}\n>x</ui.Card>;`);
-    expect(prop(`const A = () => <List<string>>x</List>;`, 'List', 'dense', true)).toBe(`const A = () => <List<string> dense>x</List>;`);
-  });
-
-  it('表达式、源码已经改过、同一行找错元素时不改', () => {
+  it('列号对不上、同一行取到了别的元素时，按组件名核对', () => {
     const src = `const A = ({ v }) => <><Button variant={v} /><Badge tone="x" /></>;`;
-    expect(prop(src, 'Button', 'variant', 'a')).toMatch(/set by code|由代码决定/);
-    expect(prop(src, 'Badge', 'tone', 'y', 'z')).toMatch(/has changed|已经变了/);
-    const r = editJsxProp({ file: F, source: src, line: 1, column: 1, name: 'tone', value: 'y', tag: 'Badge' });
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.reason).toMatch(/not <Badge>|不是 <Badge>/);
+    expect(jsxPropSite(src, F, 1, 1, 'tone', 'Badge')).toEqual({ error: expect.stringMatching(/not <Badge>|不是 <Badge>/) });
+    expect(jsxPropSite(src, F, ...(Object.values(at(src, 'Badge')) as [number, number]), 'tone', 'Badge')).toMatchObject({ site: { kind: 'literal', value: 'x' } });
+    expect(jsxPropSite(src, F, ...(Object.values(at(src, 'Button')) as [number, number]), 'variant', 'Button')).toMatchObject({ site: { kind: 'dynamic', code: 'variant={v}' } });
   });
 });
 

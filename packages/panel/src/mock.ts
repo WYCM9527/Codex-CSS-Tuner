@@ -719,29 +719,34 @@ export function createMockHost(): Host {
         break;
       }
       case 'apply': {
-        state.busy = true;
-        emit();
+        // 交给 Agent：先等 Agent 改，过一会儿模拟它改完、页面核对上
+        const sent = state.changes.filter((c) => (m.ids ? m.ids.includes(c.id) && (c.status === 'pending' || c.status === 'handoff') : c.status === 'pending'));
+        if (!sent.length) break;
+        for (const c of sent) c.status = 'handoff';
+        state.notice = { level: 'info', text: t('ext.apply.prefilled', { n: sent.length }) };
         setTimeout(() => {
-          for (const c of state.changes) {
-            if (c.status !== 'pending' || c.target.kind === 'agent') continue;
-            if (m.ids && !m.ids.includes(c.id)) continue;
-            c.status = 'applied';
-            c.note = `${c.propLabel}: ${c.from} → ${c.to}`;
-          }
-          state.busy = false;
-          undos.length = redos.length = 0;
-          syncHistory();
+          for (const c of sent) if (c.status === 'handoff') c.status = 'applied';
           emit();
-        }, 350);
-        return;
+        }, 4000);
+        break;
       }
       case 'revert': {
         const c = state.changes.find((x) => x.id === m.id);
-        if (c) c.status = 'reverted';
+        if (!c) break;
+        c.status = 'reverting';
+        state.notice = { level: 'info', text: t('ext.revert.prefilled') };
+        setTimeout(() => {
+          if (c.status === 'reverting') c.status = 'reverted';
+          emit();
+        }, 4000);
         break;
       }
       case 'discard': {
         const c = state.changes.find((x) => x.id === m.id);
+        if (c?.status === 'reverting') {
+          c.status = 'applied';
+          break;
+        }
         state.changes = state.changes.filter((x) => x.id !== m.id);
         if (c && state.selection) for (const p of c.props) delete state.selection.pending[p];
         if (c?.kind === 'text') {
@@ -752,18 +757,8 @@ export function createMockHost(): Host {
         break;
       }
       case 'clearDone':
-        state.changes = state.changes.filter((c) => c.status === 'pending' || c.status === 'failed' || c.status === 'conflict');
+        state.changes = state.changes.filter((c) => c.status !== 'applied' && c.status !== 'reverted');
         break;
-      case 'handoff': {
-        let n = 0;
-        for (const c of state.changes) {
-          if ((m.ids && !m.ids.includes(c.id)) || (c.status !== 'pending' && c.status !== 'failed')) continue;
-          c.status = 'handoff';
-          n++;
-        }
-        state.notice = { level: 'info', text: t('ext.handoff.prefilled', { n }) };
-        break;
-      }
       case 'dismissNotice':
         state.notice = null;
         break;
@@ -788,7 +783,7 @@ export function createMockHost(): Host {
         break;
     }
     // 交给 Agent、还原之后，之前记的几步对不上了
-    if (m.t === 'handoff' || m.t === 'revert') undos.length = redos.length = 0;
+    if (m.t === 'apply' || m.t === 'revert') undos.length = redos.length = 0;
     syncHistory();
     emit();
   };

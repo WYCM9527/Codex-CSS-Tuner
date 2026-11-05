@@ -29,7 +29,7 @@ export function jsxChildren(el: Node): JsxChild[] {
   const out: JsxChild[] = [];
   for (const c of el.children ?? []) {
     if (c.type === 'JSXText') {
-      const text = cleanJsxText(c.value).text;
+      const text = cleanJsxText(c.value);
       if (text) out.push({ node: c, container: null, text });
     } else if (c.type === 'JSXExpressionContainer') {
       if (c.expression.type !== 'JSXEmptyExpression') out.push({ node: c.expression, container: c });
@@ -40,44 +40,24 @@ export function jsxChildren(el: Node): JsxChild[] {
   return out;
 }
 
-/**
- * JSX 文本的空白折叠（Babel cleanJSXElementLiteralChild）：去掉挨着换行的空白，行与行之间留一个空格。
- * map[k] 是结果第 k 个字符在原文里的范围；行间补的空格对应被折叠掉的那段空白。
- */
-export function cleanJsxText(value: string): { text: string; map: Array<[number, number]> } {
-  const lines: Array<{ start: number; text: string }> = [];
-  const re = /\r\n|\n|\r/g;
-  let at = 0;
-  for (let m = re.exec(value); m; m = re.exec(value)) {
-    lines.push({ start: at, text: value.slice(at, m.index) });
-    at = m.index + m[0].length;
-  }
-  lines.push({ start: at, text: value.slice(at) });
+/** JSX 文本的空白折叠（Babel cleanJSXElementLiteralChild）：去掉挨着换行的空白，行与行之间留一个空格 */
+export function cleanJsxText(value: string): string {
+  const lines = value.split(/\r\n|\n|\r/);
   let lastNonEmpty = 0;
   lines.forEach((l, i) => {
-    if (/[^ \t]/.test(l.text)) lastNonEmpty = i;
+    if (/[^ \t]/.test(l)) lastNonEmpty = i;
   });
   let text = '';
-  const map: Array<[number, number]> = [];
-  let pendingSpace: number | null = null;
   lines.forEach((l, i) => {
     let s = 0;
-    let e = l.text.length;
-    if (i > 0) while (s < e && (l.text[s] === ' ' || l.text[s] === '\t')) s++;
-    if (i < lines.length - 1) while (e > s && (l.text[e - 1] === ' ' || l.text[e - 1] === '\t')) e--;
+    let e = l.length;
+    if (i > 0) while (s < e && (l[s] === ' ' || l[s] === '\t')) s++;
+    if (i < lines.length - 1) while (e > s && (l[e - 1] === ' ' || l[e - 1] === '\t')) e--;
     if (s >= e) return;
-    if (pendingSpace !== null) {
-      text += ' ';
-      map.push([pendingSpace, l.start + s]);
-      pendingSpace = null;
-    }
-    for (let k = s; k < e; k++) {
-      text += l.text[k] === '\t' ? ' ' : l.text[k];
-      map.push([l.start + k, l.start + k + 1]);
-    }
-    if (i !== lastNonEmpty) pendingSpace = l.start + e;
+    text += l.slice(s, e).replace(/\t/g, ' ');
+    if (i !== lastNonEmpty) text += ' ';
   });
-  return { text, map };
+  return text;
 }
 
 /** 一段文字在源码里的写法 */
@@ -182,7 +162,7 @@ function messageOf(call: Node, bindings: Binding[]): MessageRef | null {
 /** 表达式是不是字面量文字、翻译调用，还是动态内容 */
 export function classify(expr: Node, source: string, bindings: Binding[]): TextSource {
   const code = source.slice(expr.start, expr.end);
-  if (expr.type === 'JSXText') return { kind: 'literal', form: 'jsxText', node: expr, value: cleanJsxText(expr.value).text };
+  if (expr.type === 'JSXText') return { kind: 'literal', form: 'jsxText', node: expr, value: cleanJsxText(expr.value) };
   if (expr.type === 'StringLiteral') return { kind: 'literal', form: 'string', node: expr, value: expr.value };
   if (expr.type === 'TemplateLiteral' && !expr.expressions.length) return { kind: 'literal', form: 'template', node: expr, value: expr.quasis[0].value.cooked ?? '' };
   if (expr.type === 'CallExpression') {
@@ -190,4 +170,10 @@ export function classify(expr: Node, source: string, bindings: Binding[]): TextS
     if (ref) return { kind: 'message', ref, code };
   }
   return { kind: 'dynamic', code };
+}
+
+/** 说明里引用的一段代码：压成一行，过长截断 */
+export function short(s: string, max = 40): string {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }

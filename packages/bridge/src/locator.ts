@@ -21,5 +21,5 @@ export interface Locator {
   warm?(nodes: Element[]): void;
 }
 
-/** 依赖包里的组件文件：不能写回，元素要回到业务代码里写着这个组件的地方 */
+/** 依赖包里的组件文件：不是该改的代码，元素要回到业务代码里写着这个组件的地方 */
 export const isLibFile = (path: string): boolean => /(?:^|[\\/])node_modules[\\/]/.test(path);

@@ -38,8 +38,9 @@ describe('界面文案', () => {
     expect(format('{n} {n|change|changes}', { n: 3 })).toBe('3 changes');
     expect(format('{a} and {b}', { a: 'x' })).toBe('x and {b}');
     expect(format('spreads {...props}', { props: 'p' })).toBe('spreads {...props}');
-    expect(t('ext.handoff.none')).toMatch(/Agent/);
+    expect(t('apply.matchedLog', { n: 1 })).toBe('1 change now matches on the page');
+    expect(t('apply.matchedLog', { n: 2 })).toBe('2 changes now match on the page');
     setLocale('zh-CN');
-    expect(t('apply.log', { n: 2, writeMs: 5, ms: 40 })).toBe('应用 2 条改动：保存 5ms，页面生效 40ms');
+    expect(t('apply.sentLog', { n: 2 })).toBe('交给 Agent 2 条改动，等它改完代码再核对');
   });
 });

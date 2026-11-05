@@ -26,6 +26,7 @@ import {
   type ExtToPanel,
   type Locale,
   type Notice,
+  type OrderUnit,
   type OrderView,
   type PageInfo,
   type PanelState,
@@ -43,13 +44,12 @@ import {
   type ViewportBand,
   type ViewportPreset,
 } from '@css-tuner/protocol';
-import { hasArbitraryValue, previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
+import { previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
 import { AssetService } from './assets';
-import { bandPlan, bandRange } from './band';
+import { bandRange } from './band';
 import { BrowserAdapter } from './browser';
 import { literalCompletions } from './completions';
-import { prefill, type PrefillResult } from './handoff';
 import { History, pendingSet } from './history';
 import { Journal, type ChangeRecord } from './journal';
 import { MessageFiles } from './messages';
@@ -75,7 +75,7 @@ import {
   type WriteSpec,
 } from './planner';
 import { ProjectResolver } from './project';
-import { buildPrompt } from './prompt';
+import { buildPrompt, type PromptMode } from './prompt';
 import { samePage } from './records';
 import { cssScales, measureSteps } from './scales';
 import { commandCheck, liveCheck, type CheckItem } from './selfcheck';
@@ -84,7 +84,6 @@ import { PageSession } from './session';
 import { ClassSiteReader, CssRuleLocator } from './sites';
 import { StaticServer } from './static';
 import { TailwindService } from './tailwind';
-import { computeWrite } from './writer';
 
 const BROWSER_KEY = 'cssTuner.browserId';
 
@@ -112,7 +111,7 @@ function siteRoot(htmlFile: string): string {
   return best;
 }
 
-/** 同一写回目标的标识：Tailwind 是 JSX 调用位置，CSS 是那条规则，交给 Agent 的是元素 */
+/** 同一处代码的标识：Tailwind 是 JSX 调用位置，CSS 是那条规则，找不到位置的是元素 */
 export function targetKey(p: Plan, el: ElementSnapshot): string {
   const w = p.write;
   if (w.kind === 'tailwind') return `tw|${w.file}|${w.line}|${w.column}`;
@@ -121,6 +120,9 @@ export function targetKey(p: Plan, el: ElementSnapshot): string {
   if (p.preview.kind === 'rule') return `agent|rule|${p.preview.rule.sheet.index}|${p.preview.rule.fullSelector}|${p.preview.rule.conditions.join('|')}|${p.preview.rule.ordinal}`;
   return `agent|${sourceKeyOf(el) ?? el.uid}`;
 }
+
+/** 提示词里的一项兄弟：标签加文字开头，几项标签一样时也分得清 */
+const unitText = (u: OrderUnit) => (u.text ? `${u.label} ${JSON.stringify(u.text)}` : u.label);
 
 /** 纯 HTML 元素的选择器（刷新后按路径找回元素）；扩展自己的节点都加在末尾，不影响前面的序号 */
 function htmlSelector(path: number[]): string {
@@ -160,13 +162,13 @@ export class Controller implements vscode.Disposable {
   private lastSelection: { path: string; line: number; column: number; index: number } | null = null;
   private selectionWaiters: Array<(s: SelectionView | null) => void> = [];
   private plans = new Map<string, Plan>();
-  /** 选中元素每段文字的写回规划，键是段序号 */
+  /** 选中元素每段文字的规划，键是段序号 */
   private textPlans = new Map<number, TextPlan>();
   /** 选中元素所在兄弟组的换序规划，没有可换序的兄弟时为 null */
   private orderPlan: OrderPlan | null = null;
   /** 还没提交的实时换序预览：重建选中状态时按它显示，和页面上看到的一致 */
   private liveOrder: { key: string; order: number[] } | null = null;
-  /** 选中元素所属组件每个属性的写回规划，键是属性名 */
+  /** 选中元素所属组件每个属性的规划，键是属性名 */
   private propPlans = new Map<string, PropPlan>();
   /** 调用处没写、由 cva 默认变体决定的属性显示的默认值（改回它就等于没改） */
   private propDefaults = new Map<string, PropValue>();
@@ -208,11 +210,12 @@ export class Controller implements vscode.Disposable {
     };
     this.disposables.push(
       this.journal,
-      this.applier.snapshots,
+      this.applier,
       this.journal.onChange(() => {
         this.state.changes = this.journal.views();
-        // 应用、交给 Agent、清理这些不经过历史的变化：对不上的几步作废
+        // 应用、核对、清理这些不经过历史的变化：对不上的几步作废
         if (!this.stepping) this.syncHistory();
+        this.applier.track();
         this.push();
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.project.invalidate()),
@@ -227,11 +230,13 @@ export class Controller implements vscode.Disposable {
           this.state.locale = getLocale();
           this.state.history = this.history.labels();
         }
-        // 写回策略变了：选中元素的写回目标按新设置重新判断（已记下的改动不变）
+        // 范围、rem 基准变了：选中元素的代码位置和刻度按新设置重新判断（已记下的改动不变）
         if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
         this.push();
       }),
     );
+    // 上次关掉时还有在等 Agent 的改动：接着盯
+    this.applier.track();
   }
 
   get remBase(): number {
@@ -346,19 +351,14 @@ export class Controller implements vscode.Disposable {
 
   private async handleMore(msg: PanelToExt): Promise<void> {
     switch (msg.t) {
-      case 'apply': {
-        const r = await this.applier.apply(msg.ids);
-        if (r.failed && !r.applied && !r.unverified) this.notify('warn', t('ext.apply.allFailed'));
+      case 'apply':
+        await this.applier.apply(msg.ids);
         return;
-      }
       case 'revert':
         await this.applier.revert(msg.id);
         return;
       case 'diff':
         await this.applier.diff(msg.id);
-        return;
-      case 'handoff':
-        await this.handoff(msg.ids);
         return;
       case 'editText':
         await this.editText(msg.segment, msg.value, msg.phase);
@@ -402,42 +402,20 @@ export class Controller implements vscode.Disposable {
 
   /* ---------- 交给 Agent ---------- */
 
-  /** 确定性写回处理不了的：未应用且只能交给 Agent 的、写回失败的、还原冲突的 */
-  static agentable(r: ChangeRecord): boolean {
-    return (r.status === 'pending' && r.write.kind === 'agent') || r.status === 'failed' || r.status === 'conflict';
-  }
-
-  handoffPrompt(recs: ChangeRecord[]): string {
+  /** 交给 Agent 的提示词：recs 按改的先后排 */
+  handoffPrompt(recs: ChangeRecord[], mode: PromptMode): string {
     const entry = this.page ? tailwindEntry(this.page, this.project) : null;
-    return buildPrompt([...recs].reverse(), {
-      pageUrl: this.page?.url ?? recs[0].pageUrl,
-      project: this.project,
-      tailwindEntry: entry,
-      tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
-      tailwindTokens: this.design?.major === 3 ? (this.design.files[1] ?? null) : null,
-    });
-  }
-
-  /** 汇总成结构化提示词，预填进新的 Agent 对话（不发送） */
-  async handoff(ids?: string[]): Promise<{ how: PrefillResult; prompt: string } | null> {
-    const recs = (ids ? ids.map((id) => this.journal.get(id)) : this.journal.all()).filter((r): r is ChangeRecord => !!r && Controller.agentable(r));
-    if (!recs.length) {
-      this.notify('info', t('ext.handoff.none'));
-      return null;
-    }
-    const prompt = this.handoffPrompt(recs);
-    const how = await prefill(prompt);
-    for (const r of recs) {
-      // 撤掉预览：Agent 改完源码后页面要显示真实结果
-      if (r.status === 'pending') await this.session?.call('clearPreview', { id: r.previewId }).catch(() => undefined);
-      this.journal.update(r.id, { status: 'handoff' });
-    }
-    this.notify(
-      'info',
-      t(how === 'clipboard' ? 'ext.handoff.clipboard' : 'ext.handoff.prefilled', { n: recs.length }),
+    return buildPrompt(
+      recs,
+      {
+        pageUrl: this.page?.url ?? recs[0].pageUrl,
+        project: this.project,
+        tailwindEntry: entry,
+        tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
+        tailwindTokens: this.design?.major === 3 ? (this.design.files[1] ?? null) : null,
+      },
+      mode,
     );
-    await this.refreshSelection();
-    return { how, prompt };
   }
 
   /* ---------- 静态页 ---------- */
@@ -477,7 +455,7 @@ export class Controller implements vscode.Disposable {
     return this.openPage(url);
   }
 
-  /** 本地文件在当前页面源下的地址（静态页写回 CSS 后重新加载 <link> 用） */
+  /** 本地文件在当前页面源下的地址（静态页的 CSS 文件改了以后重新加载 <link> 用） */
   urlForFile(file: string): string | null {
     if (!this.page) return null;
     const root = this.project.rootFor(this.page.url);
@@ -670,12 +648,14 @@ export class Controller implements vscode.Disposable {
     this.design = design;
     this.state.scales = scales;
     this.state.viewport = { ...this.state.viewport, bands: viewportBands(scales.breakpoints, scales.mode === 'tailwind') };
-    // 样式表变了（懒加载的 CSS、热更新），写回目标要按新的样式表和设计系统重新判断
+    // 样式表变了（懒加载的 CSS、热更新），代码位置要按新的样式表和设计系统重新判断
     if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
     this.push();
     void this.session?.call('measureSteps', { steps: measureSteps(scales) }).catch(() => undefined);
     // 刷新、换页面后接着按选的档显示（断点在主题里改过时宽度跟着变）
     await this.applyViewport(false).catch((e) => this.log(t('ext.log.error', { text: (e as Error).message })));
+    // 换了页面、样式表热更新过：在等 Agent 的改动可能已经生效了
+    this.applier.soon();
   }
 
   /* ---------- 视口 ---------- */
@@ -696,7 +676,7 @@ export class Controller implements vscode.Disposable {
     this.push();
     await this.applyViewport(true);
     await this.syncBandPreviews();
-    // 换了宽度，选中元素上的值和写回目标（只改这一档）都要重新算
+    // 换了宽度，选中元素上的值和代码位置（只改这一档）都要重新算
     await this.refreshSelection();
   }
 
@@ -717,7 +697,7 @@ export class Controller implements vscode.Disposable {
       .catch(() => undefined);
   }
 
-  /** 应用后核对别的档的改动时临时切到的档 */
+  /** 核对别的档的改动时临时切到的档 */
   private verifyBand: ViewportBand | null = null;
   /** 页面上现在挂着哪一档的预览 */
   private shownBand: ViewportBand | null = null;
@@ -733,14 +713,8 @@ export class Controller implements vscode.Disposable {
     return b ? `@${b}` : '';
   }
 
-  /** 视口选了一档时，样式写回只改这一档 */
-  private banded(p: Plan): Plan {
-    const band = this.editBand();
-    return band ? bandPlan(p, band, this.state.viewport, this.state.scales?.breakpoints ?? DEFAULT_BREAKPOINTS) : p;
-  }
-
   /** 带档位的改动只在页面宽度属于那一档时生效（预览、面板上显示的未应用值） */
-  private visible(rec: ChangeRecord): boolean {
+  visible(rec: ChangeRecord): boolean {
     return !rec.band || rec.band.name === this.shownBand;
   }
 
@@ -754,29 +728,29 @@ export class Controller implements vscode.Disposable {
     return w === null ? null : bandOf(w, this.state.viewport.bands);
   }
 
-  /** 页面宽度换了档：带档位的改动按新的档挂上或撤掉预览；skip 是正在应用、等着核对的 */
-  private async syncBandPreviews(skip?: Set<string>) {
+  /** 页面宽度换了档：带档位的改动按新的档挂上或撤掉预览 */
+  private async syncBandPreviews() {
     const band = await this.bandNow();
     if (band === this.shownBand) return;
     this.shownBand = band;
-    for (const rec of this.journal.pending()) {
-      if (!rec.band || skip?.has(rec.id)) continue;
+    for (const rec of [...this.journal.previewing()].reverse()) {
+      if (!rec.band) continue;
       if (rec.band.name === band) await this.showPreview(rec);
       else await this.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
     }
   }
 
-  /** 核对别的档的改动：临时切到那一档的宽度，做完切回来；skip 同 syncBandPreviews */
-  async atBand<T>(band: ViewportBand, skip: Set<string>, run: () => Promise<T>): Promise<T> {
+  /** 核对别的档的改动：临时切到那一档的宽度，做完切回来 */
+  async atBand<T>(band: ViewportBand, run: () => Promise<T>): Promise<T> {
     this.verifyBand = band;
     try {
       await this.applyViewport(false);
-      await this.syncBandPreviews(skip);
+      await this.syncBandPreviews();
       return await run();
     } finally {
       this.verifyBand = null;
       await this.applyViewport(false).catch(() => undefined);
-      await this.syncBandPreviews(skip).catch(() => undefined);
+      await this.syncBandPreviews().catch(() => undefined);
     }
   }
 
@@ -826,9 +800,10 @@ export class Controller implements vscode.Disposable {
     return { design, scales: design ? tailwindScales(design, this.remBase) : cssScales(page, this.remBase) };
   }
 
-  /** 页面（重新）连上：刷新后按源码位置找回之前选中的元素，并把未应用的改动重新挂上预览 */
+  /** 页面（重新）连上：刷新后按源码位置找回之前选中的元素，并把未应用、等 Agent 改的改动重新挂上预览 */
   protected async onHello(reconnect: boolean) {
     await this.restorePreviews();
+    this.applier.soon();
     if (reconnect && this.lastSelection && this.session) {
       const { path, line, column, index } = this.lastSelection;
       await this.session.call('select', { source: { path, line, column, index }, waitMs: 4000 }, 8000).catch(() => null);
@@ -839,13 +814,14 @@ export class Controller implements vscode.Disposable {
     return samePage(a, b);
   }
 
+  /** 先挂旧的：同一处交给 Agent 之后又改了的，后改的那条要盖在上面 */
   private async restorePreviews() {
     this.shownBand = await this.bandNow();
-    for (const rec of this.journal.pending()) if (this.visible(rec)) await this.showPreview(rec);
+    for (const rec of [...this.journal.previewing()].reverse()) if (this.visible(rec)) await this.showPreview(rec);
   }
 
-  /** 把一条未应用改动的预览挂到页面上：元素按源码位置找回来（换序按选中时的那一项，纯 HTML 按路径） */
-  private async showPreview(rec: ChangeRecord) {
+  /** 把一条改动的预览挂到页面上：元素按源码位置找回来（换序按选中时的那一项，纯 HTML 按路径） */
+  async showPreview(rec: ChangeRecord) {
     const session = this.session;
     if (!session || !this.page || !this.samePage(rec.pageUrl, this.page.url)) return;
     const src = rec.element.source;
@@ -881,7 +857,7 @@ export class Controller implements vscode.Disposable {
       default:
         if (rec.removal) return { decls: removalDecls(rec.preview, rec.removal.values) };
         if (rec.decls) return { decls: rec.decls };
-        return { decls: { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) } };
+        return { decls: { ...(await this.companions(rec.write, rec.props, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) } };
     }
   }
 
@@ -906,12 +882,9 @@ export class Controller implements vscode.Disposable {
     const targets: Record<string, Target> = {};
     let all: number | null = null;
     if (this.page) {
-      const cfg = vscode.workspace.getConfiguration('cssTuner');
       const ctx = {
         page: this.page,
         project: this.project,
-        strategy: cfg.get<'editRule' | 'agent'>('css.strategy', 'editRule'),
-        varStrategy: cfg.get<'editDefinition' | 'agent'>('vars.strategy', 'editDefinition'),
         scope: this.state.scope,
         classSite: (f: string, line: number, column: number) => this.classSites.site(f, line, column),
         classLiterals: (f: string) => this.classSites.literals(f),
@@ -920,7 +893,7 @@ export class Controller implements vscode.Disposable {
         tailwindMajor: this.tailwindMajor(),
       };
       for (const prop of PROP_NAMES) {
-        const p = this.banded(plan(el, prop, ctx));
+        const p = plan(el, prop, ctx);
         this.plans.set(prop, p);
         targets[prop] = p.view;
       }
@@ -1158,7 +1131,7 @@ export class Controller implements vscode.Disposable {
     const el = sel.el;
     const key = propKey(p, el, name);
     const existing = this.journal.findPending(key);
-    const previewId = existing?.previewId ?? key;
+    const previewId = this.previewIdFor(key, existing);
     // 调用处原来的值（JSON）：取快照里的（面板上的值在实时预览时已经变了）；没写时是 "undefined"，界面上显示的是默认值
     const snap = info.props.find((x) => x.name === name);
     const base = existing?.original[name] ?? (!snap || snap.type === 'undefined' ? 'undefined' : JSON.stringify(snap.value));
@@ -1204,7 +1177,7 @@ export class Controller implements vscode.Disposable {
     this.push();
   }
 
-  /** 选中元素上仍未应用的改动值（同一写回目标、同一属性），删属性的是删掉之后的值 */
+  /** 选中元素上仍未应用的改动值（同一处代码、同一属性），删属性的是删掉之后的值 */
   private pendingFor(el: ElementSnapshot): Pick<SelectionView, 'pending' | 'removed'> {
     const pending: Record<string, string> = {};
     const removed = new Set<string>();
@@ -1221,7 +1194,7 @@ export class Controller implements vscode.Disposable {
     return { pending, removed: [...removed] };
   }
 
-  /** 选中元素上未应用的样式改动（和元素现在的写回目标相同） */
+  /** 选中元素上未应用的样式改动（和元素现在的代码位置相同） */
   private pendingOn(el: ElementSnapshot): ChangeRecord[] {
     return this.journal.pending().filter((rec) => {
       const p = rec.kind === 'style' ? this.plans.get(rec.props[0]) : undefined;
@@ -1281,7 +1254,7 @@ export class Controller implements vscode.Disposable {
     this.state.history = this.history.labels();
   }
 
-  /** 换界面语言：上一步 / 下一步的提示和选中元素的写回说明按新语言重新生成（清单里已记下的说明不变） */
+  /** 换界面语言：上一步 / 下一步的提示和选中元素的定位说明按新语言重新生成（清单里已记下的说明不变） */
   applyLocale(locale: Locale) {
     setLocale(locale);
     this.state.locale = locale;
@@ -1301,7 +1274,7 @@ export class Controller implements vscode.Disposable {
     }));
   }
 
-  /** 按写回目标分组：同一组的属性记成一条改动 */
+  /** 按代码位置分组：同一组的属性记成一条改动 */
   private groupByTarget(el: ElementSnapshot, props: string[]): Map<string, { plan: Plan; props: string[] }> {
     const groups = new Map<string, { plan: Plan; props: string[] }>();
     for (const prop of props) {
@@ -1328,8 +1301,8 @@ export class Controller implements vscode.Disposable {
       const props = [...g.props].sort();
       const key = `${tk}|${props.join(',')}${this.bandKey()}`;
       const existing = this.journal.findPending(key);
-      const previewId = existing?.previewId ?? key;
-      const decls = { ...(await this.companions(g.plan.write, props, req.value, req.token ?? null)), ...Object.fromEntries(props.map((p) => [p, req.value])) };
+      const previewId = this.previewIdFor(key, existing);
+      const decls = { ...(await this.companions(g.plan.write, props, req.token ?? null)), ...Object.fromEntries(props.map((p) => [p, req.value])) };
       const res = await session.call('preview', { id: previewId, target: g.plan.preview, decls });
       const live = this.selectionOf(el);
       if (live) for (const p of props) live.pending[p] = req.value;
@@ -1356,7 +1329,7 @@ export class Controller implements vscode.Disposable {
       const to = this.describeTo(g.plan, req);
       const from = was[props[0]] ?? this.describeFrom(el, props[0], g.plan);
       const expected = Object.fromEntries(props.filter((p) => res.computed[p] !== undefined).map((p) => [p, res.computed[p]]));
-      const { view, write } = await this.withPolicy(g.plan, props, req);
+      const { view, write } = g.plan;
       if (existing) {
         const undo = existing.removal ? { from, removal: undefined } : {};
         this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write, decls: undefined, ...undo });
@@ -1412,7 +1385,7 @@ export class Controller implements vscode.Disposable {
     const band = this.editBand();
     const key = `${targetKey(plan, el)}|${props.join(',')}${this.bandKey()}`;
     const existing = this.journal.findPending(key);
-    const previewId = existing?.previewId ?? key;
+    const previewId = this.previewIdFor(key, existing);
     // 垫底的是元素里面看到的颜色：半透明的背景色叠在后面的底色上
     const backdrop = parseColor(el.backdrop) ?? { r: 1, g: 1, b: 1, a: 1 };
     const bg = parseColor(sel.pending['background-color'] ?? el.computed['background-color']);
@@ -1459,7 +1432,7 @@ export class Controller implements vscode.Disposable {
 
   /**
    * 删属性：去掉这些属性在元素上生效的那条声明（Tailwind 删类名，CSS 删声明），页面上预览删掉之后的样子。
-   * 只删作者写的声明，继承、初始值和框架预设样式删不了；先试算一遍写回，删不了的当场说明
+   * 只删作者写的声明，继承、初始值和框架预设样式删不了
    */
   private async doRemove(req: EditRequest) {
     const sel = this.state.selection;
@@ -1485,13 +1458,6 @@ export class Controller implements vscode.Disposable {
         this.notify('warn', t('ext.remove.override'));
         continue;
       }
-      if (w.kind !== 'agent') {
-        const res = await computeWrite({ write: w, props, value: '', token: null, removal: { values: {}, classes } } as ChangeRecord, this.tailwind, this.remBase);
-        if (!res.ok) {
-          this.notify('warn', res.reason);
-          continue;
-        }
-      }
       groups.push({ key: `${tk}|${props.join(',')}${this.bandKey()}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
     }
     const props = groups.flatMap((g) => g.props);
@@ -1505,7 +1471,7 @@ export class Controller implements vscode.Disposable {
     if (!fallback) return;
     for (const { key, plan: g, props: gp, classes } of groups) {
       const existing = this.journal.findPending(key);
-      const previewId = existing?.previewId ?? key;
+      const previewId = this.previewIdFor(key, existing);
       const values = Object.fromEntries(gp.map((p) => [p, fallback[p] ?? '']));
       const from = Object.fromEntries(gp.map((p) => [p, was[p] ?? this.describeFrom(el, p, g)]));
       const removal = { values, from, ...(classes ? { classes } : {}) };
@@ -1559,7 +1525,7 @@ export class Controller implements vscode.Disposable {
     const el = sel.el;
     const key = textKey(p, el, segment);
     const existing = this.journal.findPending(key);
-    const previewId = existing?.previewId ?? key;
+    const previewId = this.previewIdFor(key, existing);
     const original = existing?.original.text ?? seg.value;
     const value = oneLine(raw);
     const back = !value || value === oneLine(original);
@@ -1619,7 +1585,7 @@ export class Controller implements vscode.Disposable {
     const info = sel?.el.order;
     if (!sel || !session || !this.page || !p || !info) return;
     const existing = this.journal.findPending(p.key);
-    const previewId = existing?.previewId ?? p.key;
+    const previewId = this.previewIdFor(p.key, existing);
     // to 是相对现在显示的顺序（可能是还没提交的实时预览）
     const shown = (sel.order?.items ?? []).map((it) => p.units.findIndex((u) => u.uids[0] === it.uid));
     const current = shown.length === p.units.length && shown.every((i) => i >= 0) ? shown : this.currentOrder(p, existing);
@@ -1654,7 +1620,7 @@ export class Controller implements vscode.Disposable {
           view: affects > 1 ? { ...p.view, affects } : p.view,
           preview: p.preview(next),
           write: p.write(next),
-          detail: { order: next.map((i) => p.units[i].label) },
+          detail: { order: next.map((i) => unitText(p.units[i])), was: p.units.map(unitText) },
         };
         if (existing) this.journal.update(existing.id, fields);
         else {
@@ -1675,21 +1641,11 @@ export class Controller implements vscode.Disposable {
     this.push();
   }
 
-  /** 设置不允许任意值类名时，刻度外的值（引擎只能写成 px-[13.5px]）改交给 Agent */
-  private async withPolicy(p: Plan, props: string[], req: EditRequest): Promise<Pick<Plan, 'view' | 'write'>> {
-    if (p.write.kind !== 'tailwind' || req.token) return p;
-    if (vscode.workspace.getConfiguration('cssTuner').get<string>('tailwind.arbitraryValues', 'allow') !== 'agent') return p;
-    const res = await computeWrite({ write: p.write, props, value: req.value, token: null } as ChangeRecord, this.tailwind, this.remBase);
-    if (!res.ok || !hasArbitraryValue(res.edits.map((e) => e.text).join(' '))) return p;
-    const reason = t('ext.plan.offScale', { value: req.value });
-    return { view: { ...p.view, kind: 'agent', reason }, write: { kind: 'agent', reason } };
-  }
-
   /** Tailwind 令牌顺带设置的属性（text-lg 的行高），预览时一起设上，看到的就是应用后的样子 */
-  private async companions(write: WriteSpec, props: string[], value: string, token: string | null): Promise<Record<string, string>> {
+  private async companions(write: WriteSpec, props: string[], token: string | null): Promise<Record<string, string>> {
     if (write.kind !== 'tailwind' || token === null || !write.entry) return {};
     const d = await this.tailwind.designFor(write.entry, this.remBase);
-    return d ? previewCompanions(d, props, value, token) : {};
+    return d ? previewCompanions(d, props, token) : {};
   }
 
   private describeFrom(el: ElementSnapshot, prop: string, p: Plan): string {
@@ -1748,12 +1704,16 @@ export class Controller implements vscode.Disposable {
     );
   }
 
-  /** 改动清单里的「放弃」 */
+  /** 改动清单里的「放弃」：等 Agent 还原的是不还原了，回到已应用 */
   discard(id: string): Promise<void> {
     return this.queue(() =>
       this.step(async () => {
         const rec = this.journal.get(id);
         if (!rec) return;
+        if (rec.status === 'reverting') {
+          this.journal.update(id, { status: 'applied', note: undefined });
+          return;
+        }
         await this.dropRecord(rec);
         await this.sweepSnapshots();
         if (this.state.selection) {
@@ -1762,6 +1722,18 @@ export class Controller implements vscode.Disposable {
         }
       }),
     );
+  }
+
+  /**
+   * 新改动的预览 id：同一处还有交给 Agent、预览还挂着的改动时另起一个，免得核对上那条时把这条的预览也撤了。
+   * 同一处接着改（实时预览、再提交）要拿到同一个 id
+   */
+  private previewIdFor(key: string, existing: ChangeRecord | undefined): string {
+    if (existing) return existing.previewId;
+    const taken = new Set(this.journal.previewing().map((r) => r.previewId));
+    let id = key;
+    for (let n = 2; taken.has(id); n++) id = `${key}#${n}`;
+    return id;
   }
 
   /** 撤掉一条改动：去掉页面上的预览，移出清单 */

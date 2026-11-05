@@ -5,7 +5,6 @@
   "command.toggleMeasure": "标尺：量距离",
   "command.applyAll": "应用全部改动",
   "command.serveStatic": "用内置服务打开 HTML 文件",
-  "command.handoff": "把剩下的改动交给 Agent",
   "command.selfCheck": "自检",
   "config.language": "面板和提示用的语言。也可以在面板顶部用「中 / EN」切换。",
   "config.language.auto": "跟随 Cursor 的显示语言",
@@ -16,15 +15,5 @@
   "config.tailwind.scope": "Tailwind 项目里改样式时，默认只改选中的这一个，还是所有用到同一组件的地方一起改。",
   "config.tailwind.scope.instance": "只改这个：只改选中的这一个元素",
   "config.tailwind.scope.source": "全部：改组件本身，所有用到它的地方一起变",
-  "config.tailwind.arbitraryValues": "Tailwind 项目里改出的值不是主题里现成的值时怎么办。",
-  "config.tailwind.arbitraryValues.allow": "把具体数值写进类名（如 px-[13.5px]）",
-  "config.tailwind.arbitraryValues.agent": "不把具体数值写进类名，交给 Agent 处理",
-  "config.css.strategy": "普通 CSS（不是 Tailwind）的改动怎么保存。",
-  "config.css.strategy.editRule": "直接改元素用到的那条 CSS 规则",
-  "config.css.strategy.agent": "不直接改文件，交给 Agent 处理",
-  "config.vars.strategy": "CSS 变量的改动怎么保存。",
-  "config.vars.strategy.editDefinition": "改变量定义的地方（Tailwind 改 @theme），用到它的地方一起变",
-  "config.vars.strategy.agent": "不直接改文件，交给 Agent 处理",
-  "config.snap": "数值自动对齐到主题里的值和 CSS 变量（按住 Alt 可以填任意值）。",
-  "config.verifyTimeoutMs": "应用后等页面刷新、再核对页面和预览是否一致（样式和文字）的最长时间，单位毫秒。超时的改动会在后台再等一轮，页面晚些刷新了也会标成已生效。"
+  "config.snap": "数值自动对齐到主题里的值和 CSS 变量（按住 Alt 可以填任意值）。"
 }

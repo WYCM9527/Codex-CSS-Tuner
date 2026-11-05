@@ -1,29 +1,41 @@
 import * as vscode from 'vscode';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { t, type ViewportBand } from '@css-tuner/protocol';
-import { applyEdits, overlapping, revertTailwind, type TextEdit } from '@css-tuner/engine';
 import type { Controller } from './controller';
-import type { AppliedPatch, ChangeRecord, PatchEdit } from './journal';
-import { applyFirst } from './records';
-import { computeWrite, isDirty, readDisk, writeDisk, type Reader } from './writer';
+import type { ChangeRecord } from './journal';
+import { prefill } from './handoff';
 
 export const SCHEME = 'css-tuner';
-const CONTEXT = 40;
 
-const verifyMs = () => vscode.workspace.getConfiguration('cssTuner').get<number>('verifyTimeoutMs', 8000);
+/** 工作区里的文件变了之后隔多久核对：热更新一般几百毫秒到一两秒，大一些的 Next 项目里服务端组件要好几秒 */
+const AFTER_CHANGE = [300, 1000, 2500, 6000];
+/** 页面重新连上（多半是改的文件让开发服务器整页刷新了）、样式表变了之后 */
+const AFTER_HELLO = [500, 2500];
+/** 没看到文件变化时也隔一会儿核对一次：Agent 改的文件可能在工作区外，或者被监听漏掉 */
+const POLL_MS = 4000;
+/** 构建产物和依赖的变化不算 Agent 改了代码 */
+const IGNORED = /[\\/](node_modules|\.git|dist|\.next|\.nuxt|\.svelte-kit|\.output|\.turbo|\.cache|coverage)[\\/]/;
 
 const hash = (s: string) => createHash('sha1').update(s).digest('hex');
 
-/**
- * 写回前的文件内容，存在扩展的工作区存储里：既是“对比”视图的左侧，也是字节级还原的依据。
- * 同时提供 css-tuner: 虚拟文档（对比视图里“应用后会变成这样”的一侧）。
- */
+function readDisk(file: string): string | null {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+const shortValues = (v: Record<string, string>) =>
+  Object.entries(v)
+    .map(([k, x]) => `${k}: ${x}`)
+    .join('; ');
+
+/** 第一次交给 Agent 前的文件内容，存在扩展的工作区存储里，是「对比」视图的左侧 */
 export class SnapshotStore implements vscode.TextDocumentContentProvider {
   private readonly dir: vscode.Uri;
-  private readonly virtual = new Map<string, string>();
-  private readonly changed = new vscode.EventEmitter<vscode.Uri>();
-  readonly onDidChange = this.changed.event;
 
   constructor(ctx: vscode.ExtensionContext) {
     this.dir = vscode.Uri.joinPath(ctx.storageUri ?? ctx.globalStorageUri, 'snapshots');
@@ -60,100 +72,32 @@ export class SnapshotStore implements vscode.TextDocumentContentProvider {
     }
   }
 
-  uri(kind: 'before' | 'proposed', id: string, file: string, text?: string): vscode.Uri {
-    const uri = vscode.Uri.from({ scheme: SCHEME, path: `/${kind}/${id}/${basename(file)}` });
-    if (text !== undefined) {
-      this.virtual.set(uri.toString(), text);
-      this.changed.fire(uri);
-    }
-    return uri;
+  uri(id: string, file: string): vscode.Uri {
+    return vscode.Uri.from({ scheme: SCHEME, path: `/before/${id}/${basename(file)}` });
   }
 
   async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const v = this.virtual.get(uri.toString());
-    if (v !== undefined) return v;
-    const [, kind, id] = uri.path.split('/');
-    if (kind === 'before') return (await this.load(id)) ?? t('apply.snapshotGone');
-    return '';
-  }
-
-  dispose() {
-    this.changed.dispose();
+    const [, , id] = uri.path.split('/');
+    return (await this.load(id)) ?? t('apply.snapshotGone');
   }
 }
 
-/** 写回后的编辑在新文件里的位置和前后文，文件被别人改过时据此重新定位 */
-function patchEdits(before: string, after: string, edits: TextEdit[]): PatchEdit[] {
-  let delta = 0;
-  return [...edits]
-    .sort((a, b) => a.start - b.start)
-    .map((e) => {
-      const offset = e.start + delta;
-      delta += e.text.length - (e.end - e.start);
-      return {
-        offset,
-        oldText: before.slice(e.start, e.end),
-        newText: e.text,
-        before: after.slice(Math.max(0, offset - CONTEXT), offset),
-        after: after.slice(offset + e.text.length, offset + e.text.length + CONTEXT),
-      };
-    });
-}
-
-/** 按前后文在改过的文件里找回写入的文本；找不到或不唯一就放弃（宁可报冲突也不改错地方） */
-function relocate(cur: string, edits: PatchEdit[]): TextEdit[] | null {
-  const out: TextEdit[] = [];
-  for (const e of edits) {
-    let at = -1;
-    for (const k of [CONTEXT, 16, 6, 0]) {
-      const pre = k ? e.before.slice(-k) : '';
-      const post = k ? e.after.slice(0, k) : '';
-      const needle = pre + e.newText + post;
-      if (!needle) break;
-      const first = cur.indexOf(needle);
-      if (first < 0) continue;
-      if (cur.indexOf(needle, first + 1) >= 0) break;
-      at = first + pre.length;
-      break;
-    }
-    if (at < 0) return null;
-    out.push({ start: at, end: at + e.newText.length, text: e.oldText });
-  }
-  return overlapping(out) ? null : out;
-}
-
-/** 两段文本之间的最小替换（不拆开 \r\n） */
-function minimalEdit(cur: string, target: string): TextEdit {
-  const n = Math.min(cur.length, target.length);
-  let p = 0;
-  while (p < n && cur.charCodeAt(p) === target.charCodeAt(p)) p++;
-  if (p > 0 && cur[p - 1] === '\r') p--;
-  let s = 0;
-  while (s < n - p && cur.charCodeAt(cur.length - 1 - s) === target.charCodeAt(target.length - 1 - s)) s++;
-  if (s > 0 && cur[cur.length - s] === '\n' && cur[cur.length - s - 1] === '\r') s--;
-  return { start: p, end: cur.length - s, text: target.slice(p, target.length - s) };
-}
-
-const shortValues = (v: Record<string, string>) =>
-  Object.entries(v)
-    .map(([k, x]) => `${k}: ${x}`)
-    .join('; ');
-
-export interface ApplyReport {
-  applied: number;
-  failed: number;
-  unverified: number;
-  /** 从点击到页面校验通过的耗时 */
-  ms: number;
-  writeMs: number;
-  /** 每条改动在页面上等到变化、等到数值一致各用了多久 */
-  verify?: Array<{ changedMs: number; waitedMs: number } | null>;
-  writtenAt?: number;
-}
-
-export class Applier {
-  /** 每个文件最近一次由扩展写入后的哈希，还原时据此判断文件有没有被外部改过 */
-  private lastWritten = new Map<string, string>();
+/**
+ * 应用和还原都交给 Agent：把改动整理成提示词预填进新的 Agent 对话，由用户按回车发送。
+ * 交出去的改动预览留在页面上，Agent 改了文件、页面热更新后读预览底下源码给的值来核对，对上了才撤预览
+ */
+export class Applier implements vscode.Disposable {
+  private watcher: vscode.FileSystemWatcher | null = null;
+  private poll: ReturnType<typeof setInterval> | null = null;
+  /** 文件变化、页面变化各自排的几次核对，再来一次就重排 */
+  private readonly timers = new Map<'file' | 'page', ReturnType<typeof setTimeout>[]>();
+  /** 最近一次看到工作区里的文件变化 */
+  private changedAt = 0;
+  /** 变过、还没让页面重新加载的 CSS 文件（没有热更新的页面用） */
+  private readonly css = new Set<string>();
+  private running: Promise<void> | null = null;
+  /** 核对途中又要核对一轮：记下这一轮要不要切到别的档 */
+  private queued: boolean | null = null;
 
   constructor(
     private readonly c: Controller,
@@ -161,200 +105,204 @@ export class Applier {
   ) {}
 
   /**
-   * 应用：同一批改动在内存里依次计算（后一条看到前一条改完的内容），每个文件只写一次盘、触发一次热更新；
-   * 写盘前先让页面开始等变化，再逐条核对页面上的值是否和预览时一致。
-   * 直接写磁盘而不是“编辑 + 保存”：保存会触发保存时格式化，还原就做不到字节级一致。
+   * 应用：不给 ids 是全部未应用的；给了 ids 时还在等 Agent 改的再发一次（上一次没发出去、或者没改对）。
+   * dry 只整理提示词、不碰 Agent 对话和剪贴板（自测用）
    */
-  async apply(ids?: string[]): Promise<ApplyReport> {
+  async apply(ids?: string[], opts: { dry?: boolean } = {}): Promise<string | null> {
     const c = this.c;
-    const t0 = Date.now();
-    const recs = (ids ? ids.map((id) => c.journal.get(id)).filter((r): r is ChangeRecord => !!r) : c.journal.pending())
-      .filter((r) => (r.status === 'pending' || r.status === 'failed') && r.write.kind !== 'agent')
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .sort(applyFirst);
-    const report: ApplyReport = { applied: 0, failed: 0, unverified: 0, ms: 0, writeMs: 0 };
-    if (!recs.length) return report;
-    c.state.busy = true;
-    c.push();
-    try {
-      const originals = new Map<string, string>();
-      const texts = new Map<string, string>();
-      const read: Reader = (f) => texts.get(f) ?? readDisk(f);
-      const written: Array<{ rec: ChangeRecord; patch: Omit<AppliedPatch, 'hashAfter' | 'edits'>; edits: TextEdit[]; before: string; after: string }> = [];
+    const recs = (ids ? ids.map((id) => c.journal.get(id)) : c.journal.pending())
+      .filter((r): r is ChangeRecord => !!r && (r.status === 'pending' || r.status === 'handoff'))
+      .sort((a, b) => a.createdAt - b.createdAt);
+    if (!recs.length) {
+      c.notify('info', t('ext.apply.none'));
+      return null;
+    }
+    const prompt = c.handoffPrompt(recs, 'apply');
+    const how = opts.dry ? null : await prefill(prompt);
+    const sentAt = Date.now();
+    for (const rec of recs) {
+      const snapshot = rec.snapshot ?? (await this.snapshot(rec));
+      c.journal.update(rec.id, { status: 'handoff', sentAt, note: undefined, ...(snapshot ? { snapshot } : {}) });
+    }
+    c.log(t('apply.sentLog', { n: recs.length }));
+    if (how) c.notify('info', t(how === 'clipboard' ? 'ext.apply.clipboard' : 'ext.apply.prefilled', { n: recs.length }));
+    this.track();
+    return prompt;
+  }
 
-      for (const rec of recs) {
-        const r = await computeWrite(rec, c.tailwind, c.remBase, read);
-        if (!r.ok) {
-          c.journal.update(rec.id, { status: 'failed', note: r.reason });
-          report.failed++;
-          continue;
-        }
-        if (isDirty(r.file)) {
-          c.journal.update(rec.id, { status: 'failed', note: t('apply.unsaved', { file: basename(r.file) }) });
-          report.failed++;
-          continue;
-        }
-        const before = read(r.file);
-        if (before === null) {
-          c.journal.update(rec.id, { status: 'failed', note: t('engine.readFailed', { file: r.file }) });
-          report.failed++;
-          continue;
-        }
-        if (!originals.has(r.file)) originals.set(r.file, before);
-        const after = applyEdits(before, r.edits);
-        texts.set(r.file, after);
-        const w = rec.write;
-        written.push({
-          rec,
-          before,
-          after,
-          edits: r.edits,
-          patch: {
-            file: r.file,
-            hashBefore: hash(before),
-            summary: r.summary,
-            classes: r.classes && w.kind === 'tailwind' ? { ...r.classes, line: w.line, column: w.column, ...(w.literal ? { literal: true } : {}) } : undefined,
-            appliedAt: Date.now(),
-          },
-        });
-      }
-      if (!written.length) return report;
+  /** 还原：交给 Agent 把代码改回原样，页面上核对上原值后标成已还原 */
+  async revert(id: string, opts: { dry?: boolean } = {}): Promise<string | null> {
+    const c = this.c;
+    const rec = c.journal.get(id);
+    if (!rec || (rec.status !== 'applied' && rec.status !== 'reverting')) return null;
+    const prompt = c.handoffPrompt([rec], 'revert');
+    const how = opts.dry ? null : await prefill(prompt);
+    c.journal.update(id, { status: 'reverting', sentAt: Date.now(), note: undefined });
+    if (how) c.notify('info', t(how === 'clipboard' ? 'ext.revert.clipboard' : 'ext.revert.prefilled'));
+    this.track();
+    return prompt;
+  }
 
-      // 先让页面开始等热更新，再写盘；只改别的档的改动等写完切到那一档再核对
-      const shown = written.some(({ rec }) => rec.band) ? await c.bandNow() : null;
-      const later = new Map<ViewportBand, number[]>();
-      const checks = written.map(({ rec }, i) => {
-        if (!rec.band || rec.band.name === shown) return this.verify(rec, rec.expected);
-        later.set(rec.band.name, [...(later.get(rec.band.name) ?? []), i]);
-        return Promise.resolve(null);
-      });
-      const changed: string[] = [];
-      for (const [file, text] of texts) {
-        if (text === originals.get(file)) continue;
-        writeDisk(file, text);
-        this.lastWritten.set(file, hash(text));
-        changed.push(file);
-      }
-      report.writeMs = Date.now() - t0;
-      await this.reloadSheets(changed);
-      report.writtenAt = Date.now();
-      for (const { rec, before, after, edits, patch } of written) {
-        await this.snapshots.save(rec.id, before);
-        c.journal.update(rec.id, { patch: { ...patch, hashAfter: hash(after), edits: patchEdits(before, after, edits) } });
-      }
+  /** 对比：第一次交给 Agent 之前的文件 ↔ 现在 */
+  async diff(id: string) {
+    const c = this.c;
+    const snap = c.journal.get(id)?.snapshot;
+    if (!snap) {
+      c.notify('info', t('diff.none'));
+      return;
+    }
+    const now = readDisk(snap.file);
+    if (now !== null && hash(now) === snap.hash) {
+      c.notify('info', t('diff.unchanged', { file: basename(snap.file) }));
+      return;
+    }
+    const title = t('diff.beforeNow', { file: basename(snap.file) });
+    await vscode.commands.executeCommand('vscode.diff', this.snapshots.uri(id, snap.file), vscode.Uri.file(snap.file), title, { preview: true });
+  }
 
-      const results = await Promise.all(checks);
-      const batch = new Set(written.map(({ rec }) => rec.id));
-      for (const [band, idx] of later) {
-        await c.atBand(band, batch, async () => {
-          for (const i of idx) results[i] = await this.verify(written[i].rec, written[i].rec.expected);
-        });
-      }
-      report.verify = results.map((v) => (v && v !== 'skip' ? { changedMs: v.changedMs ?? -1, waitedMs: v.waitedMs } : null));
-      written.forEach(({ rec, patch }, i) => {
-        const v = results[i];
-        if (v === 'skip') {
-          c.journal.update(rec.id, { status: 'applied', note: t('apply.notOnPage', { summary: patch.summary }) });
-          report.applied++;
-        } else if (v && v.ok) {
-          c.journal.update(rec.id, { status: 'applied', note: patch.summary });
-          report.applied++;
-        } else {
-          const actual = v ? shortValues(v.actual) : '';
-          c.journal.update(rec.id, {
-            status: 'unverified',
-            // 核对请求没等到回复：页面在核对途中断开了，多半是写的文件让开发服务器整页刷新
-            note: !v
-              ? t('apply.unverifiedReload', { summary: patch.summary })
-              : actual
-                ? t('apply.unverifiedStill', { summary: patch.summary, actual })
-                : t('apply.unverifiedNoChange', { summary: patch.summary }),
-          });
-          report.unverified++;
-        }
-      });
-      report.ms = Date.now() - t0;
-      c.log(t('apply.log', { n: written.length, writeMs: report.writeMs, ms: report.ms }));
-      const late = written.filter((_, i) => results[i] !== 'skip' && !(results[i] as { ok?: boolean } | null)?.ok);
-      if (late.length) void this.verifyLate(late.map(({ rec }) => rec.id));
-      return report;
-    } finally {
-      c.state.busy = false;
-      c.push();
-      await c.refreshSelection();
+  /** 存下改动所在文件现在的样子；改动没有落在某个文件上（找不到源码位置）时不存 */
+  private async snapshot(rec: ChangeRecord): Promise<ChangeRecord['snapshot']> {
+    const file = 'file' in rec.write ? rec.write.file : rec.view.file;
+    const text = file ? readDisk(file) : null;
+    if (!file || text === null) return undefined;
+    await this.snapshots.save(rec.id, text);
+    return { file, hash: hash(text) };
+  }
+
+  /** 有在等 Agent 的改动时盯着工作区里的文件变化、定时核对，都等完了就停 */
+  track() {
+    const waiting = this.c.journal.waiting().length > 0;
+    if (waiting && !this.watcher) {
+      this.watcher = vscode.workspace.createFileSystemWatcher('**/*');
+      const on = (uri: vscode.Uri) => this.changed(uri);
+      this.watcher.onDidChange(on);
+      this.watcher.onDidCreate(on);
+      this.watcher.onDidDelete(on);
+      this.poll = setInterval(() => void this.probe(false), POLL_MS);
+    } else if (!waiting && this.watcher) {
+      this.stop();
     }
   }
 
-  /**
-   * 热更新比校验时限还慢（大一些的 Next 项目里服务端组件要好几秒）：后台再等一轮，
-   * 等到了就改成已生效；这期间被还原或重新应用过的不动
-   */
-  private async verifyLate(ids: string[]) {
-    const c = this.c;
-    const deadline = Date.now() + verifyMs() * 3;
-    const left = () => Math.max(0, deadline - Date.now());
-    await Promise.all(
-      ids.map(async (id) => {
-        const attempt = async () => {
-          for (;;) {
-            // 写的文件让开发服务器整页刷新了（如 Vite 里被普通模块引入的多语言 JSON、Next 的 webpack 模式里的 CSS Module）：
-            // 等页面重新连上再核对，核对途中又断开就再等一轮
-            if (c.session && !c.session.connected) await c.session.waitConnected(left());
-            const rec = c.journal.get(id);
-            if (!rec || rec.status !== 'unverified') return null;
-            const v = await this.verify(rec, rec.expected, Math.min(verifyMs() * 2, Math.max(1000, left())));
-            if (v === null && left()) {
-              await new Promise((r) => setTimeout(r, Math.min(200, left())));
-              continue;
-            }
-            if (v === 'skip' && c.session && !c.session.connected && left()) continue;
-            return { v, hashAfter: rec.patch?.hashAfter };
-          }
-        };
-        const res = await attempt();
-        if (!res) return;
-        const { v, hashAfter } = res;
-        const now = c.journal.get(id);
-        if (!now || now.status !== 'unverified' || now.patch?.hashAfter !== hashAfter || !now.patch) return;
-        if (v === 'skip') return;
-        if (!v?.ok) {
-          const actual = v ? shortValues(v.actual) : '';
-          const summary = now.patch.summary;
-          c.journal.update(id, { note: actual ? t('apply.unverifiedStill', { summary, actual }) : t('apply.unverifiedNoChange', { summary }) });
-          c.push();
-          return;
-        }
-        c.journal.update(id, { status: 'applied', note: now.patch.summary });
-        c.log(t('apply.lateVerified', { summary: now.patch.summary }));
-        c.push();
-      }),
+  /** 页面重新连上、换了页面、样式表变了（热更新）：过一会儿核对（不切档：切宽度本身也会让页面变） */
+  soon() {
+    if (this.c.journal.waiting().length) this.schedule('page', AFTER_HELLO, false);
+  }
+
+  private changed(uri: vscode.Uri) {
+    if (uri.scheme !== 'file' || IGNORED.test(uri.fsPath)) return;
+    this.changedAt = Date.now();
+    if (/\.css$/i.test(uri.fsPath)) this.css.add(uri.fsPath);
+    this.schedule('file', AFTER_CHANGE, true);
+  }
+
+  /** 按这几个时间点核对；settle：最后一次时文件已经改完一阵了，切到别的档核对、核对不了的也给个结果 */
+  private schedule(kind: 'file' | 'page', delays: number[], settle: boolean) {
+    for (const timer of this.timers.get(kind) ?? []) clearTimeout(timer);
+    this.timers.set(
+      kind,
+      delays.map((ms, i) => setTimeout(() => void this.probe(settle && i === delays.length - 1), ms)),
     );
   }
 
-  /** 页面上核对一条改动的结果；不在当前页面或没连上时跳过 */
-  private verify(rec: ChangeRecord, expected: Record<string, string> | undefined, timeoutMs = verifyMs()) {
-    const s = this.c.session;
-    if (!s?.connected || !expected || !Object.keys(expected).length || !this.c.page || !this.c.samePage(rec.pageUrl, this.c.page.url)) {
-      return Promise.resolve('skip' as const);
+  private stop() {
+    this.watcher?.dispose();
+    this.watcher = null;
+    if (this.poll) clearInterval(this.poll);
+    this.poll = null;
+    for (const list of this.timers.values()) for (const timer of list) clearTimeout(timer);
+    this.timers.clear();
+  }
+
+  /** 核对一轮在等 Agent 的改动；settled：文件改完一阵了 */
+  probe(settled: boolean): Promise<void> {
+    if (this.running) {
+      this.queued = (this.queued ?? false) || settled;
+      return this.running;
+    }
+    this.running = this.pass(settled)
+      .catch((e) => this.c.log(String(e)))
+      .finally(() => {
+        this.running = null;
+        const next = this.queued;
+        this.queued = null;
+        if (next !== null) void this.probe(next);
+      });
+    return this.running;
+  }
+
+  private async pass(settled: boolean) {
+    const c = this.c;
+    const page = c.page;
+    if (!c.session?.connected || !page) return;
+    await this.reloadSheets();
+    const recs = c.journal.waiting().filter((r) => c.samePage(r.pageUrl, page.url));
+    if (!recs.length) return;
+    const shown = recs.some((r) => r.band) ? await c.bandNow() : null;
+    let done = 0;
+    for (const rec of recs) if ((!rec.band || rec.band.name === shown) && (await this.check(rec, settled))) done++;
+    // 只改别的档的：文件改完一阵了再临时切到那一档的宽度核对，免得 Agent 改着改着页面宽度来回跳
+    if (settled) {
+      const later = new Map<ViewportBand, ChangeRecord[]>();
+      for (const r of recs) if (r.band && r.band.name !== shown) later.set(r.band.name, [...(later.get(r.band.name) ?? []), r]);
+      for (const [band, list] of later) {
+        await c.atBand(band, async () => {
+          for (const rec of list) if (await this.check(rec, true)) done++;
+        });
+      }
+    }
+    if (done) {
+      c.log(t('apply.matchedLog', { n: done }));
+      await c.refreshSelection();
+    }
+    this.track();
+  }
+
+  /** 核对一条：对上了标成已应用 / 已还原；没对上、预览又掉了（元素被重建、样式表被换掉）就重新挂上 */
+  private async check(rec: ChangeRecord, settled: boolean): Promise<boolean> {
+    const c = this.c;
+    const back = rec.status === 'reverting';
+    const expected = back ? this.revertExpected(rec) : rec.expected;
+    const touched = this.changedAt > (rec.sentAt ?? 0);
+    const finish = (note?: string) => c.journal.update(rec.id, { status: back ? 'reverted' : 'applied', note });
+    if (!expected || !Object.keys(expected).length) {
+      // 页面上没有能比的值：文件改完一阵了就当作改好了，请用户自己看一眼
+      if (!settled || !touched) return false;
+      if (!back) await c.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
+      finish(t('apply.unchecked'));
+      return true;
     }
     const src = rec.element.source;
-    return s
-      .call(
-        'verify',
+    const r = await c.session
+      ?.call(
+        'probe',
         {
           id: rec.previewId,
           target: rec.preview,
           expected,
-          timeoutMs,
           source: src ? { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } : undefined,
         },
-        timeoutMs + 3000,
+        8000,
       )
       .catch(() => null);
+    // 核对途中被放弃、重新发过
+    if (!r || c.journal.get(rec.id)?.status !== rec.status) return false;
+    if (r.ok) {
+      finish();
+      return true;
+    }
+    if (!back && !r.attached && (r.found || rec.preview.kind === 'rule') && c.visible(rec)) {
+      // 同一处后来又改了的也重新挂一遍，盖在这条上面
+      const above = c.journal.previewing().filter((x) => x.key === rec.key && x.createdAt > rec.createdAt);
+      for (const x of [rec, ...above.reverse()]) await c.showPreview(x);
+    }
+    const actual = shortValues(r.actual);
+    if (settled && touched && actual) c.journal.update(rec.id, { note: t('apply.still', { actual }) });
+    return false;
   }
 
   /**
-   * 还原后要核对的原值。描边样式是 none 时粗细总算成 0：同一处写回里改描边样式的那条还生效着，
+   * 还原后要核对的原值。描边样式是 none 时粗细总算成 0：同一处改描边样式的那条还生效着，
    * 还原粗细后页面上是这个样式的默认粗细，和记下的原值对不上，这几边的粗细不核对
    */
   private revertExpected(rec: ChangeRecord): Record<string, string> {
@@ -362,110 +310,22 @@ export class Applier {
     const live = new Set(
       this.c.journal
         .all()
-        .filter((r) => r.id !== rec.id && target(r) === target(rec) && (r.status === 'applied' || r.status === 'unverified'))
+        .filter((r) => r.id !== rec.id && target(r) === target(rec) && (r.status === 'applied' || r.status === 'reverting'))
         .flatMap((r) => r.props),
     );
     return Object.fromEntries(Object.entries(rec.original).filter(([p]) => !/^border-\w+-width$/.test(p) || !live.has(p.replace(/width$/, 'style'))));
   }
 
-  /** 没有热更新的页面（内置静态服务、普通文件服务）：让写过的 CSS 对应的 <link> 重新加载 */
-  private async reloadSheets(files: string[]) {
+  /** 没有热更新的页面（内置静态服务、普通文件服务）：让改过的 CSS 对应的 <link> 重新加载 */
+  private async reloadSheets() {
     const s = this.c.session;
-    const css = files.filter((f) => /\.css$/i.test(f));
-    if (!s?.connected || !css.length) return;
-    const hrefs = css.map((f) => this.c.urlForFile(f)).filter((u): u is string => !!u);
+    if (!s?.connected || !this.css.size) return;
+    const hrefs = [...this.css].map((f) => this.c.urlForFile(f)).filter((u): u is string => !!u);
+    this.css.clear();
     if (hrefs.length) await s.call('reloadSheets', { hrefs }).catch(() => 0);
   }
 
-  /**
-   * 还原一条已应用的改动：
-   * 文件自应用后没动过 → 用快照字节级恢复；
-   * 动过 → Tailwind 按类名语义回退、CSS 按前后文找回写入的文本，找不到就报冲突，不硬改。
-   */
-  async revert(id: string): Promise<'exact' | 'partial' | 'conflict' | null> {
-    const c = this.c;
-    const rec = c.journal.get(id);
-    const p = rec?.patch;
-    if (!rec || !p) return null;
-    if (isDirty(p.file)) {
-      c.notify('warn', t('revert.unsaved', { file: basename(p.file) }));
-      return null;
-    }
-    const cur = readDisk(p.file);
-    if (cur === null) {
-      c.journal.update(id, { status: 'conflict', note: t('revert.readFailed', { file: p.file }) });
-      return 'conflict';
-    }
-    c.state.busy = true;
-    c.push();
-    try {
-      let edits: TextEdit[] | null = null;
-      let exact = false;
-      let reason = '';
-      if (hash(cur) === p.hashAfter) {
-        const before = await this.snapshots.load(id);
-        if (before !== null && hash(before) === p.hashBefore) {
-          edits = [minimalEdit(cur, before)];
-          exact = true;
-        }
-      }
-      if (!edits && p.classes) {
-        const r = revertTailwind({ file: p.file, source: cur, ...p.classes });
-        if (r.ok) edits = r.edits;
-        else reason = r.reason;
-      }
-      if (!edits && !p.classes && p.edits.length) edits = relocate(cur, p.edits);
-      if (!edits) {
-        c.journal.update(id, {
-          status: 'conflict',
-          note: t('revert.conflict', { reason: reason ? t('common.paren', { text: reason }) : '' }),
-        });
-        return 'conflict';
-      }
-      const elsewhere = rec.band && rec.band.name !== (await c.bandNow()) ? rec.band.name : null;
-      const check = elsewhere ? null : this.verify(rec, this.revertExpected(rec));
-      const known = this.lastWritten.get(p.file);
-      const external =
-        known !== undefined
-          ? hash(cur) !== known
-          : !c.journal.all().some((r) => r.id !== id && r.patch?.file === p.file && (r.status === 'applied' || r.status === 'unverified'));
-      const next = applyEdits(cur, edits);
-      if (next !== cur) {
-        writeDisk(p.file, next);
-        this.lastWritten.set(p.file, hash(next));
-        await this.reloadSheets([p.file]);
-      }
-      const v = elsewhere ? await c.atBand(elsewhere, new Set([id]), async () => this.verify(rec, this.revertExpected(rec))) : await check;
-      const kept = exact || !external ? '' : t('revert.partial');
-      const actual = v && v !== 'skip' && !v.ok ? shortValues(v.actual) : '';
-      const stale = v && v !== 'skip' && !v.ok ? (actual ? t('revert.staleStill', { actual }) : t('revert.staleNoChange')) : '';
-      c.journal.update(id, { status: 'reverted', note: t('revert.done', { summary: p.summary, kept, stale }) });
-      return exact ? 'exact' : 'partial';
-    } finally {
-      c.state.busy = false;
-      c.push();
-      await c.refreshSelection();
-    }
-  }
-
-  /** 对比：已应用的看“写回前 ↔ 现在”，未应用的看“现在 ↔ 应用后会变成” */
-  async diff(id: string) {
-    const c = this.c;
-    const rec = c.journal.get(id);
-    if (!rec) return;
-    if (rec.patch) {
-      const left = this.snapshots.uri('before', id, rec.patch.file);
-      const title = t('diff.beforeNow', { file: basename(rec.patch.file) });
-      await vscode.commands.executeCommand('vscode.diff', left, vscode.Uri.file(rec.patch.file), title, { preview: true });
-      return;
-    }
-    const r = await computeWrite(rec, c.tailwind, c.remBase);
-    if (!r.ok) {
-      c.notify('warn', t('diff.failed', { reason: r.reason }));
-      return;
-    }
-    const cur = readDisk(r.file) ?? '';
-    const right = this.snapshots.uri('proposed', id, r.file, applyEdits(cur, r.edits));
-    await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(r.file), right, t('diff.nowAfter', { file: basename(r.file), summary: r.summary }), { preview: true });
+  dispose() {
+    this.stop();
   }
 }

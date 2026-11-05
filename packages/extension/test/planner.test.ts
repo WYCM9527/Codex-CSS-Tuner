@@ -29,8 +29,6 @@ const page: PageInfo = {
 const ctx: PlanContext = {
   page,
   project: { label: (f: string) => f.replace('/repo/', ''), sheetFile: () => '/repo/src/app.css', fileFor: () => null } as unknown as ProjectResolver,
-  strategy: 'editRule',
-  varStrategy: 'editDefinition',
   scope: 'source',
   classSite: () => null,
   classLiterals: () => null,
