@@ -33,6 +33,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       await c.handle({ t: 'openPage', url: target });
     }),
     vscode.commands.registerCommand('cssTuner.togglePick', () => c.handle({ t: 'pick', on: !c.state.pickOn })),
+    vscode.commands.registerCommand('cssTuner.toggleMeasure', () => c.handle({ t: 'measure', on: !c.state.measureOn })),
     vscode.commands.registerCommand('cssTuner.applyAll', () => c.handle({ t: 'apply' })),
     vscode.commands.registerCommand('cssTuner.handoff', () => c.handle({ t: 'handoff' })),
     vscode.commands.registerCommand('cssTuner.serveStatic', async (uri?: vscode.Uri) => {

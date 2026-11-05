@@ -278,6 +278,8 @@ export type BridgeEvent =
   | { t: 'page'; page: PageInfo }
   | { t: 'select'; el: ElementSnapshot | null }
   | { t: 'pick'; on: boolean }
+  /** 标尺开关变了（页面上按 Esc 退出、选取元素把它顶掉） */
+  | { t: 'measure'; on: boolean }
   /** 在页面上双击改文字：live 是输入过程中，commit 是回车或失焦；按 Esc 时把开始编辑时的文字作为 commit 发回来 */
   | { t: 'editText'; uid: string; segment: number; value: string; phase: 'live' | 'commit' }
   /** 在页面上拖动选中元素的把手换位置：to 是放下处在兄弟组里的位置（按页面上现在看到的顺序，0 起） */
@@ -314,10 +316,20 @@ export interface SelectQuery {
   waitMs?: number;
 }
 
+/** 标尺上的间距刻度：距离正好是某一档时数字后面带上它的名字（Tailwind 是刻度数，CSS 项目是变量名） */
+export interface MeasureStep {
+  px: number;
+  label: string;
+}
+
 export interface BridgeMethods {
   ping: { p: Record<string, never>; r: 'pong' };
   pageInfo: { p: Record<string, never>; r: PageInfo };
   setPick: { p: { on: boolean }; r: boolean };
+  /** 标尺：开着时量悬停元素和选中元素之间的距离，点击改选中、Esc 退出；和选取元素互斥 */
+  setMeasure: { p: { on: boolean }; r: boolean };
+  /** 标尺和 Alt 临时测量用的间距刻度 */
+  measureSteps: { p: { steps: MeasureStep[] }; r: boolean };
   select: { p: SelectQuery; r: ElementSnapshot | null };
   /** 只定位元素、不改变选中，返回 uid（刷新后重新挂预览用） */
   resolve: { p: SelectQuery; r: string | null };
@@ -533,6 +545,8 @@ export interface PanelState {
   connection: Connection;
   page: { url: string; title: string } | null;
   pickOn: boolean;
+  /** 标尺开着 */
+  measureOn: boolean;
   scope: Scope;
   selection: SelectionView | null;
   scales: Scales | null;
@@ -552,6 +566,7 @@ export type PanelToExt =
   | { t: 'ready' }
   | { t: 'openPage'; url: string }
   | { t: 'pick'; on: boolean }
+  | { t: 'measure'; on: boolean }
   | { t: 'select'; uid: string }
   | { t: 'hover'; uid: string | null }
   | { t: 'edit'; edit: EditRequest }

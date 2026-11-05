@@ -271,6 +271,8 @@ export const en = {
   'panel.picking': 'Click on the page…',
   'panel.snap.on': 'Snap to theme values: on (hold Alt while dragging for any value)',
   'panel.snap.off': 'Snap to theme values: off',
+  'panel.measure.on': 'Ruler: on. Hover an element on the page to measure its distance from the selection; click to select it, press Esc to exit',
+  'panel.measure.off': 'Ruler: measure the distance between the hovered element and the selection (without the ruler, hold Alt while hovering on the page)',
   'panel.sameSource': 'The same code makes {n} elements like this on the page, so a change shows up on all of them.',
   'panel.scope': 'Applies to',
   'panel.scope.instance': 'This one',

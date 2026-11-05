@@ -67,6 +67,7 @@
     "commands": [
       { "command": "cssTuner.openPage", "title": "%command.openPage%", "category": "CSS Tuner" },
       { "command": "cssTuner.togglePick", "title": "%command.togglePick%", "category": "CSS Tuner" },
+      { "command": "cssTuner.toggleMeasure", "title": "%command.toggleMeasure%", "category": "CSS Tuner" },
       { "command": "cssTuner.applyAll", "title": "%command.applyAll%", "category": "CSS Tuner" },
       { "command": "cssTuner.serveStatic", "title": "%command.serveStatic%", "category": "CSS Tuner" },
       { "command": "cssTuner.handoff", "title": "%command.handoff%", "category": "CSS Tuner" },

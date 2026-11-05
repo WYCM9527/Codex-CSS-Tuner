@@ -6,6 +6,7 @@ import { fallbackValues } from './fallback';
 import { visibleBoxes } from './order';
 import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './overlay';
 import { pageInfo } from './page';
+import { disposeMeasure, initMeasure, measureOn, setMeasure, setMeasureSteps } from './measure';
 import { pickOn, setPick } from './pick';
 import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders } from './preview';
 import { snapshot } from './snapshot';
@@ -59,6 +60,14 @@ class Bridge {
     this.watch();
     this.connect();
     window.addEventListener('dblclick', this.onDblClick, true);
+    initMeasure({
+      anchor: () => (this.selected?.isConnected ? this.selected : null),
+      pick: (el) => void this.select(el),
+      exit: () => {
+        setGripHidden(false);
+        this.send({ t: 'measure', on: false });
+      },
+    });
     this.urlTimer = window.setInterval(() => {
       if (location.href !== this.lastHref) {
         this.lastHref = location.href;
@@ -78,6 +87,7 @@ class Bridge {
     window.removeEventListener('dblclick', this.onDblClick, true);
     finishEdit(false);
     setPick(false);
+    disposeMeasure();
     clearAll();
     setSelected(null);
     try {
@@ -301,7 +311,7 @@ class Bridge {
 
   /** 选中元素里面的文字双击就地编辑；文字不在选中元素自己身上时先改选文字所在的元素 */
   private onDblClick = (e: MouseEvent) => {
-    if (pickOn() || isEditingText() || !this.selected || !this.connected()) return;
+    if (pickOn() || measureOn() || isEditingText() || !this.selected || !this.connected()) return;
     const hit = textAt(e.clientX, e.clientY, this.selected);
     const el = hit?.node.parentElement;
     if (!hit || !el || isOwnNode(el) || el.isContentEditable || el.closest('input, textarea, select')) return;
@@ -324,6 +334,7 @@ class Bridge {
       return pageInfo();
     },
     setPick: ({ on }) => {
+      if (on) setMeasure(false);
       setPick(
         on,
         (el) => void this.select(el),
@@ -335,6 +346,17 @@ class Bridge {
       setGripHidden(pickOn());
       this.send({ t: 'pick', on: pickOn() });
       return pickOn();
+    },
+    setMeasure: ({ on }) => {
+      if (on) setPick(false);
+      setMeasure(on);
+      setGripHidden(measureOn());
+      this.send({ t: 'measure', on: measureOn() });
+      return measureOn();
+    },
+    measureSteps: ({ steps }) => {
+      setMeasureSteps(steps);
+      return true;
     },
     select: async (q: SelectQuery) => this.select(await find(q)),
     resolve: async (q: SelectQuery) => {

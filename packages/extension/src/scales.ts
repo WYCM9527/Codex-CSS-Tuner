@@ -1,4 +1,4 @@
-import { toPx, type CssVar, type PageInfo, type Scales, type ScaleStep } from '@css-tuner/protocol';
+import { toPx, type CssVar, type MeasureStep, type PageInfo, type Scales, type ScaleStep } from '@css-tuner/protocol';
 
 const WEIGHTS: Array<[string, string]> = [
   ['thin', '100'],
@@ -75,4 +75,18 @@ export function cssScales(page: PageInfo, rem: number): Scales {
   }
   s.size = [...s.spacing, ...s.size];
   return s;
+}
+
+/** 标尺上的刻度名来自间距刻度：同一个 px 有几个名字时用第一个 */
+export function measureSteps(scales: Scales): MeasureStep[] {
+  const seen = new Set<number>();
+  const steps: MeasureStep[] = [];
+  for (const s of scales.spacing) {
+    if (s.px == null || s.px <= 0) continue;
+    const k = Math.round(s.px * 100);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    steps.push({ px: s.px, label: s.label });
+  }
+  return steps;
 }

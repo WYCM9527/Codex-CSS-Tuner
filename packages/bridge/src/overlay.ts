@@ -26,8 +26,22 @@ const STYLE = `
 .grip.dragging { cursor: grabbing; background: #2a2a2a; }
 .line { position: fixed; pointer-events: none; background: #111; box-shadow: 0 0 0 1px #fff; border-radius: 1px; }
 .ghost { position: fixed; pointer-events: none; outline: 1.5px dashed #fff; box-shadow: 0 0 0 2.5px rgba(17, 17, 17, 0.6); background: rgba(128, 128, 128, 0.12); }
+.mline, .mcap { position: fixed; pointer-events: none; background: #111; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9); }
+.mguide { position: fixed; pointer-events: none; background: repeating-linear-gradient(to bottom, #111 0 3px, #fff 3px 6px); }
+.mguide.h { background: repeating-linear-gradient(to right, #111 0 3px, #fff 3px 6px); }
+.mlabel { position: fixed; pointer-events: none; transform: translate(-50%, -50%); font: 10.5px/14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #f5f5f5; background: #111; padding: 1px 5px; border-radius: 3px; white-space: nowrap; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.3); }
 .hidden { display: none; }
 `;
+
+/** 标尺这一帧要画的：每段距离一条量线（带两头的短横和数字），量线碰不到目标时补的虚线 */
+export interface MeasureDraw {
+  spans: Array<{ axis: 'x' | 'y'; from: number; to: number; at: number; label: string }>;
+  guides: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+}
+
+type MeasurePart = 'mline' | 'mcap' | 'mlabel' | 'mguide';
 
 /** 拖动换序要用的：页面上现在看到的顺序排好的各项外框、选中元素那项的下标，和放下时的回调 */
 export interface DragModel {
@@ -53,6 +67,9 @@ let peerBox: HTMLDivElement | null = null;
 let grip: HTMLDivElement | null = null;
 let line: HTMLDivElement | null = null;
 let ghost: HTMLDivElement | null = null;
+let measureBox: HTMLDivElement | null = null;
+let parts: Record<MeasurePart, HTMLDivElement[]> = { mline: [], mcap: [], mlabel: [], mguide: [] };
+let measureFn: (() => MeasureDraw | null) | null = null;
 
 let hoverEl: Element | null = null;
 let selEl: Element | null = null;
@@ -89,6 +106,8 @@ function ensure() {
   peerBox = div('peers', root);
   hoverLayer = makeLayer('hov-outline');
   selLayer = makeLayer('sel-outline');
+  measureBox = div('measure', root);
+  parts = { mline: [], mcap: [], mlabel: [], mguide: [] };
   tag = div('tag hidden', root);
   line = div('line hidden', root);
   ghost = div('ghost hidden', root);
@@ -235,15 +254,71 @@ function drawPeers() {
   });
 }
 
+function part(kind: MeasurePart, i: number): HTMLDivElement {
+  const pool = parts[kind];
+  while (pool.length <= i) pool.push(div(`${kind} hidden`, measureBox!));
+  return pool[i];
+}
+
+function hideParts(kind: MeasurePart, from: number) {
+  for (const d of parts[kind].slice(from)) d.classList.add('hidden');
+}
+
+function drawMeasure(m: MeasureDraw | null) {
+  const spans = m?.spans ?? [];
+  const guides = m?.guides ?? [];
+  spans.forEach((s, i) => {
+    const len = s.to - s.from;
+    const [l, c1, c2, label] = [part('mline', i), part('mcap', i * 2), part('mcap', i * 2 + 1), part('mlabel', i)];
+    // 量线比数字短时数字挪到旁边（横线下面、竖线右边），不挡住量线和两头
+    if (s.axis === 'x') {
+      const fits = len >= s.label.length * 6.4 + 18;
+      place(l, s.from, s.at - 0.5, len, 1);
+      place(c1, s.from - 0.5, s.at - 4, 1, 8);
+      place(c2, s.to - 0.5, s.at - 4, 1, 8);
+      label.style.left = `${s.from + len / 2}px`;
+      label.style.top = `${fits ? s.at : s.at + 7}px`;
+      label.style.transform = fits ? '' : 'translate(-50%, 0)';
+    } else {
+      const fits = len >= 26;
+      place(l, s.at - 0.5, s.from, 1, len);
+      place(c1, s.at - 4, s.from - 0.5, 8, 1);
+      place(c2, s.at - 4, s.to - 0.5, 8, 1);
+      label.style.left = `${fits ? s.at : s.at + 7}px`;
+      label.style.top = `${s.from + len / 2}px`;
+      label.style.transform = fits ? '' : 'translate(0, -50%)';
+    }
+    label.textContent = s.label;
+    label.classList.remove('hidden');
+  });
+  hideParts('mline', spans.length);
+  hideParts('mcap', spans.length * 2);
+  hideParts('mlabel', spans.length);
+  guides.forEach((g, i) => {
+    const d = part('mguide', i);
+    const across = g.y1 === g.y2;
+    d.classList.toggle('h', across);
+    if (across) place(d, Math.min(g.x1, g.x2), g.y1 - 0.5, Math.abs(g.x2 - g.x1), 1);
+    else place(d, g.x1 - 0.5, Math.min(g.y1, g.y2), 1, Math.abs(g.y2 - g.y1));
+  });
+  hideParts('mguide', guides.length);
+}
+
 function frame() {
   raf = 0;
   ensure();
   if (!root) return;
-  if (hoverEl && hoverEl.isConnected && hoverEl !== selEl) drawLayer(hoverLayer!, hoverEl, true);
+  // 量距离时两个元素都只描边，不画外边距、内边距的色块，也收起元素标签，免得和量线、数字叠在一起
+  const m = measureFn?.() ?? null;
+  if (hoverEl && hoverEl.isConnected && hoverEl !== selEl) drawLayer(hoverLayer!, hoverEl, !m);
   else hideLayer(hoverLayer);
+  drawMeasure(m);
   if (selEl && selEl.isConnected) {
-    drawLayer(selLayer!, selEl, !hoverEl || hoverEl === selEl);
-    drawTag(selEl, selNote, !!model && !gripOff);
+    drawLayer(selLayer!, selEl, !m && (!hoverEl || hoverEl === selEl));
+    if (m) {
+      tag?.classList.add('hidden');
+      grip?.classList.add('hidden');
+    } else drawTag(selEl, selNote, !!model && !gripOff);
   } else {
     hideLayer(selLayer);
     grip?.classList.add('hidden');
@@ -251,7 +326,7 @@ function frame() {
     else tag?.classList.add('hidden');
   }
   drawPeers();
-  if ((hoverEl && hoverEl.isConnected) || (selEl && selEl.isConnected)) raf = requestAnimationFrame(frame);
+  if ((hoverEl && hoverEl.isConnected) || (selEl && selEl.isConnected) || m) raf = requestAnimationFrame(frame);
 }
 
 // 页面不出帧（窗口被遮住、后台截图）时 rAF 不触发，用定时器补画一帧
@@ -295,6 +370,12 @@ export function setGripHidden(off: boolean) {
 }
 
 export function redraw() {
+  kick();
+}
+
+/** 标尺：每帧按 fn 给出的量线画（元素滚动、动画时跟着走），null 收起 */
+export function setMeasureDraw(fn: (() => MeasureDraw | null) | null) {
+  measureFn = fn;
   kick();
 }
 

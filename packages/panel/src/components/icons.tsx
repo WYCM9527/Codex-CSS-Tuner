@@ -145,6 +145,12 @@ export const Icon = {
       <path d="M1.5 8h13M8 1.5c2 2 2 11 0 13M8 1.5c-2 2-2 11 0 13" />
     </svg>
   ),
+  ruler: () => (
+    <svg {...S}>
+      <rect x="1.5" y="5" width="13" height="6" rx="1" />
+      <path d="M4 5v2M6.5 5v3M9 5v2M11.5 5v3" />
+    </svg>
+  ),
   download: () => (
     <svg {...S}>
       <path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 13.5h11" />

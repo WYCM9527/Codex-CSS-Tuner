@@ -71,7 +71,7 @@ import {
 import { ProjectResolver } from './project';
 import { buildPrompt } from './prompt';
 import { samePage } from './records';
-import { cssScales } from './scales';
+import { cssScales, measureSteps } from './scales';
 import { commandCheck, liveCheck, type CheckItem } from './selfcheck';
 import { BridgeServer } from './server';
 import { PageSession } from './session';
@@ -187,6 +187,7 @@ export class Controller implements vscode.Disposable {
       connection: 'idle',
       page: null,
       pickOn: false,
+      measureOn: false,
       scope: cfg.get<Scope>('tailwind.scope', 'instance'),
       selection: null,
       scales: null,
@@ -274,6 +275,9 @@ export class Controller implements vscode.Disposable {
           return;
         case 'openPage':
           await this.openPage(msg.url);
+          return;
+        case 'measure':
+          await this.setMeasure(msg.on);
           return;
         case 'pick':
           await this.setPick(msg.on);
@@ -515,7 +519,7 @@ export class Controller implements vscode.Disposable {
         this.session.onEvent((ev) => void this.onBridgeEvent(ev)),
         this.session.onState((s) => {
           this.state.connection = s === 'idle' ? 'idle' : s;
-          if (s === 'lost') this.state.pickOn = false;
+          if (s === 'lost') this.state.pickOn = this.state.measureOn = false;
           this.push();
         }),
       );
@@ -573,6 +577,20 @@ export class Controller implements vscode.Disposable {
     }
     await this.session.call('setPick', { on });
     this.state.pickOn = on;
+    if (on) this.state.measureOn = false;
+    this.push();
+    if (on) await this.browser.focus(this.session.browserId);
+  }
+
+  /** 标尺：和选取元素互斥，页面上 Esc 退出 */
+  async setMeasure(on: boolean) {
+    if (!this.session?.connected) {
+      if (on) this.notify('warn', t('ext.pick.noPage'));
+      return;
+    }
+    await this.session.call('setMeasure', { on });
+    this.state.measureOn = on;
+    if (on) this.state.pickOn = false;
     this.push();
     if (on) await this.browser.focus(this.session.browserId);
   }
@@ -594,6 +612,7 @@ export class Controller implements vscode.Disposable {
         this.assets.forget();
         await this.setPage(ev.page);
         this.state.pickOn = false;
+        this.state.measureOn = false;
         this.push();
         await this.onHello(this.helloCount > 1);
         return;
@@ -603,6 +622,10 @@ export class Controller implements vscode.Disposable {
         return;
       case 'pick':
         this.state.pickOn = ev.on;
+        this.push();
+        return;
+      case 'measure':
+        this.state.measureOn = ev.on;
         this.push();
         return;
       case 'select':
@@ -634,6 +657,7 @@ export class Controller implements vscode.Disposable {
     // 样式表变了（懒加载的 CSS、热更新），写回目标要按新的样式表和设计系统重新判断
     if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
     this.push();
+    void this.session?.call('measureSteps', { steps: measureSteps(scales) }).catch(() => undefined);
   }
 
   /** 设计系统还没加载好（或加载失败）时按项目里装的版本号 */

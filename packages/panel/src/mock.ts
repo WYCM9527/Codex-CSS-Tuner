@@ -329,6 +329,7 @@ export function createMockHost(): Host {
     connection: 'connected',
     page: { url: 'http://localhost:5173/', title: 'fixture · tw-react' },
     pickOn: false,
+    measureOn: false,
     scope: 'instance',
     selection: null,
     scales: mockScales(),
@@ -550,8 +551,13 @@ export function createMockHost(): Host {
           emit();
         }, 500);
         return;
+      case 'measure':
+        state.measureOn = m.on;
+        if (m.on) state.pickOn = false;
+        break;
       case 'pick':
         state.pickOn = m.on;
+        if (m.on) state.measureOn = false;
         if (m.on)
           setTimeout(() => {
             state.pickOn = false;

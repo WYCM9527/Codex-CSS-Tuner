@@ -273,6 +273,8 @@ export const zhCN: Record<keyof typeof en, string> = {
   'panel.picking': '在页面上点选…',
   'panel.snap.on': '对齐主题里的值：开（拖动时按住 Alt 可调任意值）',
   'panel.snap.off': '对齐主题里的值：关',
+  'panel.measure.on': '标尺：开。在页面上悬停元素，量它和选中元素之间的距离；点一下改选中它，按 Esc 退出',
+  'panel.measure.off': '标尺：量悬停元素和选中元素之间的距离（不开标尺时，选中元素后在页面上按住 Alt 悬停也能量）',
   'panel.sameSource': '页面上有 {n} 个这样的元素出自同一段代码，改了会一起变。',
   'panel.scope': '改动范围',
   'panel.scope.instance': '只改这个',

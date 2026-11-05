@@ -134,6 +134,55 @@ defineStep('badToken', async (c) => {
 
 defineStep('exec', async (c, s) => c.browser.exec(c.session!.browserId, String(s.script)));
 
+/**
+ * 标尺：on 开关标尺；hover 对这个选择器的元素合成一次指针移动（alt 为真时带着 Alt），读出画出来的数字；
+ * click 再在它上面点一下（等选中换过来）；key 在页面上按一个键（Escape 退出标尺，Alt 抬起 Alt）
+ */
+defineStep('measure', async (c, s) => {
+  const id = c.session!.browserId;
+  if (s.on !== undefined) await c.setMeasure(!!s.on);
+  const fire = (type: 'pointermove' | 'click') =>
+    c.browser.exec<boolean>(
+      id,
+      `(() => {
+        const el = document.querySelector(${JSON.stringify(String(s.hover))});
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const init = { bubbles: true, composed: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, altKey: ${!!s.alt} };
+        el.dispatchEvent(${type === 'click' ? "new MouseEvent('click', init)" : "new PointerEvent('pointermove', init)"});
+        return true;
+      })()`,
+    );
+  const drawn = () =>
+    c.browser.exec<{ labels: string[]; guides: number }>(
+      id,
+      `new Promise((done) => setTimeout(() => {
+        const root = document.querySelector('css-tuner-overlay')?.shadowRoot;
+        const labels = [...(root?.querySelectorAll('.mlabel:not(.hidden)') ?? [])].map((l) => l.textContent);
+        done({ labels, guides: root?.querySelectorAll('.mguide:not(.hidden)').length ?? 0 });
+      }, 200))`,
+    );
+  const out: Record<string, unknown> = {};
+  if (s.hover) {
+    out.found = await fire('pointermove');
+    Object.assign(out, await drawn());
+  }
+  if (s.click) {
+    const before = c.state.selection?.el.uid;
+    await fire('click');
+    for (let i = 0; i < 30 && c.state.selection?.el.uid === before; i++) await new Promise((r) => setTimeout(r, 100));
+    out.selected = c.state.selection?.el.label ?? null;
+  }
+  if (s.key) {
+    await c.browser.exec(id, `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(s.key === 'Alt' ? 'keyup' : 'keydown')}, { key: ${JSON.stringify(String(s.key))}, bubbles: true, cancelable: true }))`);
+    await new Promise((r) => setTimeout(r, 300));
+    Object.assign(out, { after: await drawn() });
+  }
+  out.measureOn = c.state.measureOn;
+  out.pickOn = c.state.pickOn;
+  return out;
+});
+
 /** 展开「图片和视频」取完整清单（open: false 收起） */
 defineStep('assets', async (c, s) => {
   await c.handle({ t: 'assetsOpen', open: s.open !== false });

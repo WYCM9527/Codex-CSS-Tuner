@@ -2,6 +2,7 @@
   "view.panel": "Tuner",
   "command.openPage": "Open Page",
   "command.togglePick": "Pick Element",
+  "command.toggleMeasure": "Ruler: Measure Distances",
   "command.applyAll": "Apply All Changes",
   "command.serveStatic": "Open HTML File with Built-in Server",
   "command.handoff": "Hand Remaining Changes to Agent",

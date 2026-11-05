@@ -2,6 +2,7 @@
   "view.panel": "调参",
   "command.openPage": "打开页面",
   "command.togglePick": "选取元素",
+  "command.toggleMeasure": "标尺：量距离",
   "command.applyAll": "应用全部改动",
   "command.serveStatic": "用内置服务打开 HTML 文件",
   "command.handoff": "把剩下的改动交给 Agent",
