@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0
+
+- Gradients for fill and stroke: the color popover switches between Solid, Linear and Radial. Set the angle (type it, or rotate by 90°), click the gradient bar to add a color stop, drag stops to move them, and press Delete to remove the selected one (at least two stay). The color picker below recolors the selected stop and offers your theme colors.
+- Gradients are written back as:
+  - Tailwind 4: `bg-linear-*` / `bg-radial` with `from-*` / `via-*` / `to-*`, using your theme's color names where a stop matches.
+  - Tailwind 3: `bg-gradient-to-*` with `from-*` / `via-*` / `to-*`. Other angles use `bg-[linear-gradient(45deg,var(--tw-gradient-stops))]`.
+  - An arbitrary value when standard classes can't express the gradient.
+  - CSS: `background-image`, keeping `var()` colors. A `background` shorthand that only set the color is removed.
+- Gradient strokes keep rounded corners. When the element has an opaque fill, the stroke is drawn with two background layers and transparent border colors. Without one, the change goes to the Agent, which is asked to keep the corners and leave the inside transparent; the preview draws the color behind the element underneath, so it looks like the result. Gradient strokes are always solid.
+- Images, conic gradients and multi-layer backgrounds show up in the fill as *Background image*. Switching to a solid color or gradient replaces them.
+- Fixed: a color stop added between a color and transparent came out too dark. Gradient colors are now mixed the way the browser mixes them.
+- Fixed: after reverting a multi-layer background, `background-clip` and `background-origin` were reported as not taking effect.
+
 ## 0.8.0
 
 - Undo and redo: the change list and Apply All now sit at the top of the panel, with Undo and Redo right next to Apply All (or ⌘Z / ⇧⌘Z, Ctrl+Z / Ctrl+Shift+Z, in the panel). They step through the changes you haven't applied yet, and the change list follows along. The list is folded into one line by default.
