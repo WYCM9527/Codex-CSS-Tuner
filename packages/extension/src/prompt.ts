@@ -1,4 +1,5 @@
 import { t } from '@css-tuner/protocol';
+import type { RecordBand } from './band';
 import type { ProjectResolver } from './project';
 import type { ChangeRecord } from './records';
 
@@ -34,6 +35,13 @@ function ruleText(rec: ChangeRecord): string | null {
   const r = rec.preview.rule;
   const cond = r.conditions.filter((c) => !c.startsWith('@layer')).join(' ');
   return `${cond ? `${cond} ` : ''}${r.fullSelector}`;
+}
+
+/** 只改视口一档的改动管的宽度范围 */
+function bandLine(b: RecordBand): string {
+  if (b.min <= 0 && b.max !== null) return t('handoff.band.below', { max: b.max });
+  if (b.max === null) return t('handoff.band.above', { min: b.min });
+  return t('handoff.band.between', { min: b.min, last: b.max - 1 });
 }
 
 /** 这一条要做的改动；冲突（应用后源码被改过、无法安全还原）的条目要求改回原样 */
@@ -95,6 +103,7 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
       }),
     );
     lines.push(...changeLines(rec, tw));
+    if (rec.band) lines.push(bandLine(rec.band));
     if (rec.status === 'conflict' && rec.patch) lines.push(t('handoff.written', { summary: rec.patch.summary, file: ctx.project.label(rec.patch.file) }));
     const rule = rec.kind === 'style' ? ruleText(rec) : null;
     if (rule) lines.push(t('handoff.rule', { rule }));
@@ -109,6 +118,7 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext): string {
   if (has('text')) lines.push(t('handoff.req.text'));
   if (has('reorder')) lines.push(t('handoff.req.reorder'));
   if (has('prop')) lines.push(t('handoff.req.prop'));
+  if (recs.some((r) => r.band)) lines.push(t(tw ? 'handoff.req.bandTw' : 'handoff.req.bandCss'));
   lines.push(t('handoff.req.scope'));
   lines.push(t('handoff.req.report'));
   return lines.join('\n');

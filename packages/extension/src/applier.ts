@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import { t } from '@css-tuner/protocol';
+import { t, type ViewportBand } from '@css-tuner/protocol';
 import { applyEdits, overlapping, revertTailwind, type TextEdit } from '@css-tuner/engine';
 import type { Controller } from './controller';
 import type { AppliedPatch, ChangeRecord, PatchEdit } from './journal';
@@ -220,8 +220,14 @@ export class Applier {
       }
       if (!written.length) return report;
 
-      // 先让页面开始等热更新，再写盘
-      const checks = written.map(({ rec }) => this.verify(rec, rec.expected));
+      // 先让页面开始等热更新，再写盘；只改别的档的改动等写完切到那一档再核对
+      const shown = written.some(({ rec }) => rec.band) ? await c.bandNow() : null;
+      const later = new Map<ViewportBand, number[]>();
+      const checks = written.map(({ rec }, i) => {
+        if (!rec.band || rec.band.name === shown) return this.verify(rec, rec.expected);
+        later.set(rec.band.name, [...(later.get(rec.band.name) ?? []), i]);
+        return Promise.resolve(null);
+      });
       const changed: string[] = [];
       for (const [file, text] of texts) {
         if (text === originals.get(file)) continue;
@@ -238,6 +244,12 @@ export class Applier {
       }
 
       const results = await Promise.all(checks);
+      const batch = new Set(written.map(({ rec }) => rec.id));
+      for (const [band, idx] of later) {
+        await c.atBand(band, batch, async () => {
+          for (const i of idx) results[i] = await this.verify(written[i].rec, written[i].rec.expected);
+        });
+      }
       report.verify = results.map((v) => (v && v !== 'skip' ? { changedMs: v.changedMs ?? -1, waitedMs: v.waitedMs } : null));
       written.forEach(({ rec, patch }, i) => {
         const v = results[i];
@@ -410,7 +422,8 @@ export class Applier {
         });
         return 'conflict';
       }
-      const check = this.verify(rec, this.revertExpected(rec));
+      const elsewhere = rec.band && rec.band.name !== (await c.bandNow()) ? rec.band.name : null;
+      const check = elsewhere ? null : this.verify(rec, this.revertExpected(rec));
       const known = this.lastWritten.get(p.file);
       const external =
         known !== undefined
@@ -422,7 +435,7 @@ export class Applier {
         this.lastWritten.set(p.file, hash(next));
         await this.reloadSheets([p.file]);
       }
-      const v = await check;
+      const v = elsewhere ? await c.atBand(elsewhere, new Set([id]), async () => this.verify(rec, this.revertExpected(rec))) : await check;
       const kept = exact || !external ? '' : t('revert.partial');
       const actual = v && v !== 'skip' && !v.ok ? shortValues(v.actual) : '';
       const stale = v && v !== 'skip' && !v.ok ? (actual ? t('revert.staleStill', { actual }) : t('revert.staleNoChange')) : '';

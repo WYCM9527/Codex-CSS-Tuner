@@ -693,6 +693,12 @@ defineStep('prefillProbe', async (_c, s) => {
   return { error, newIds: after.filter((id) => !before.includes(id)) };
 });
 
+/** 只生成交给 Agent 的提示词：不打开对话，也不碰剪贴板 */
+defineStep('prompt', async (c) => {
+  const recs = c.journal.all().filter((r) => (c.constructor as typeof Controller).agentable(r));
+  return recs.length ? c.handoffPrompt(recs).split('\n') : null;
+});
+
 defineStep('handoff', async (c) => {
   const before = await composerIds();
   const r = await c.handoff();

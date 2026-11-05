@@ -5,7 +5,7 @@ export { tailwindScales } from './tailwind/scales';
 export type { ClassSite, ClassToken, Segment } from './tailwind/jsx';
 export { allClassSites, classLiteralSites, locateClassSite, locateLiteralSite } from './tailwind/sites';
 export { sfcKind, type SfcKind } from './sfc';
-export { editTailwind, hasArbitraryValue, previewCompanions, revertTailwind, splitCandidate, type TailwindEditInput, type TailwindRevertInput } from './tailwind/edit';
+export { editTailwind, hasArbitraryValue, previewCompanions, revertTailwind, splitCandidate, type TailwindBand, type TailwindEditInput, type TailwindRevertInput } from './tailwind/edit';
 export { editCssRule, indexCssRules, lookupCssRule, type CssEditInput, type CssRuleIndex, type CssRuleSpec, type FoundRule } from './css/edit';
 export { editThemeVar, type ThemeVarInput } from './css/theme';
 export { editJsxAttr, editJsxText, jsxAttrSite, jsxChildSite, type JsxAttrEditInput, type JsxTextEditInput, type TextSite } from './structure/text';

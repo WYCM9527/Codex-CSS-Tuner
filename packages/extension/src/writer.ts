@@ -54,6 +54,7 @@ export async function computeWrite(rec: ChangeRecord, tailwind: TailwindService,
       literal: w.literal,
       override: w.override,
       ...(rec.removal ? { remove: rec.removal.classes } : {}),
+      ...(w.band ? { band: { ...w.band, original: { value: rec.original?.[rec.props[0]] ?? '', token: null } } } : {}),
     });
   }
   if (w.kind === 'theme') return editThemeVar({ file: w.file, read, name: w.name, value: rec.value });

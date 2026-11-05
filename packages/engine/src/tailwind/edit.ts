@@ -25,6 +25,70 @@ export interface TailwindEditInput {
   override?: boolean;
   /** 删属性：去掉这些类（各属性当前生效的类名，含变体），value、token 不用 */
   remove?: string[];
+  /** 只改视口的一档（手机 / 平板 / 桌面），见 TailwindBand */
+  band?: TailwindBand;
+}
+
+/**
+ * 只改一档：写到这一档的断点前缀上，不按 utility 的变体；utility 是这一档里的断点（如手机档里的 sm:）时改它本身。
+ * 上面一档（keep）原来跟着这个类走时，在 keep 上补一个原来的值，免得更宽的档跟着变
+ */
+export interface TailwindBand {
+  /** 这一档的断点，'' 是不带前缀的基础类 */
+  prefix: string;
+  /** 上面一档的断点，最宽的一档为 null */
+  keep: string | null;
+  /** 落在这一档里的其他断点（从窄到宽），它们上面已有的同类类会挡住改动，不用补原值 */
+  inBand: string[];
+  /** 没有生效的类时原来的值，补原值时用 */
+  original: { value: string; token: string | null };
+}
+
+/** 只改一档时写到哪个变体：utility 的断点在这一档里就改它，不然写到这一档的断点 */
+function bandVariant(band: TailwindBand, hint: { variant: string } | null): string {
+  const own = band.prefix ? `${band.prefix}:` : '';
+  if (hint && (hint.variant === own || band.inBand.some((b) => hint.variant === `${b}:`))) return hint.variant;
+  return own;
+}
+
+/**
+ * 只改一档时更宽的那一档原来的值会不会跟着变：这次改的类之上、到 keep 为止的断点上没有管着这些属性的类，就会。
+ * skip 是这次要换掉或去掉的类
+ */
+function bandExposed(design: TwDesign, site: ClassSite, band: TailwindBand, variant: string, E: Set<string>, skip: ClassToken[]): boolean {
+  if (!band.keep) return false;
+  const from = band.inBand.findIndex((b) => variant === `${b}:`);
+  const guards = [...band.inBand.slice(from + 1), band.keep].map((b) => `${b}:`);
+  return !site.tokens.some((t) => {
+    if (skip.includes(t) || !guards.includes(splitCandidate(t.text).variant)) return false;
+    const i = design.info(t.text);
+    return !!i && isSubset(E, i.hard);
+  });
+}
+
+/**
+ * 补在 keep 上的原值：原来生效的类换成这次改的几个属性的写法（p-4 只改左右时补 md:px-4），对不上就原样补；
+ * 原来没有类时按原来的值写
+ */
+function bandPin(design: TwDesign, band: TailwindBand, root: Root, E: Set<string>, hint: { base: string } | null, important: 'prefix' | 'suffix' | null): string | null {
+  const keep = `${band.keep}:`;
+  const bases: string[] = [];
+  if (hint) {
+    const was = design.info(hint.base);
+    const own = ROOTS.filter((r) => r.root && hint.base.startsWith(`${r.root}-`)).sort((a, b) => b.root.length - a.root.length)[0];
+    if (own && root.root && was) {
+      const cand = `${root.root}-${hint.base.slice(own.root.length + 1)}`;
+      const i = design.info(cand);
+      if (i && [...E].every((p) => i.values.get(p) === was.values.get(p))) bases.push(cand);
+    }
+    bases.push(hint.base);
+  } else bases.push(...composeBases(root, band.original.value, band.original.token));
+  for (const b of bases) {
+    const cand = design.canonical(join(keep, b, important));
+    const info = design.info(cand);
+    if (info && isSubset(E, info.hard)) return cand;
+  }
+  return null;
 }
 
 type Kind = 'length' | 'color' | 'weight' | 'opacity' | 'shadow' | 'align' | 'number' | 'keyword' | 'tracks' | 'integer' | 'borderWidth';
@@ -345,7 +409,8 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   if (!root) return { ok: false, reason: msg('engine.tw.noUtility', { props: input.props.join(', ') }) };
 
   const hint = input.utility ? splitCandidate(input.utility) : null;
-  const variant = hint?.variant ?? '';
+  const band = input.band;
+  const variant = band ? bandVariant(band, hint) : (hint?.variant ?? '');
   const important = hint?.important ?? null;
 
   const sameVariant = site.tokens.filter((t) => {
@@ -360,7 +425,8 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   const covered = matching.filter((t) => isSubset(infoOf(t)!.hard, E));
 
   let primary: ClassToken | null = null;
-  if (input.utility) {
+  // 只改一档、生效的类在更窄的档上时不动它，在这一档的断点上另加
+  if (input.utility && (!band || hint!.variant === variant)) {
     primary = site.tokens.find((t) => t.text === input.utility) ?? null;
     if (!primary && !input.override) {
       return { ok: false, reason: msg('engine.tw.utilityNotLiteral', { cls: input.utility }) };
@@ -382,9 +448,18 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   }
   if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
 
+  // 只改一档：更宽的档原来跟着这个类走时，在上面一档的断点上补回原来的值
+  const replaced = [...(primary ? [primary] : []), ...covered.filter((t) => !t.seg.conditional || t.seg === primary?.seg)];
+  let pin: string | null = null;
+  if (band && bandExposed(design, site, band, variant, E, replaced)) {
+    pin = bandPin(design, band, root, E, hint, important);
+    if (!pin) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.utility ?? band.original.value }) };
+  }
+  const text = pin ? `${next} ${pin}` : next;
+
   if (!site.hasClassName) {
     if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
-    return addAttr(input, site, [next]);
+    return addAttr(input, site, pin ? [next, pin] : [next]);
   }
 
   const ops: Op[] = [];
@@ -392,7 +467,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   const removedTexts: string[] = [];
   const primarySeg = primary?.seg ?? null;
   if (primary) {
-    ops.push({ token: primary, kind: 'replace', text: next });
+    ops.push({ token: primary, kind: 'replace', text });
     removedTexts.push(primary.text);
   }
   // 其余被完全覆盖的类会和新类抢同一属性，一起去掉（只动与主类同一条件分支、或无条件的段）
@@ -408,26 +483,26 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   if (!primary) {
     const partial = matching.filter((t) => !covered.includes(t) && t.editable && !t.seg.conditional);
     const anchor = partial[partial.length - 1] ?? null;
-    if (anchor) inserted = { seg: anchor.seg, after: anchor, text: next };
+    if (anchor) inserted = { seg: anchor.seg, after: anchor, text };
     else {
-      inserted = appendPoint(site, next);
+      inserted = appendPoint(site, text);
       // Vue 的 :class 和 Svelte 的 class: 指令旁边可以再写一个静态 class，两者会合并
-      if (!inserted && site.insertAttr && !site.attrRange) return addAttr(input, site, [next]);
+      if (!inserted && site.insertAttr && !site.attrRange) return addAttr(input, site, pin ? [next, pin] : [next]);
       if (!inserted) return { ok: false, reason: msg('engine.tw.noStaticToAppend') };
     }
     inserts.push(inserted);
   }
 
-  // 新类与已有同值类合并（px-4 + py-4 → p-4），或已被更大的同值类覆盖时直接省略
+  // 新类与已有同值类合并（px-4 + py-4 → p-4），或已被更大的同值类覆盖时直接省略；只改一档时照写，补的原值才对得上
   const nextInfo = design.info(next)!;
-  const others = sameVariant.filter((t) => !ops.some((o) => o.token === t) && t.editable && !t.seg.conditional);
+  const others = band ? [] : sameVariant.filter((t) => !ops.some((o) => o.token === t) && t.editable && !t.seg.conditional);
   const redundant = others.find((t) => {
     const i = infoOf(t);
     if (!i || !isSubset(nextInfo.hard, i.hard)) return false;
     return [...nextInfo.hard].every((p) => i.values.get(p) === nextInfo.values.get(p));
   });
-  let summaryNext = next;
-  let added: string[] = [next];
+  let summaryNext = text;
+  let added: string[] = pin ? [next, pin] : [next];
   if (redundant) {
     if (primary) ops[0] = { token: primary, kind: 'remove' };
     else inserts.length = 0;
@@ -511,10 +586,11 @@ function gradientGroup(design: TwDesign, site: ClassSite, variant: string, impor
  */
 function editGradient(design: TwDesign, input: TailwindEditInput, site: ClassSite): EditResult {
   const hint = input.utility ? splitCandidate(input.utility) : null;
-  const variant = hint?.variant ?? '';
+  const band = input.band;
+  const variant = band ? bandVariant(band, hint) : (hint?.variant ?? '');
   const important = hint?.important ?? null;
   let primary: ClassToken | null = null;
-  if (input.utility) {
+  if (input.utility && (!band || hint!.variant === variant)) {
     primary = site.tokens.find((t) => t.text === input.utility) ?? null;
     if (!primary && !input.override) return { ok: false, reason: msg('engine.tw.utilityNotLiteral', { cls: input.utility }) };
     if (primary && !primary.editable) return { ok: false, reason: msg('engine.tw.utilityInTemplate', { cls: input.utility }) };
@@ -524,14 +600,20 @@ function editGradient(design: TwDesign, input: TailwindEditInput, site: ClassSit
   const stops = group.flatMap((g) => (g.role ? [{ role: g.role, text: g.token.text }] : []));
   const next = gradientClasses(design, input.value, stops, (b) => design.canonical(join(variant, b, important)));
   if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
+  // 只改一档：更宽的档原来跟着这组渐变走时，在上面一档的断点上补回原来那组（原来没有渐变就补 bg-none）
+  const pins: string[] = [];
+  if (band && bandExposed(design, site, band, variant, new Set(['background-image']), group.map((g) => g.token))) {
+    const was = hint ? gradientGroup(design, site, hint.variant, important, null).map((g) => splitCandidate(g.token.text).base) : [];
+    for (const b of was.length ? was : ['bg-none']) pins.push(design.canonical(join(`${band.keep}:`, b, important)));
+  }
   if (!site.hasClassName) {
     if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
-    return addAttr(input, site, next);
+    return addAttr(input, site, [...next, ...pins]);
   }
 
   const kept = group.map((g) => g.token).filter((t) => next.includes(t.text));
   const dropped = group.map((g) => g.token).filter((t) => !next.includes(t.text));
-  const added = next.filter((c) => !kept.some((t) => t.text === c));
+  const added = [...next.filter((c) => !kept.some((t) => t.text === c)), ...pins];
   for (const t of dropped) if (!t.editable) return { ok: false, reason: msg('engine.tw.classInDynamic', { cls: t.text }) };
   const ops: Op[] = [];
   const inserts: Insert[] = [];
@@ -554,6 +636,7 @@ function editGradient(design: TwDesign, input: TailwindEditInput, site: ClassSit
 
 /** 删属性：去掉各属性当前生效的类；类还管着别的属性（只删 p-4 的左边）就删不了 */
 function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSite, E: Set<string>): EditResult {
+  const band = input.band;
   const ops: Op[] = [];
   for (const cls of input.remove ?? []) {
     const tok = site.tokens.find((t) => t.text === cls);
@@ -562,6 +645,8 @@ function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSi
     if (tok.seg.single) return { ok: false, reason: msg('engine.tw.singleClass', { cls }) };
     const info = design.info(cls);
     if (info && !isSubset(info.hard, E)) return { ok: false, reason: msg('engine.tw.removePartial', { cls }) };
+    // 只删一档：类写在更窄的档上时，删掉它连更窄的档也变了
+    if (band && bandVariant(band, splitCandidate(cls)) !== splitCandidate(cls).variant) return { ok: false, reason: msg('engine.tw.bandRemoveLower', { cls }) };
     if (!ops.some((o) => o.token === tok)) ops.push({ token: tok, kind: 'remove' });
   }
   // 渐变的方向类去掉了，同一变体的色标类也就没用了
@@ -574,7 +659,28 @@ function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSi
   }
   if (!ops.length) return { ok: false, reason: msg('engine.tw.nothingToRemove') };
   const removed = ops.map((o) => o.token.text);
-  return { ok: true, file: input.file, edits: finish(input.source, segmentEdits(input.source, site, ops, [])), summary: `${removed.join(' ')} → ∅`, classes: { removed, added: [], attrAdded: false } };
+  // 只删一档：更宽的档原来跟着这个类走时，把它挪到上面一档的断点上
+  const added: string[] = [];
+  if (band) {
+    const gone = ops.map((o) => o.token);
+    for (const o of ops) {
+      const s = splitCandidate(o.token.text);
+      const info = design.info(o.token.text);
+      if (!info || !bandExposed(design, site, band, s.variant, info.hard, gone)) continue;
+      const pin = design.canonical(join(`${band.keep}:`, s.base, s.important));
+      if (!design.info(pin)) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: o.token.text }) };
+      o.kind = 'replace';
+      o.text = pin;
+      added.push(pin);
+    }
+  }
+  return {
+    ok: true,
+    file: input.file,
+    edits: finish(input.source, segmentEdits(input.source, site, ops, [])),
+    summary: `${removed.join(' ')} → ${added.join(' ') || '∅'}`,
+    classes: { removed, added, attrAdded: false },
+  };
 }
 
 function finish(source: string, edits: TextEdit[]): TextEdit[] {

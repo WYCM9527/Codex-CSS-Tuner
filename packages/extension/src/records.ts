@@ -1,4 +1,5 @@
 import type { ChangeKind, ChangeStatus, ChangeView, PreviewTarget, SourceLoc, Target } from '@css-tuner/protocol';
+import type { RecordBand } from './band';
 import type { WriteSpec } from './planner';
 
 /** 写回后记录下的补丁：在文件里替换掉的区域和前后文锚点，还原时据此定位 */
@@ -61,6 +62,8 @@ export interface ChangeRecord {
   removal?: { values: Record<string, string>; from?: Record<string, string>; classes?: string[] };
   /** 预览用的声明和 props → value 不一样时（没有填充色的渐变描边用两层背景预览） */
   decls?: Record<string, string>;
+  /** 视口选了一档时改的：只管这一档，页面宽度在这一档里才预览，应用后切到这一档核对 */
+  band?: RecordBand;
 }
 
 /** 存下来的记录：0.2.0 及以前的没有 kind，都是样式改动 */

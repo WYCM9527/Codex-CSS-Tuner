@@ -18,6 +18,8 @@ export type WriteSpec =
       literal?: boolean;
       /** 在调用处追加覆盖类，只改这一处实例 */
       override?: boolean;
+      /** 只改视口的一档：写到哪个断点、在哪个断点补回原值（见引擎的 TailwindBand） */
+      band?: { prefix: string; keep: string | null; inBand: string[] };
     }
   | {
       kind: 'css';

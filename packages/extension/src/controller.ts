@@ -18,6 +18,7 @@ import {
   STROKE_ORIGIN,
   t,
   toHex,
+  bandOf,
   viewportBands,
   type BridgeEvent,
   type EditRequest,
@@ -39,11 +40,13 @@ import {
   type SelectionView,
   type Target,
   type TextView,
+  type ViewportBand,
   type ViewportPreset,
 } from '@css-tuner/protocol';
 import { hasArbitraryValue, previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
 import { AssetService } from './assets';
+import { bandPlan, bandRange } from './band';
 import { BrowserAdapter } from './browser';
 import { literalCompletions } from './completions';
 import { prefill, type PrefillResult } from './handoff';
@@ -404,6 +407,17 @@ export class Controller implements vscode.Disposable {
     return (r.status === 'pending' && r.write.kind === 'agent') || r.status === 'failed' || r.status === 'conflict';
   }
 
+  handoffPrompt(recs: ChangeRecord[]): string {
+    const entry = this.page ? tailwindEntry(this.page, this.project) : null;
+    return buildPrompt([...recs].reverse(), {
+      pageUrl: this.page?.url ?? recs[0].pageUrl,
+      project: this.project,
+      tailwindEntry: entry,
+      tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
+      tailwindTokens: this.design?.major === 3 ? (this.design.files[1] ?? null) : null,
+    });
+  }
+
   /** 汇总成结构化提示词，预填进新的 Agent 对话（不发送） */
   async handoff(ids?: string[]): Promise<{ how: PrefillResult; prompt: string } | null> {
     const recs = (ids ? ids.map((id) => this.journal.get(id)) : this.journal.all()).filter((r): r is ChangeRecord => !!r && Controller.agentable(r));
@@ -411,14 +425,7 @@ export class Controller implements vscode.Disposable {
       this.notify('info', t('ext.handoff.none'));
       return null;
     }
-    const entry = this.page ? tailwindEntry(this.page, this.project) : null;
-    const prompt = buildPrompt([...recs].reverse(), {
-      pageUrl: this.page?.url ?? recs[0].pageUrl,
-      project: this.project,
-      tailwindEntry: entry,
-      tailwindVersion: entry ? this.tailwind.versionFor(entry) : null,
-      tailwindTokens: this.design?.major === 3 ? (this.design.files[1] ?? null) : null,
-    });
+    const prompt = this.handoffPrompt(recs);
     const how = await prefill(prompt);
     for (const r of recs) {
       // 撤掉预览：Agent 改完源码后页面要显示真实结果
@@ -688,19 +695,89 @@ export class Controller implements vscode.Disposable {
     this.state.viewport = { ...this.state.viewport, preset };
     this.push();
     await this.applyViewport(true);
+    await this.syncBandPreviews();
+    // 换了宽度，选中元素上的值和写回目标（只改这一档）都要重新算
+    await this.refreshSelection();
   }
 
   panelVisible(visible: boolean) {
     if (this.viewportHidden === !visible) return;
     this.viewportHidden = !visible;
-    void this.applyViewport(false).catch(() => undefined);
+    void this.applyViewport(false)
+      .then(() => this.syncBandPreviews())
+      .catch(() => undefined);
   }
 
   /** 面板关掉了：页面回到实际宽度，档位也回到实际宽度 */
   panelClosed() {
     this.viewportHidden = true;
     this.state.viewport = { ...this.state.viewport, preset: 'actual' };
-    void this.applyViewport(false).catch(() => undefined);
+    void this.applyViewport(false)
+      .then(() => this.syncBandPreviews())
+      .catch(() => undefined);
+  }
+
+  /** 应用后核对别的档的改动时临时切到的档 */
+  private verifyBand: ViewportBand | null = null;
+  /** 页面上现在挂着哪一档的预览 */
+  private shownBand: ViewportBand | null = null;
+
+  /** 新改动管哪一档：选了档位就只改那一档，实际宽度时照原来的规则写 */
+  private editBand(): ViewportBand | null {
+    const p = this.state.viewport.preset;
+    return p === 'actual' ? null : p;
+  }
+
+  private bandKey(): string {
+    const b = this.editBand();
+    return b ? `@${b}` : '';
+  }
+
+  /** 视口选了一档时，样式写回只改这一档 */
+  private banded(p: Plan): Plan {
+    const band = this.editBand();
+    return band ? bandPlan(p, band, this.state.viewport, this.state.scales?.breakpoints ?? DEFAULT_BREAKPOINTS) : p;
+  }
+
+  /** 带档位的改动只在页面宽度属于那一档时生效（预览、面板上显示的未应用值） */
+  private visible(rec: ChangeRecord): boolean {
+    return !rec.band || rec.band.name === this.shownBand;
+  }
+
+  /** 页面现在的宽度属于哪一档：模拟着宽度就是那一档，实际宽度时按页面宽度算 */
+  async bandNow(): Promise<ViewportBand | null> {
+    const s = this.session;
+    if (!s?.connected) return null;
+    const preset = this.verifyBand ?? (this.viewportHidden ? 'actual' : this.state.viewport.preset);
+    if (preset !== 'actual') return preset;
+    const w = await this.browser.exec<number>(s.browserId, 'innerWidth').catch(() => null);
+    return w === null ? null : bandOf(w, this.state.viewport.bands);
+  }
+
+  /** 页面宽度换了档：带档位的改动按新的档挂上或撤掉预览；skip 是正在应用、等着核对的 */
+  private async syncBandPreviews(skip?: Set<string>) {
+    const band = await this.bandNow();
+    if (band === this.shownBand) return;
+    this.shownBand = band;
+    for (const rec of this.journal.pending()) {
+      if (!rec.band || skip?.has(rec.id)) continue;
+      if (rec.band.name === band) await this.showPreview(rec);
+      else await this.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
+    }
+  }
+
+  /** 核对别的档的改动：临时切到那一档的宽度，做完切回来；skip 同 syncBandPreviews */
+  async atBand<T>(band: ViewportBand, skip: Set<string>, run: () => Promise<T>): Promise<T> {
+    this.verifyBand = band;
+    try {
+      await this.applyViewport(false);
+      await this.syncBandPreviews(skip);
+      return await run();
+    } finally {
+      this.verifyBand = null;
+      await this.applyViewport(false).catch(() => undefined);
+      await this.syncBandPreviews(skip).catch(() => undefined);
+    }
   }
 
   /** 按选的档模拟页面宽度（只改宽度，不模拟触摸和 UA）：比浏览器视图宽时整体缩小到放得下 */
@@ -708,8 +785,9 @@ export class Controller implements vscode.Disposable {
     const s = this.session;
     if (!s?.connected) return;
     const id = s.browserId;
-    const { preset, bands } = this.state.viewport;
-    if (preset === 'actual' || this.viewportHidden) {
+    const { bands } = this.state.viewport;
+    const preset = this.verifyBand ?? (this.viewportHidden ? 'actual' : this.state.viewport.preset);
+    if (preset === 'actual') {
       if (this.emulating === id) await this.browser.cdp(id, 'Emulation.clearDeviceMetricsOverride');
       this.emulating = null;
       return;
@@ -762,7 +840,8 @@ export class Controller implements vscode.Disposable {
   }
 
   private async restorePreviews() {
-    for (const rec of this.journal.pending()) await this.showPreview(rec);
+    this.shownBand = await this.bandNow();
+    for (const rec of this.journal.pending()) if (this.visible(rec)) await this.showPreview(rec);
   }
 
   /** 把一条未应用改动的预览挂到页面上：元素按源码位置找回来（换序按选中时的那一项，纯 HTML 按路径） */
@@ -841,7 +920,7 @@ export class Controller implements vscode.Disposable {
         tailwindMajor: this.tailwindMajor(),
       };
       for (const prop of PROP_NAMES) {
-        const p = plan(el, prop, ctx);
+        const p = this.banded(plan(el, prop, ctx));
         this.plans.set(prop, p);
         targets[prop] = p.view;
       }
@@ -1130,6 +1209,7 @@ export class Controller implements vscode.Disposable {
     const pending: Record<string, string> = {};
     const removed = new Set<string>();
     for (const rec of [...this.journal.pending()].reverse()) {
+      if (!this.visible(rec)) continue;
       for (const prop of rec.props) {
         const p = this.plans.get(prop);
         if (!p || !rec.key.startsWith(targetKey(p, el) + '|')) continue;
@@ -1145,7 +1225,7 @@ export class Controller implements vscode.Disposable {
   private pendingOn(el: ElementSnapshot): ChangeRecord[] {
     return this.journal.pending().filter((rec) => {
       const p = rec.kind === 'style' ? this.plans.get(rec.props[0]) : undefined;
-      return !!p && rec.key.startsWith(targetKey(p, el) + '|');
+      return !!p && rec.key.startsWith(targetKey(p, el) + '|') && this.visible(rec);
     });
   }
 
@@ -1243,9 +1323,10 @@ export class Controller implements vscode.Disposable {
     if (isGradient(req.value) && req.props.every((p) => /^border-(top|right|bottom|left)-color$/.test(p))) return this.doStrokeGradient(req);
     const el = sel.el;
     let undeleted = false;
+    const band = this.editBand();
     for (const [tk, g] of this.groupByTarget(el, req.props)) {
       const props = [...g.props].sort();
-      const key = `${tk}|${props.join(',')}`;
+      const key = `${tk}|${props.join(',')}${this.bandKey()}`;
       const existing = this.journal.findPending(key);
       const previewId = existing?.previewId ?? key;
       const decls = { ...(await this.companions(g.plan.write, props, req.value, req.token ?? null)), ...Object.fromEntries(props.map((p) => [p, req.value])) };
@@ -1303,6 +1384,7 @@ export class Controller implements vscode.Disposable {
           preview: g.plan.preview,
           previewId,
           write,
+          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
       const now = this.selectionOf(el);
@@ -1327,7 +1409,8 @@ export class Controller implements vscode.Disposable {
     if (!sel || !session || !this.page || !plan) return;
     const el = sel.el;
     const props = [...req.props].sort();
-    const key = `${targetKey(plan, el)}|${props.join(',')}`;
+    const band = this.editBand();
+    const key = `${targetKey(plan, el)}|${props.join(',')}${this.bandKey()}`;
     const existing = this.journal.findPending(key);
     const previewId = existing?.previewId ?? key;
     // 垫底的是元素里面看到的颜色：半透明的背景色叠在后面的底色上
@@ -1365,6 +1448,7 @@ export class Controller implements vscode.Disposable {
           preview: plan.preview,
           previewId,
           ...fields,
+          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
       const now = this.selectionOf(el);
@@ -1382,6 +1466,7 @@ export class Controller implements vscode.Disposable {
     const session = this.session;
     if (!sel || !session || !this.page) return;
     const el = sel.el;
+    const band = this.editBand();
     const declared = req.props.filter((p) => this.plans.get(p)?.view.declared);
     if (!declared.length) {
       this.notify('info', t('ext.remove.nothing'));
@@ -1407,7 +1492,7 @@ export class Controller implements vscode.Disposable {
           continue;
         }
       }
-      groups.push({ key: `${tk}|${props.join(',')}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
+      groups.push({ key: `${tk}|${props.join(',')}${this.bandKey()}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
     }
     const props = groups.flatMap((g) => g.props);
     if (!props.length) return;
@@ -1447,6 +1532,7 @@ export class Controller implements vscode.Disposable {
           preview: g.preview,
           previewId,
           ...fields,
+          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
     }
@@ -1719,7 +1805,7 @@ export class Controller implements vscode.Disposable {
     if (!rec) return;
     const copy = structuredClone(rec);
     this.journal.put(copy);
-    await this.showPreview(copy);
+    if (this.visible(copy)) await this.showPreview(copy);
   }
 
   /** 重新取一次选中元素的快照（预览变化后计算值会变） */
