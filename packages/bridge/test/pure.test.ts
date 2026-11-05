@@ -6,6 +6,7 @@ import { clip, textOf, unescapeIdent } from '../src/util';
 import { dropSlot, flowOffsets, slotLine } from '../src/drop';
 import { hasRun, sameOrder, textSig } from '../src/sig';
 import { readDecl, type Reader } from '../src/cascade';
+import { idRefs, localUrl, srgbColor } from '../src/assets';
 
 const box = (x: number, y: number, w: number, h: number) => ({ x, y, left: x, top: y, width: w, height: h, right: x + w, bottom: y + h }) as DOMRect;
 
@@ -314,6 +315,31 @@ describe('Next.js 栈帧', () => {
     expect(webpackCssSources(`${head('./src/a.module.css')}.a{}\n${head('./src/b.css')}.b{}\n${head('./src/a.module.css')}`)).toEqual(['./src/a.module.css', './src/b.css']);
     expect(webpackCssSources(`${head('../../node_modules/pkg/style.css')}.x{}`)).toEqual([]);
     expect(webpackCssSources('.a { color: red }')).toEqual([]);
+  });
+});
+
+describe('SVG 存成独立文件时的引用', () => {
+  it('计算值里指向本页的 url() 改回 #id，别的地址不动', () => {
+    const page = 'http://localhost:5173/media.html';
+    expect(localUrl('url("http://localhost:5173/media.html#g1")', page)).toBe('url("#g1")');
+    expect(localUrl('url("#g1") none', `${page}#top`)).toBe('url("#g1") none');
+    expect(localUrl('url("http://cdn.x/sprite.svg#a")', page)).toBe('url("http://cdn.x/sprite.svg#a")');
+    expect(localUrl('rgb(1, 2, 3)', page)).toBe('rgb(1, 2, 3)');
+  });
+
+  it('新写法的颜色换成 sRGB，别的值不动', () => {
+    expect(srgbColor('oklch(0.637 0.237 25.331)')).toMatch(/^#[0-9a-f]{6}$/);
+    expect(srgbColor('oklch(0.637 0.237 25.331 / 0.5)')).toMatch(/^rgba\(\d+, \d+, \d+, 0\.5\)$/);
+    expect(srgbColor('rgb(59, 91, 219)')).toBe('rgb(59, 91, 219)');
+    expect(srgbColor('url("#g1")')).toBe('url("#g1")');
+    expect(srgbColor('none')).toBe('none');
+  });
+
+  it('找出属性里引用的 id', () => {
+    expect(idRefs('href', '#icon-heart')).toEqual(['icon-heart']);
+    expect(idRefs('href', '/sprite.svg#a')).toEqual([]);
+    expect(idRefs('style', 'fill: url("#g1"); stroke: url(#g2)')).toEqual(['g1', 'g2']);
+    expect(idRefs('clip-path', 'url(#c)')).toEqual(['c']);
   });
 });
 

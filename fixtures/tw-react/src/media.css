@@ -1,0 +1,10 @@
+.tile-before {
+  position: relative;
+}
+
+.tile-before::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  background: url(/badge.png) center / contain no-repeat;
+}

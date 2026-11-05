@@ -1,4 +1,4 @@
-import { changeName, getLocale, groupLabel, setLocale, t, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { changeName, getLocale, groupLabel, setLocale, t, type AssetView, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
 /** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
@@ -245,8 +245,86 @@ const BADGE = el({
   text: { segments: [{ value: 'Beta', child: 0, props: [] }], htmlPath: null, lang: 'zh-CN' },
 });
 
+const thumb = (body: string) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${body}</svg>`)}`;
+
+/** 「图片和视频」的假清单：缩略图用内联 SVG 画 */
+const ASSETS: AssetView[] = [
+  {
+    id: 'a1',
+    kind: 'image',
+    url: 'http://localhost:5173/hero-1280.png',
+    shown: 'http://localhost:5173/hero-640.png',
+    name: 'hero-1280.png',
+    width: 1280,
+    height: 720,
+    bytes: 63705,
+    count: 2,
+    uid: 'e1',
+    file: '/proj/public/hero-1280.png',
+    thumb: thumb('<defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="#9db4ff"/><stop offset="1" stop-color="#ffd8a8"/></linearGradient></defs><rect y="14" width="64" height="36" fill="url(#g)"/><path d="M0 50l18-16 12 10 14-14 20 20z" fill="#3b5bdb"/>'),
+  },
+  {
+    id: 'a2',
+    kind: 'background',
+    url: 'http://localhost:5173/pattern.png',
+    shown: 'http://localhost:5173/pattern.png',
+    name: 'pattern.png',
+    width: 32,
+    height: 32,
+    bytes: 115,
+    count: 1,
+    uid: 'e1',
+    file: '/proj/public/pattern.png',
+    thumb: thumb('<rect width="64" height="64" fill="#e8ecff"/><path d="M0 0h32v32H0zM32 32h32v32H32z" fill="#bac8ff"/>'),
+  },
+  {
+    id: 'a3',
+    kind: 'svg',
+    url: null,
+    shown: null,
+    name: 'logo.svg',
+    width: 24,
+    height: 24,
+    bytes: 296,
+    count: 1,
+    uid: 'e2',
+    file: null,
+    thumb: thumb('<path d="M32 4l8 19h20L44 35l6 21-18-12-18 12 6-21L4 23h20z" fill="#3b5bdb"/>'),
+  },
+  {
+    id: 'a4',
+    kind: 'video',
+    url: 'http://localhost:5173/intro.mp4',
+    shown: 'http://localhost:5173/intro.mp4',
+    name: 'intro.mp4',
+    width: 1920,
+    height: 1080,
+    bytes: 4404019,
+    count: 1,
+    uid: 'e1',
+    file: '/proj/public/intro.mp4',
+    thumb: thumb('<rect y="14" width="64" height="36" fill="#1f2937"/><path d="M27 24v16l13-8z" fill="#fff"/>'),
+  },
+  {
+    id: 'a5',
+    kind: 'poster',
+    url: 'https://cdn.example.com/intro-poster.jpg',
+    shown: 'https://cdn.example.com/intro-poster.jpg',
+    name: 'intro-poster.jpg',
+    width: 1920,
+    height: 1080,
+    bytes: 186368,
+    count: 1,
+    uid: 'e1',
+    file: null,
+    thumb: thumb('<rect y="14" width="64" height="36" fill="#334155"/><circle cx="44" cy="26" r="5" fill="#fcc419"/><path d="M0 50l22-18 16 12 8-6 18 12z" fill="#64748b"/>'),
+  },
+  { id: 'a6', kind: 'video', url: 'blob:http://localhost:5173/7c1f', shown: 'blob:http://localhost:5173/7c1f', name: 'video', width: null, height: null, bytes: null, count: 1, uid: 'e1', file: null, thumb: null, streaming: true },
+];
+
 export function createMockHost(): Host {
-  const els: Record<string, ElementSnapshot> = { e1: el({}), e2: TITLE, e3: BADGE };
+  const els: Record<string, ElementSnapshot> = { e1: el({ assets: { count: ASSETS.length, more: false } }), e2: TITLE, e3: BADGE };
+  let assetsOpen = false;
   const state: PanelState = {
     connection: 'connected',
     page: { url: 'http://localhost:5173/', title: 'fixture · tw-react' },
@@ -353,6 +431,7 @@ export function createMockHost(): Host {
       ),
       pending: (pendingByEl[e.uid] ??= {}),
       removed: (removedByEl[e.uid] ??= []),
+      ...(e.assets ? { assets: { ...e.assets, items: assetsOpen ? ASSETS : null } } : {}),
     };
   };
   select('e1');
@@ -676,6 +755,23 @@ export function createMockHost(): Host {
       }
       case 'dismissNotice':
         state.notice = null;
+        break;
+      case 'assetsOpen':
+        if (assetsOpen === m.open) return;
+        assetsOpen = m.open;
+        setTimeout(() => {
+          if (state.selection) select(state.selection.el.uid);
+          emit();
+        }, 400);
+        return;
+      case 'saveAsset':
+        state.notice = { level: 'info', text: t('ext.assets.saved', { name: ASSETS.find((a) => a.id === m.id)?.name ?? m.id }) };
+        break;
+      case 'saveAllAssets':
+        state.notice = { level: 'info', text: t('ext.assets.allSaved', { n: ASSETS.filter((a) => !a.streaming).length, folder: 'Downloads' }) };
+        break;
+      case 'copySvg':
+        state.notice = { level: 'info', text: t('ext.assets.copied') };
         break;
       default:
         break;

@@ -116,6 +116,61 @@ export interface ElementSnapshot {
   order?: OrderInfo;
   /** 渲染这个元素的项目组件和它收到的 props（只有 React） */
   props?: PropsInfo;
+  /** 元素连同子元素里看得见的图片和视频有几条（限时数，more 表示没数完） */
+  assets?: { count: number; more: boolean };
+}
+
+/* ---------- 图片和视频 ---------- */
+
+/** 图片（img / picture）、CSS 背景图（含伪元素上的）、内联 SVG、视频文件、视频封面 */
+export type AssetKind = 'image' | 'background' | 'svg' | 'video' | 'poster';
+
+/** 页面脚本收集到的一条资源：同一个地址出现几次都合并成一条 */
+export interface AssetItem {
+  /** 这份清单里的编号，取内容时用 */
+  id: string;
+  kind: AssetKind;
+  /** 要下载的地址：响应式图片里最大的那张、还原过的原图；内联 SVG 为 null */
+  url: string | null;
+  /** 页面上正在显示的地址 */
+  shown: string | null;
+  /** 建议的文件名；没有扩展名时扩展按 Content-Type 补 */
+  name: string;
+  /** 要下载的那份的像素尺寸，SVG 是页面上显示的尺寸；不知道时为 null */
+  width: number | null;
+  height: number | null;
+  /** 文件大小（字节），拿不到时为 null */
+  bytes: number | null;
+  /** 页面上出现了几次 */
+  count: number;
+  /** 第一次出现处的元素 */
+  uid: string;
+  /** 缩略图：页面里画好的 data: 地址，或者图片地址；没有时为 null */
+  thumb: string | null;
+  /** 分段播放（MediaSource、HLS、DASH）的视频：没有完整的文件可以下载 */
+  streaming?: boolean;
+}
+
+export interface AssetList {
+  items: AssetItem[];
+  /** 合并后的条数 */
+  count: number;
+  /** 时间用完没数完：count 是下限，items 不全 */
+  more: boolean;
+}
+
+/** 面板上的一条资源 */
+export interface AssetView extends AssetItem {
+  /** 资源就是项目里的文件（public/ 里的图片等），可以「在项目里找到」 */
+  file: string | null;
+}
+
+/** 选中元素的「图片和视频」分区：数量总是有，展开后才取清单 */
+export interface AssetsView {
+  count: number;
+  more: boolean;
+  /** 没展开、或者正在取时为 null */
+  items: AssetView[] | null;
 }
 
 /** 元素的一段直接子文本 */
@@ -288,6 +343,13 @@ export interface BridgeMethods {
     r: { ok: boolean; actual: Record<string, string>; waitedMs: number; changedMs?: number };
   };
   reloadSheets: { p: { hrefs?: string[] }; r: number };
+  /** 选中元素连同子元素里看得见的图片、背景图、SVG 和视频（限时） */
+  assets: { p: Record<string, never>; r: AssetList };
+  /** 清单里一条资源的内容：SVG 是代码（file 换成页面上实际的颜色，copy 保留 currentColor），blob: 地址是 base64 字节 */
+  assetData: {
+    p: { id: string; as: 'file' | 'copy' };
+    r: { text?: string; base64?: string; mime?: string; error?: 'gone' | 'streaming' | 'too-large' | 'unsupported' };
+  };
 }
 
 export type BridgeMethod = keyof BridgeMethods;
@@ -350,6 +412,8 @@ export interface SelectionView {
   order?: OrderView;
   /** 渲染选中元素的项目组件收到的 props（不是 React 页面、或者没有 props 时缺省） */
   props?: PropsView;
+  /** 元素连同子元素里看得见的图片和视频 */
+  assets?: AssetsView;
   /** 「只改这个」和「全部」会写到不同地方时才有：选「全部」会改到页面上几个元素 */
   scopeAll?: number;
 }
@@ -520,6 +584,14 @@ export type PanelToExt =
   | { t: 'setLocale'; locale: Locale }
   | { t: 'clearDone' }
   | { t: 'dismissNotice' }
+  /** 「图片和视频」分区展开 / 收起：展开时才取完整清单 */
+  | { t: 'assetsOpen'; open: boolean }
+  /** 另存为（每次弹保存对话框） */
+  | { t: 'saveAsset'; id: string }
+  /** 全部存进一个文件夹 */
+  | { t: 'saveAllAssets' }
+  | { t: 'copySvg'; id: string }
+  | { t: 'revealAsset'; id: string }
   /** 面板里的未捕获异常，写进扩展的输出面板 */
   | { t: 'error'; message: string };
 

@@ -7,8 +7,11 @@ import { Structure } from './components/Structure';
 import type { Edit } from './components/types';
 
 function loadPrefs(host: Host): UiPrefs {
-  const p = host.load<UiPrefs>('prefs', { closed: ['position', 'changes'], split: [], v: 1 });
-  return p.v ? p : { ...p, closed: [...new Set([...p.closed, 'changes'])], v: 1 };
+  const p = host.load<UiPrefs>('prefs', { closed: ['position', 'changes', 'assets'], split: [], v: 2 });
+  const v = p.v ?? 0;
+  if (v >= 2) return p;
+  const add = [...(v < 1 ? ['changes'] : []), 'assets'];
+  return { ...p, closed: [...new Set([...p.closed, ...add])], v: 2 };
 }
 
 export function App({ host }: { host: Host }) {

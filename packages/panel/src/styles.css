@@ -613,6 +613,108 @@ select {
   padding: 0 6px;
 }
 
+/* ---------- 图片和视频 ---------- */
+
+.assets {
+  list-style: none;
+  margin: 0 -4px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.asset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 2px 3px 4px;
+  border-radius: var(--r);
+}
+
+.asset:hover {
+  background: var(--hover);
+}
+
+/* 棋盘格底：透明的图和深色的图标在深色、浅色主题下都看得见 */
+.asset-thumb {
+  --c1: color-mix(in srgb, var(--bg), var(--lift) 8%);
+  --c2: color-mix(in srgb, var(--bg), var(--lift) 16%);
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: repeating-conic-gradient(var(--c1) 0 25%, var(--c2) 0 50%) 50% / 8px 8px;
+  color: var(--muted);
+}
+
+.asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.asset-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.asset-name {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 11.5px;
+}
+
+.asset-name > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.asset-name small {
+  flex: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-tag {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--chip);
+  box-shadow: var(--chip-shadow);
+  color: var(--fg-2);
+  font-size: 10px;
+}
+
+.asset-actions {
+  display: flex;
+  flex: none;
+}
+
+.asset-actions .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
 /* ---------- 结构树 ---------- */
 
 .tree {

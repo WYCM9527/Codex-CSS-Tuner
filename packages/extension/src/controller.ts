@@ -40,6 +40,7 @@ import {
 } from '@css-tuner/protocol';
 import { hasArbitraryValue, previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
+import { AssetService } from './assets';
 import { BrowserAdapter } from './browser';
 import { literalCompletions } from './completions';
 import { prefill, type PrefillResult } from './handoff';
@@ -139,6 +140,7 @@ export class Controller implements vscode.Disposable {
   readonly tailwind: TailwindService;
   readonly journal: Journal;
   readonly applier: Applier;
+  readonly assets: AssetService;
   session: PageSession | null = null;
   page: PageInfo | null = null;
   state: PanelState;
@@ -180,6 +182,7 @@ export class Controller implements vscode.Disposable {
     this.tailwind = new TailwindService(log);
     this.journal = new Journal(ctx.workspaceState);
     this.applier = new Applier(this, new SnapshotStore(ctx));
+    this.assets = new AssetService(this, ctx.globalState);
     this.state = {
       connection: 'idle',
       page: null,
@@ -372,6 +375,13 @@ export class Controller implements vscode.Disposable {
         return;
       case 'reload':
         if (this.session) await this.browser.reload(this.session.browserId);
+        return;
+      case 'assetsOpen':
+      case 'saveAsset':
+      case 'saveAllAssets':
+      case 'copySvg':
+      case 'revealAsset':
+        await this.assetAction(msg);
         return;
     }
   }
@@ -581,6 +591,7 @@ export class Controller implements vscode.Disposable {
         const prev = this.page?.url;
         if (this.lastSelection && (!prev || !this.samePage(prev, ev.page.url))) this.lastSelection = null;
         this.state.selection = null;
+        this.assets.forget();
         await this.setPage(ev.page);
         this.state.pickOn = false;
         this.push();
@@ -709,6 +720,7 @@ export class Controller implements vscode.Disposable {
     this.state.selection = this.buildSelection(el);
     this.push();
     this.resolveSelectionWaiters();
+    this.scheduleAssets();
   }
 
   protected buildSelection(el: ElementSnapshot): SelectionView {
@@ -751,8 +763,59 @@ export class Controller implements vscode.Disposable {
       texts: this.textsFor(el),
       order: this.orderFor(el),
       props: this.propsFor(el),
+      assets: this.assets.view(el),
       ...(all ? { scopeAll: all } : {}),
     };
+  }
+
+  /* ---------- 图片和视频 ---------- */
+
+  private assetTimer: NodeJS.Timeout | null = null;
+
+  /** 「图片和视频」展开着时取选中元素的完整清单（热更新连着来的几次选中只取一回） */
+  private scheduleAssets() {
+    if (!this.assets.open || !this.state.selection) return;
+    if (this.assetTimer) clearTimeout(this.assetTimer);
+    this.assetTimer = setTimeout(() => {
+      this.assetTimer = null;
+      void this.loadAssets();
+    }, 150);
+  }
+
+  async loadAssets(): Promise<void> {
+    const uid = this.state.selection?.el.uid;
+    if (!uid || !this.assets.open) return;
+    try {
+      await this.assets.load(uid);
+    } catch (e) {
+      this.log(t('ext.log.error', { text: (e as Error).message }));
+      return;
+    }
+    const sel = this.state.selection;
+    if (sel?.el.uid !== uid) return;
+    sel.assets = this.assets.view(sel.el);
+    this.push();
+  }
+
+  private async assetAction(msg: Extract<PanelToExt, { t: 'assetsOpen' | 'saveAsset' | 'saveAllAssets' | 'copySvg' | 'revealAsset' }>) {
+    switch (msg.t) {
+      case 'assetsOpen':
+        this.assets.open = msg.open;
+        this.scheduleAssets();
+        return;
+      case 'saveAsset':
+        await this.assets.save(msg.id);
+        return;
+      case 'saveAllAssets':
+        await this.assets.saveAll();
+        return;
+      case 'copySvg':
+        await this.assets.copySvg(msg.id);
+        return;
+      case 'revealAsset':
+        await this.assets.reveal(msg.id);
+        return;
+    }
   }
 
   private orderContext(page: PageInfo): OrderContext {

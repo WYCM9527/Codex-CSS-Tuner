@@ -134,6 +134,70 @@ defineStep('badToken', async (c) => {
 
 defineStep('exec', async (c, s) => c.browser.exec(c.session!.browserId, String(s.script)));
 
+/** 展开「图片和视频」取完整清单（open: false 收起） */
+defineStep('assets', async (c, s) => {
+  await c.handle({ t: 'assetsOpen', open: s.open !== false });
+  if (s.open !== false) await c.loadAssets();
+  const v = c.state.selection?.assets;
+  return {
+    count: v?.count ?? null,
+    more: v?.more ?? null,
+    items: (v?.items ?? []).map((a) => ({
+      kind: a.kind,
+      name: a.name,
+      url: a.url,
+      shown: a.shown === a.url ? '=' : a.shown,
+      size: a.width ? `${a.width}x${a.height}` : null,
+      bytes: a.bytes,
+      count: a.count,
+      streaming: a.streaming ?? false,
+      file: a.file,
+      thumb: a.thumb ? a.thumb.slice(0, 22) : null,
+    })),
+  };
+});
+
+const assetNamed = (c: Controller, name: unknown) => c.assets.all().find((a) => a.name === name) ?? null;
+
+/** 另存为，不弹保存对话框：清单里叫 name 的那条存成 dir/as */
+defineStep('saveAsset', async (c, s) => {
+  const item = assetNamed(c, s.name);
+  if (!item) return { error: `清单里没有 ${String(s.name)}` };
+  try {
+    const out = await c.assets.saveTo(item, join(String(s.dir), String(s.as ?? item.name)));
+    const data = readFileSync(out);
+    return { out, bytes: data.length, head: data.subarray(0, 12).toString(String(s.text) === 'true' ? 'utf8' : 'hex') };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+});
+
+/** 全部下载，不弹选文件夹的对话框 */
+defineStep('saveAllAssets', async (c, s) => {
+  const r = await c.assets.saveAllTo(String(s.dir));
+  return { ...r, files: readdirSync(String(s.dir)).sort() };
+});
+
+/** SVG 的两种代码：copy 是「复制 SVG 代码」给的（不真的写剪贴板），否则是存成文件的 */
+defineStep('assetText', async (c, s) => {
+  const item = assetNamed(c, s.name);
+  if (!item) return { error: `清单里没有 ${String(s.name)}` };
+  if (s.as === 'copy') return (await c.session!.call('assetData', { id: item.id, as: 'copy' })).text ?? null;
+  return (await c.assets.bytes(item)).data.toString('utf8');
+});
+
+/** 直接发一条调试协议命令；mainFrame 为真时自动带上主框架 id */
+defineStep('cdp', async (c, s) => {
+  const id = c.session!.browserId;
+  const params = { ...((s.params as object) ?? {}) } as Record<string, unknown>;
+  if (s.mainFrame) params.frameId = (await c.browser.cdp<{ frameTree: { frame: { id: string } } }>(id, 'Page.getFrameTree')).frameTree.frame.id;
+  try {
+    return await c.browser.cdp(id, String(s.method), params);
+  } catch (e) {
+    return { error: String((e as Error)?.message ?? e) };
+  }
+});
+
 /** 读选中元素和同源元素的计算值 */
 async function readComputed(c: Controller, props: string[]) {
   return c.browser.exec<Record<string, string> | null>(

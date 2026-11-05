@@ -51,4 +51,15 @@ describe('页面源对应的项目根', () => {
     p.register('http://127.0.0.1:4100', join(root, 'app'));
     expect(p.htmlFileFor('http://127.0.0.1:4100/')).toBe(join(root, 'app/index.html'));
   });
+
+  it('根路径下的图片在 public/ 里找', () => {
+    put('app/public/img/hero.png');
+    put('app/hero.png');
+    const p = new ProjectResolver();
+    p.register('http://127.0.0.1:4200', join(root, 'app'));
+    expect(p.fileFor('http://127.0.0.1:4200/', '/img/hero.png')).toBe(join(root, 'app/public/img/hero.png'));
+    // 根目录下真有同名文件时还是它优先
+    expect(p.fileFor('http://127.0.0.1:4200/', '/hero.png')).toBe(join(root, 'app/hero.png'));
+    expect(p.fileFor('http://127.0.0.1:4200/', 'http://127.0.0.1:4200/img/hero.png?v=2')).toBe(join(root, 'app/public/img/hero.png'));
+  });
 });

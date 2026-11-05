@@ -1,4 +1,5 @@
 import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
+import { assetData, listAssets } from './assets';
 import { installHook } from './devtools';
 import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
 import { fallbackValues } from './fallback';
@@ -370,6 +371,8 @@ class Bridge {
     verify: ({ id, target, expected, timeoutMs, source }) =>
       verify(id, target, expected, timeoutMs, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind())),
     reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
+    assets: async () => (this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false }),
+    assetData: ({ id, as }) => assetData(id, as),
   };
 
   private async handle(req: BridgeRequest) {

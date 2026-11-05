@@ -4,6 +4,8 @@ import { dirname, isAbsolute, join, normalize, sep } from 'node:path';
 
 const ROOT_MARKERS = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts', 'vite.config.cjs', 'index.html', 'package.json'];
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.turbo', '.vite', 'coverage', 'out']);
+/** 开发服务器把这些目录里的文件挂在根路径下：Vite、Next.js、Nuxt、Astro 的 public/，SvelteKit 的 static/ */
+const PUBLIC_DIRS = ['public', 'static'];
 
 function isFile(p: string): boolean {
   try {
@@ -145,16 +147,20 @@ export class ProjectResolver {
     } catch {
       /* ignore */
     }
+    const inRoot = (root: string) => [join(root, p), ...PUBLIC_DIRS.map((d) => join(root, d, p))].find(isFile) ?? null;
     const known = this.roots.get(origin);
     if (known) {
-      const f = join(known, p);
-      if (isFile(f)) return f;
+      const f = inRoot(known);
+      if (f) return f;
     }
     if (isAbsolute(p) && isFile(p) && this.inWorkspace(p)) return p;
-    const hits = this.candidateRoots().filter((root) => isFile(join(root, p)));
+    const hits = this.candidateRoots().flatMap((root) => {
+      const f = inRoot(root);
+      return f ? [{ root, f }] : [];
+    });
     // 好几个项目都有的路径（index.html、src/main.tsx）说明不了页面是哪个项目的，只在唯一时记下来
-    if (hits.length === 1 && origin && !known) this.roots.set(origin, hits[0]);
-    if (hits.length && !(strict && hits.length > 1)) return join(hits[0], p);
+    if (hits.length === 1 && origin && !known) this.roots.set(origin, hits[0].root);
+    if (hits.length && !(strict && hits.length > 1)) return hits[0].f;
     if (isAbsolute(p) && isFile(p)) return p;
     return null;
   }

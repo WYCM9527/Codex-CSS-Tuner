@@ -145,6 +145,29 @@ export const Icon = {
       <path d="M1.5 8h13M8 1.5c2 2 2 11 0 13M8 1.5c-2 2-2 11 0 13" />
     </svg>
   ),
+  download: () => (
+    <svg {...S}>
+      <path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 13.5h11" />
+    </svg>
+  ),
+  code: () => (
+    <svg {...S}>
+      <path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />
+    </svg>
+  ),
+  image: () => (
+    <svg {...S}>
+      <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+      <circle cx="6" cy="6.5" r="1.2" />
+      <path d="M2.5 12l3.5-3.5 2.5 2.5 2-2 3 3" />
+    </svg>
+  ),
+  video: () => (
+    <svg {...S}>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M6.75 5.75v4.5L10.5 8z" />
+    </svg>
+  ),
   w: () => <b className="glyph">W</b>,
   h: () => <b className="glyph">H</b>,
   /* 主轴分布（按横向主轴画，纵向时整体旋转） */

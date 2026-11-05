@@ -42,7 +42,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
     const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'index.css'));
     const csp = [
       "default-src 'none'",
-      `img-src ${webview.cspSource} data:`,
+      `img-src ${webview.cspSource} data: blob: http: https:`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource}`,
       `script-src 'nonce-${nonce}' ${webview.cspSource}`,

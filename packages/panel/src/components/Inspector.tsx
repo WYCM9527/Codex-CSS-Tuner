@@ -31,6 +31,7 @@ import {
 import { currentValue, declaredVar, isPending } from '../lib/format';
 import { editableGradient, fillLayer, firstVisible, isOpaque, newGradient, opaqueGradient, type Paint, type PaintKind } from '../lib/paint';
 import { ctxOf, scaleKeyOf, valuePx, type Ctx } from '../lib/scale';
+import { Assets } from './Assets';
 import { ColorField } from './ColorField';
 import { Content } from './Content';
 import { AddRemove, Corner, IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
@@ -44,7 +45,7 @@ import { Vars } from './Vars';
 export interface UiPrefs {
   closed: string[];
   split: string[];
-  /** 存下这份偏好时的默认值版本：默认值变了，旧偏好补一次（1：改动清单默认收起） */
+  /** 存下这份偏好时的默认值版本：默认值变了，旧偏好补一次（1：改动清单默认收起；2：「图片和视频」默认收起） */
   v?: number;
 }
 
@@ -667,6 +668,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
       </Section>
 
       <Vars sel={sel} ctx={ctx} snap={state.snap} colors={scales?.colors ?? null} open={open('vars')} onToggle={toggle} edit={edit} reset={(props) => send({ t: 'resetProps', props })} />
+      <Assets sel={sel} open={open('assets')} onToggle={toggle} send={send} />
     </div>
   );
 }

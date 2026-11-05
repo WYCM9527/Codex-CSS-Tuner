@@ -1,4 +1,5 @@
 import { overColor, PROP_NAMES, parseColor, propMeta, toHex, type Crumb, type DeclWinner, type ElementSnapshot, type Rgba, type RuleRef, type UsedVar } from '@css-tuner/protocol';
+import { countAssets } from './assets';
 import { collectRules, matchRules, pickWinner, type FlatRule, type Matched, type RuleIndex } from './cascade';
 import { orderInfo } from './order';
 import { kindOf } from './page';
@@ -191,5 +192,6 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
     text: await textInfo(el, source),
     order: await orderInfo(el),
     props: await propsInfo(el),
+    assets: countAssets(el),
   };
 }
