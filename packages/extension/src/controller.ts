@@ -5,11 +5,18 @@ import {
   aliasesOf,
   getLocale,
   groupLabel,
+  isGradient,
   localeFrom,
+  overColor,
+  parseColor,
   PROP_NAMES,
   sameValue,
   setLocale,
+  solidLayer,
+  STROKE_CLIP,
+  STROKE_ORIGIN,
   t,
+  toHex,
   type BridgeEvent,
   type EditRequest,
   type ElementSnapshot,
@@ -686,6 +693,7 @@ export class Controller implements vscode.Disposable {
         return {};
       default:
         if (rec.removal) return { decls: removalDecls(rec.preview, rec.removal.values) };
+        if (rec.decls) return { decls: rec.decls };
         return { decls: { ...(await this.companions(rec.write, rec.props, rec.value, rec.token)), ...Object.fromEntries(rec.props.map((p) => [p, rec.value])) } };
     }
   }
@@ -1072,6 +1080,7 @@ export class Controller implements vscode.Disposable {
     const session = this.session;
     if (!sel || !session || !this.page || !req.props.length) return;
     if (req.remove) return this.doRemove(req);
+    if (isGradient(req.value) && req.props.every((p) => /^border-(top|right|bottom|left)-color$/.test(p))) return this.doStrokeGradient(req);
     const el = sel.el;
     let undeleted = false;
     for (const [tk, g] of this.groupByTarget(el, req.props)) {
@@ -1109,7 +1118,7 @@ export class Controller implements vscode.Disposable {
       const { view, write } = await this.withPolicy(g.plan, props, req);
       if (existing) {
         const undo = existing.removal ? { from, removal: undefined } : {};
-        this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write, ...undo });
+        this.journal.update(existing.id, { value: req.value, token: req.token ?? null, to, expected, view, write, decls: undefined, ...undo });
       } else {
         this.journal.add({
           kind: 'style',
@@ -1144,6 +1153,63 @@ export class Controller implements vscode.Disposable {
     }
     // 撤掉的删除管着更多属性（删了整个描边再改粗细）：其余属性回到原来的值，重新读一遍
     if (undeleted) await this.refreshSelection();
+    this.push();
+  }
+
+  /**
+   * 没有填充色的元素把描边改成渐变：有填充色时面板用两层背景写（内层填充裁到内边距、渐变铺到边框），
+   * 没有填充色这样写会把元素里面也盖住，交给 Agent 换别的写法；预览垫一层元素后面的底色，看起来和最后一样
+   */
+  private async doStrokeGradient(req: EditRequest) {
+    const sel = this.state.selection;
+    const session = this.session;
+    const plan = this.plans.get(req.props[0]);
+    if (!sel || !session || !this.page || !plan) return;
+    const el = sel.el;
+    const props = [...req.props].sort();
+    const key = `${targetKey(plan, el)}|${props.join(',')}`;
+    const existing = this.journal.findPending(key);
+    const previewId = existing?.previewId ?? key;
+    // 垫底的是元素里面看到的颜色：半透明的背景色叠在后面的底色上
+    const backdrop = parseColor(el.backdrop) ?? { r: 1, g: 1, b: 1, a: 1 };
+    const bg = parseColor(sel.pending['background-color'] ?? el.computed['background-color']);
+    const decls = {
+      'background-image': `${solidLayer(toHex(bg ? overColor(bg, backdrop) : backdrop))}, ${req.value}`,
+      'background-clip': STROKE_CLIP,
+      'background-origin': STROKE_ORIGIN,
+      ...Object.fromEntries(props.map((p) => [p, 'transparent'])),
+    };
+    await session.call('preview', { id: previewId, target: plan.preview, decls });
+    const live = this.selectionOf(el);
+    if (live) for (const p of props) live.pending[p] = req.value;
+    if (req.phase === 'commit') {
+      const reason = t('ext.plan.strokeGradient');
+      const fields = { value: req.value, token: null, to: req.value, expected: {}, view: { ...plan.view, kind: 'agent' as const, reason }, write: { kind: 'agent' as const, reason }, decls };
+      if (existing) this.journal.update(existing.id, { ...fields, ...(existing.removal ? { from: this.describeFrom(el, props[0], plan), removal: undefined } : {}) });
+      else {
+        this.journal.add({
+          kind: 'style',
+          key,
+          pageUrl: this.page.url,
+          element: {
+            label: el.label,
+            source: el.source,
+            sourceIndex: el.sourceIndex,
+            sameSource: el.sameSource,
+            path: el.breadcrumb.map((b) => b.label).join(' > '),
+          },
+          props,
+          propLabel: groupLabel(props),
+          from: this.describeFrom(el, props[0], plan),
+          original: Object.fromEntries(props.map((p) => [p, el.computed[p] ?? ''])),
+          preview: plan.preview,
+          previewId,
+          ...fields,
+        });
+      }
+      const now = this.selectionOf(el);
+      if (now) now.removed = now.removed.filter((p) => !props.includes(p));
+    }
     this.push();
   }
 

@@ -1,28 +1,42 @@
 import { useMemo } from 'react';
 import {
+  backgroundLayers,
   BORDER,
   BORDER_STYLE,
   BORDER_WIDTH,
+  formatGradient,
   groupLabel,
+  isGradient,
   MARGIN,
   PADDING,
   parseColor,
+  parseGradient,
   RADIUS,
+  sameBackgroundImage,
+  sameColor,
+  solidColorOf,
+  STROKE_CLIP,
+  STROKE_ORIGIN,
+  strokeLayers,
   t,
   type EditRequest,
+  type Gradient,
   type PanelState,
   type PanelToExt,
   type PropValue,
   type ScaleStep,
   type SelectionView,
+  type Target,
 } from '@css-tuner/protocol';
 import { currentValue, declaredVar, isPending } from '../lib/format';
+import { editableGradient, fillLayer, firstVisible, isOpaque, newGradient, opaqueGradient, type Paint, type PaintKind } from '../lib/paint';
 import { ctxOf, scaleKeyOf, valuePx, type Ctx } from '../lib/scale';
 import { ColorField } from './ColorField';
 import { Content } from './Content';
 import { AddRemove, Corner, IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
 import { Icon } from './icons';
 import { NumberField } from './NumberField';
+import { PaintField } from './PaintField';
 import { Props as PropsSection } from './Props';
 import type { Edit } from './types';
 import { Vars } from './Vars';
@@ -105,20 +119,117 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
     onPick: (v: string) => commit([prop], v),
   });
 
-  // 填充：背景色看得见才算有；加上是白色，减掉是删声明（不是写在源码里的就改成透明）
-  const hasFill = visible(currentValue(sel, 'background-color'));
-  const addFill = () => {
-    if (removed(['background-color']).length) return send({ t: 'resetProps', props: ['background-color'] });
-    const white = scales?.colors.find((s) => s.label === 'white');
-    commit(['background-color'], white?.value ?? '#ffffff', white ? (white.token ?? white.label) : null);
-  };
-  const removeFill = () => (removable(['background-color']) ? remove(['background-color']) : commit(['background-color'], 'transparent'));
+  const req = (props: string[], value: string, token: string | null = null): EditRequest => ({ props, value, token, phase: 'commit' });
+  const many = (edits: EditRequest[]) => send({ t: 'editMany', edits });
+  /** 去掉一个属性：源码里写的删掉，不然改成空值（写在 background 简写里的背景图删不干净，也改成空值） */
+  const clear = (prop: string, empty: string): EditRequest =>
+    removable([prop]) && (prop === 'background-color' || sel.el.winners[prop]?.via !== 'background') ? { ...req([prop], ''), remove: true } : req([prop], empty);
 
-  // 描边：看得见的边（粗细大于 0、样式不是 none）；加上是 1px 实线，减掉是删掉四边的声明
   const sides = strokeSides(sel, ctx);
   const tailwind = scales?.mode === 'tailwind';
   const styleProps = strokeProps('style', sides, tailwind);
   const colorProps = strokeProps('color', sides, tailwind);
+  const gradientIn = scales?.gradientIn ?? '';
+
+  // 填充和描边的渐变：背景图是一层渐变就是渐变填充；渐变描边用两层背景叠出来
+  // （上层是填充、只铺到内边距，下层是描边渐变、铺到边框，边框颜色透明）。
+  // 没有不透明的填充时两层背景会把元素里面也盖住，这种描边交给 Agent，扩展只拿两层背景预览
+  const bgColor = currentValue(sel, 'background-color');
+  const image = currentValue(sel, 'background-image');
+  const layers = strokeLayers(image, currentValue(sel, 'background-clip'));
+  const agentStroke = isGradient(sel.pending[colorProps[0]] ?? '') ? sel.pending[colorProps[0]] : null;
+  const layered = !agentStroke && layers && colorProps.every((p) => parseColor(currentValue(sel, p))?.a === 0) ? layers : null;
+  const fillImage = layered ? layered.fill : agentStroke && layers && sameBackgroundImage(layers.stroke, agentStroke) ? 'none' : image;
+  const fillLayers = backgroundLayers(fillImage).length;
+  const fillGradient = editableGradient(fillImage);
+  const fillSolid = layered ? solidColorOf(layered.fill) : null;
+  const fillPaint: Paint = fillSolid
+    ? { kind: 'solid', color: fillSolid }
+    : fillGradient
+      ? { kind: 'gradient', gradient: fillGradient }
+      : fillLayers
+        ? { kind: 'complex', image: fillImage }
+        : { kind: 'solid', color: bgColor };
+  const strokeImage = agentStroke ?? layered?.stroke ?? null;
+  const strokeGradient = strokeImage ? parseGradient(strokeImage) : null;
+  const strokePaint: Paint = strokeGradient
+    ? { kind: 'gradient', gradient: strokeGradient }
+    : strokeImage
+      ? { kind: 'complex', image: strokeImage }
+      : { kind: 'solid', color: currentValue(sel, colorProps[0]) };
+  const strokeIsGradient = !!strokeImage;
+  /** 能垫在描边渐变上面的填充层：得不透明，不然描边的渐变会从元素里面透出来 */
+  const opaqueFill = (): string | null => {
+    if (layered) return layered.fill;
+    if (fillGradient) return opaqueGradient(fillGradient) ? backgroundLayers(fillImage)[0] : null;
+    if (fillLayers) return null;
+    return isOpaque(bgColor) ? fillLayer(bgColor) : null;
+  };
+  const layeredEdits = (fill: string, stroke: string): EditRequest[] => [
+    req(['background-image'], `${fill}, ${stroke}`),
+    req(['background-clip'], STROKE_CLIP),
+    req(['background-origin'], STROKE_ORIGIN),
+    req(colorProps, 'transparent'),
+  ];
+  /** 拆掉两层背景：背景图只留填充（纯色的填充层回到背景色），裁剪和铺设范围回到默认 */
+  const unlayerEdits = (fill: string): EditRequest[] => {
+    const solid = solidColorOf(fill);
+    return [
+      req(['background-image'], solid ? 'none' : fill),
+      ...(solid && !sameColor(solid, bgColor) ? [req(['background-color'], solid)] : []),
+      req(['background-clip'], 'border-box'),
+      req(['background-origin'], 'padding-box'),
+    ];
+  };
+
+  // 填充：背景色看得见或者有背景图才算有；加上是白色，减掉是删声明（不是写在源码里的就改成透明）
+  const hasFill = visible(bgColor) || fillLayers > 0;
+  const addFill = () => {
+    const white = scales?.colors.find((s) => s.label === 'white');
+    const color = white?.value ?? '#ffffff';
+    const token = white ? (white.token ?? white.label) : null;
+    // 渐变描边之前没有填充只能交给 Agent，有了填充就能用两层背景写（填充和描边一起改，不走撤销删除）
+    if (agentStroke) return many([req(['background-color'], color, token), ...layeredEdits(fillLayer(color), agentStroke)]);
+    if (removed(['background-color']).length) return send({ t: 'resetProps', props: ['background-color'] });
+    commit(['background-color'], color, token);
+  };
+  const removeFill = () => {
+    if (layered) {
+      return many([clear('background-color', 'transparent'), clear('background-image', 'none'), req(['background-clip'], 'border-box'), req(['background-origin'], 'padding-box'), req(colorProps, layered.stroke)]);
+    }
+    if (fillLayers) return many([...(visible(bgColor) ? [clear('background-color', 'transparent')] : []), clear('background-image', 'none')]);
+    return removable(['background-color']) ? remove(['background-color']) : commit(['background-color'], 'transparent');
+  };
+  const onFillSolid = (e: Edit) => {
+    if (!layered) return edit(['background-color'], e);
+    // 两层背景时看得见的是上层，背景色一起改，拆掉两层背景后还是这个颜色
+    const top = `${fillLayer(e.value)}, ${layered.stroke}`;
+    if (e.phase === 'live') {
+      edit(['background-image'], { ...e, value: top, token: null });
+      return edit(['background-color'], e);
+    }
+    many([req(['background-image'], top), req(['background-color'], e.value, e.token)]);
+  };
+  const onFillGradient = (g: Gradient, phase: 'live' | 'commit') => {
+    const v = formatGradient(g);
+    edit(['background-image'], { props: [], value: layered ? `${v}, ${layered.stroke}` : v, token: null, phase });
+  };
+  const onFillKind = (k: PaintKind) => {
+    const g = fillPaint.kind === 'gradient' ? fillPaint.gradient : null;
+    if (k === 'solid') {
+      const color = visible(bgColor) ? bgColor : g ? firstVisible(g) : '#ffffff';
+      if (layered) return many([req(['background-image'], `${fillLayer(color)}, ${layered.stroke}`), ...(sameColor(color, bgColor) ? [] : [req(['background-color'], color)])]);
+      return many([clear('background-image', 'none'), ...(visible(bgColor) ? [] : [req(['background-color'], color)])]);
+    }
+    if (g) return onFillGradient({ ...g, type: k, dir: k === 'linear' ? 'to right' : '' }, 'commit');
+    // 纯色换成渐变：从这个颜色过渡到透明，背景色去掉（不然会从渐变透明的地方露出来）
+    const from = fillPaint.kind === 'solid' && visible(fillPaint.color) ? fillPaint.color : '#ffffff';
+    const next = formatGradient(newGradient(k, from, gradientIn, !!layered));
+    if (layered) return many([req(['background-image'], `${next}, ${layered.stroke}`)]);
+    many([req(['background-image'], next), ...(visible(bgColor) ? [clear('background-color', 'transparent')] : [])]);
+  };
+
+  // 描边：看得见的边（粗细大于 0、样式不是 none）；加上是 1px 实线，减掉是删掉四边的声明
   const addStroke = () => {
     if (removed(BORDER).length) return send({ t: 'resetProps', props: removed(BORDER) });
     // 样式是 none 时算出来的粗细总是 0（会当成没改），所以先改样式
@@ -127,7 +238,40 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
     edits.push({ props: BORDER_WIDTH, value: '1px', token: null, phase: 'commit' });
     send({ t: 'editMany', edits });
   };
-  const removeStroke = () => (removable(BORDER) ? remove(BORDER) : commit(BORDER_WIDTH, '0px'));
+  const removeStroke = () => {
+    const border = removable(BORDER) ? [{ ...req(BORDER, ''), remove: true }] : [req(BORDER_WIDTH, '0px')];
+    if (layered) return many([...unlayerEdits(layered.fill), ...border]);
+    if (agentStroke) send({ t: 'resetProps', props: colorProps });
+    many(border);
+  };
+  const onStrokeGradient = (g: Gradient, phase: 'live' | 'commit') => {
+    const v = formatGradient(g);
+    if (layered) return edit(['background-image'], { props: [], value: `${layered.fill}, ${v}`, token: null, phase });
+    edit(colorProps, { props: [], value: v, token: null, phase });
+  };
+  const onStrokeKind = (k: PaintKind) => {
+    const g = strokePaint.kind === 'gradient' ? strokePaint.gradient : null;
+    if (k === 'solid') {
+      const color = g ? firstVisible(g) : '#000000';
+      if (layered) return many([...unlayerEdits(layered.fill), req(colorProps, color)]);
+      return commit(colorProps, color);
+    }
+    if (g) return onStrokeGradient({ ...g, type: k, dir: k === 'linear' ? 'to right' : '' }, 'commit');
+    const current = currentValue(sel, colorProps[0]);
+    const next = formatGradient(newGradient(k, visible(current) ? current : '#000000', gradientIn));
+    const fill = opaqueFill();
+    if (fill) return many(layeredEdits(fill, next));
+    commit(colorProps, next);
+  };
+  /** 两层背景时填充和描边是一起写的，重置也一起 */
+  const paintProps = ['background-color', 'background-image', 'background-clip', 'background-origin', ...colorProps];
+  const fillProps = layered ? paintProps : fillLayers ? ['background-color', 'background-image'] : ['background-color'];
+  const strokeColorProps = layered ? paintProps : colorProps;
+  const strokeTarget: Target | undefined = agentStroke
+    ? { ...(sel.targets[colorProps[0]] ?? { label: '', affects: 1 }), kind: 'agent', reason: t('ext.plan.strokeGradient') }
+    : layered
+      ? sel.targets['background-image']
+      : sel.targets[colorProps[0]];
 
   // 投影：加上是刻度里的 sm（没有就取第一档），减掉是删声明（不是写在源码里的就改成 none）
   const shadow = currentValue(sel, 'box-shadow');
@@ -382,16 +526,24 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
         aside={<AddRemove present={hasFill} name={t('insp.fill')} onAdd={reveal('fill', addFill)} onRemove={removeFill} />}
       >
         <Row label={t('insp.background')}>
-          <ColorField
+          <PaintField
             title={t('insp.bgColor')}
-            prop="background-color"
-            value={currentValue(sel, 'background-color')}
+            paint={fillPaint}
             steps={scales?.colors ?? null}
-            pending={isPending(sel, ['background-color'])}
-            target={sel.targets['background-color']}
-            declared={'background-color' in sel.pending ? null : declaredVar(sel.el, 'background-color')}
-            corner={corner(['background-color'])}
-            onEdit={(e) => edit(['background-color'], e)}
+            pending={isPending(sel, fillProps)}
+            target={fillProps.length > 1 ? (sel.targets['background-image'] ?? sel.targets['background-color']) : sel.targets['background-color']}
+            declared={fillProps.length > 1 || 'background-color' in sel.pending ? null : declaredVar(sel.el, 'background-color')}
+            corner={
+              fillProps.length > 1 ? (
+                <Corner label={groupLabel(fillProps)} pending={isPending(sel, fillProps)} onReset={() => send({ t: 'resetProps', props: fillProps })} onRemove={removable(['background-color', 'background-image']) ? removeFill : null} />
+              ) : (
+                corner(fillProps)
+              )
+            }
+            cssVars={!tailwind}
+            onSolid={onFillSolid}
+            onGradient={onFillGradient}
+            onKind={onFillKind}
           />
         </Row>
       </Section>
@@ -417,30 +569,43 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
           </IconToggle>
         </Row>
         <Row label={t('insp.stroke.style')}>
-          <Segmented
-            value={currentValue(sel, styleProps[0])}
-            pending={isPending(sel, styleProps)}
-            target={sel.targets[styleProps[0]]}
-            corner={corner(styleProps)}
-            options={[
-              { value: 'solid', label: <Icon.solid />, title: t('insp.stroke.solid') },
-              { value: 'dashed', label: <Icon.dashed />, title: t('insp.stroke.dashed') },
-              { value: 'dotted', label: <Icon.dotted />, title: t('insp.stroke.dotted') },
-            ]}
-            onPick={(v) => commit(styleProps, v)}
-          />
+          {strokeIsGradient ? (
+            <div className="row-note">{t('insp.stroke.gradientSolidOnly')}</div>
+          ) : (
+            <Segmented
+              value={currentValue(sel, styleProps[0])}
+              pending={isPending(sel, styleProps)}
+              target={sel.targets[styleProps[0]]}
+              corner={corner(styleProps)}
+              options={[
+                { value: 'solid', label: <Icon.solid />, title: t('insp.stroke.solid') },
+                { value: 'dashed', label: <Icon.dashed />, title: t('insp.stroke.dashed') },
+                { value: 'dotted', label: <Icon.dotted />, title: t('insp.stroke.dotted') },
+              ]}
+              onPick={(v) => commit(styleProps, v)}
+            />
+          )}
         </Row>
         <Row label={t('insp.stroke.color')}>
-          <ColorField
+          <PaintField
             title={t('insp.stroke.color')}
-            prop={colorProps[0]}
-            value={currentValue(sel, colorProps[0])}
+            paint={strokePaint}
             steps={scales?.colors ?? null}
-            pending={isPending(sel, colorProps)}
-            target={sel.targets[colorProps[0]]}
-            declared={colorProps[0] in sel.pending ? null : declaredVar(sel.el, colorProps[0])}
-            corner={corner(colorProps)}
-            onEdit={(e) => edit(colorProps, e)}
+            pending={isPending(sel, strokeColorProps)}
+            target={strokeTarget}
+            declared={strokeIsGradient || colorProps[0] in sel.pending ? null : declaredVar(sel.el, colorProps[0])}
+            corner={
+              strokeIsGradient ? (
+                <Corner label={groupLabel(strokeColorProps)} pending={isPending(sel, strokeColorProps)} onReset={() => send({ t: 'resetProps', props: strokeColorProps })} onRemove={null} />
+              ) : (
+                corner(colorProps)
+              )
+            }
+            note={agentStroke ? t('insp.stroke.gradientNoFill') : null}
+            cssVars={!tailwind}
+            onSolid={(e) => edit(colorProps, e)}
+            onGradient={onStrokeGradient}
+            onKind={onStrokeKind}
           />
         </Row>
       </Section>

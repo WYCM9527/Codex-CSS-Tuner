@@ -8,7 +8,9 @@ export type PropKind =
   | 'keyword'
   | 'fontWeight'
   | 'lineHeight'
-  | 'tracks';
+  | 'tracks'
+  /** 背景图：渐变或图片，可以有好几层 */
+  | 'image';
 
 export interface PropMeta {
   prop: string;
@@ -59,6 +61,10 @@ export const PROPS: PropMeta[] = [
   { prop: 'color', section: 'typography', kind: 'color', inherited: true },
 
   { prop: 'background-color', section: 'fill', kind: 'color' },
+  { prop: 'background-image', section: 'fill', kind: 'image' },
+  // 渐变描边用两层背景叠出来：填充层裁到内边距，描边渐变铺到边框
+  { prop: 'background-clip', section: 'fill', kind: 'keyword', keywords: ['border-box', 'padding-box', 'content-box', 'text'] },
+  { prop: 'background-origin', section: 'fill', kind: 'keyword', keywords: ['border-box', 'padding-box', 'content-box'] },
 
   ...(['top', 'right', 'bottom', 'left'] as const).flatMap((side): PropMeta[] => [
     { prop: `border-${side}-width`, section: 'stroke', kind: 'length' },

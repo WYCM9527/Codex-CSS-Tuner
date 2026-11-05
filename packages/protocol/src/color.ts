@@ -217,3 +217,11 @@ export function sameColor(a: string, b: string, tolerance = 0.004): boolean {
   if (!ca || !cb) return a.trim() === b.trim();
   return colorDistance(ca, cb) < tolerance;
 }
+
+/** top 盖在 under 上面看到的颜色（普通的透明度叠加） */
+export function overColor(top: Rgba, under: Rgba): Rgba {
+  const a = top.a + under.a * (1 - top.a);
+  if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+  const mix = (t: number, u: number) => (t * top.a + u * under.a * (1 - top.a)) / a;
+  return { r: mix(top.r, under.r), g: mix(top.g, under.g), b: mix(top.b, under.b), a };
+}

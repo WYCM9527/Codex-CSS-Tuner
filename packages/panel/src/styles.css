@@ -1312,6 +1312,7 @@ select {
   margin-top: 6px;
   padding: 8px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   background: var(--raised);
   border: 1px solid var(--line-strong);
@@ -1423,6 +1424,129 @@ select {
 .swatch-btn:hover,
 .swatch-btn.on {
   box-shadow: 0 0 0 1.5px var(--fg);
+}
+
+/* ---------- 渐变（渐变条和颜色点也是页面里的真实颜色） ---------- */
+
+.swatch.is-gradient {
+  background: var(--g), var(--checker);
+}
+
+.swatch.is-image {
+  background: var(--checker);
+}
+
+.cf-note,
+.row-note {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.cf-note {
+  margin-top: 4px;
+}
+
+.row-note {
+  min-height: var(--row);
+  display: flex;
+  align-items: center;
+}
+
+.paint-kind button {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.paint-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.gbar {
+  position: relative;
+  height: 18px;
+  margin: 2px 6px;
+  border-radius: 3px;
+  background: var(--g), repeating-conic-gradient(#808080 0 25%, #c0c0c0 0 50%) 0 0 / 8px 8px;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.35);
+  cursor: copy;
+  touch-action: none;
+}
+
+.gstop {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 22px;
+  margin: -11px 0 0 -6px;
+  border-radius: 3px;
+  background: linear-gradient(var(--c), var(--c)), repeating-conic-gradient(#808080 0 25%, #c0c0c0 0 50%) 0 0 / 6px 6px;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.gstop:active {
+  cursor: grabbing;
+}
+
+.gstop.on {
+  z-index: 1;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--fg);
+}
+
+.gstop:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--focus);
+}
+
+.grad-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.grad-num {
+  flex: 1;
+  height: var(--row);
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.grad-num:focus-within {
+  border-color: var(--focus);
+}
+
+.grad-num input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: 11.5px var(--mono);
+  text-align: right;
+}
+
+.grad-num input:focus {
+  outline: none;
+}
+
+.grad-row .icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* ---------- 滑块 ---------- */

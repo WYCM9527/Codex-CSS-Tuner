@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseColor, toHex, rgbToHsv, hsvToRgb, sameColor, sameValue, toPx, parseCssNumber, stepScale, groupLabel } from '../src';
+import { parseColor, toHex, rgbToHsv, hsvToRgb, sameColor, sameValue, toPx, parseCssNumber, stepScale, groupLabel, overColor } from '../src';
 
 describe('sameValue', () => {
   it('阴影忽略全透明的占位层（Tailwind 的 ring 阴影）', () => {
@@ -8,6 +8,13 @@ describe('sameValue', () => {
     expect(sameValue('box-shadow', 'rgba(0, 0, 0, 0) 0px 0px 0px 0px', 'none')).toBe(true);
     expect(sameValue('box-shadow', lg, 'rgba(0, 0, 0, 0.1) 0px 10px 15px -3px')).toBe(false);
     expect(sameValue('box-shadow', 'rgb(255, 0, 0) 0px 0px 0px 2px inset', 'rgb(255, 0, 0) 0px 0px 0px 2px inset')).toBe(true);
+  });
+
+  it('背景裁剪和铺设范围的项数跟着背景层数重复', () => {
+    expect(sameValue('background-clip', 'padding-box', 'padding-box, padding-box')).toBe(true);
+    expect(sameValue('background-origin', 'padding-box, border-box', 'padding-box, border-box, padding-box')).toBe(true);
+    expect(sameValue('background-clip', 'border-box', 'padding-box, border-box')).toBe(false);
+    expect(sameValue('background-clip', 'padding-box, border-box', 'padding-box, border-box, border-box')).toBe(false);
   });
 });
 
@@ -35,6 +42,14 @@ describe('parseColor', () => {
   it('HSV 往返', () => {
     const c = parseColor('#e8590c')!;
     expect(toHex(hsvToRgb(rgbToHsv(c)))).toBe('#e8590c');
+  });
+
+  it('半透明颜色叠在底色上', () => {
+    const white = parseColor('#ffffff')!;
+    expect(toHex(overColor(parseColor('rgba(0, 0, 0, 0.5)')!, white))).toBe('#808080');
+    expect(toHex(overColor(parseColor('#3b5bdb')!, white))).toBe('#3b5bdb');
+    expect(toHex(overColor(parseColor('transparent')!, parseColor('#123456')!))).toBe('#123456');
+    expect(overColor(parseColor('transparent')!, parseColor('transparent')!).a).toBe(0);
   });
 });
 

@@ -108,6 +108,8 @@ export interface ElementSnapshot {
   inline: Record<string, string>;
   fontSizePx: number;
   rootFontSizePx: number;
+  /** 元素后面露出来的底色（往上第一个不透明的背景色）：没有填充色时预览渐变描边用它垫底 */
+  backdrop?: string;
   /** 元素自己的文字；页面脚本没分析时缺省 */
   text?: TextInfo;
   /** 同一个父元素下可以互换位置的兄弟 */
@@ -421,6 +423,8 @@ export interface Scales {
   opacity: ScaleStep[];
   zIndex: ScaleStep[];
   borderWidth: ScaleStep[];
+  /** 新建渐变的插值色彩空间：Tailwind 4 的渐变工具类都带 in oklab，预览照着写才和应用后一样 */
+  gradientIn?: string;
 }
 
 export type ChangeStatus = 'pending' | 'applied' | 'unverified' | 'failed' | 'reverted' | 'conflict' | 'handoff';

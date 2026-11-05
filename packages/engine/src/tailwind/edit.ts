@@ -2,6 +2,7 @@ import { t as msg } from '@css-tuner/protocol';
 import { minimizeEdit, type EditResult, type TextEdit } from '../types';
 import { intersects, isSubset, physicalSet, sameSet } from '../physical';
 import type { TwDesign } from './design';
+import { gradientClasses, gradientRole, type GradientRole } from './gradient';
 import type { ClassSite, ClassToken, Segment } from './jsx';
 import { allClassSites, classLiteralSites, locateClassSite, locateLiteralSite } from './sites';
 
@@ -98,6 +99,8 @@ const ROOTS: Root[] = [
   { root: 'text', props: ['text-align'], kind: 'align' },
   { root: 'text', props: ['color'], kind: 'color' },
   { root: 'bg', props: ['background-color'], kind: 'color' },
+  { root: '', props: ['background-clip'], kind: 'keyword', words: { 'border-box': 'bg-clip-border', 'padding-box': 'bg-clip-padding', 'content-box': 'bg-clip-content', text: 'bg-clip-text' } },
+  { root: '', props: ['background-origin'], kind: 'keyword', words: { 'border-box': 'bg-origin-border', 'padding-box': 'bg-origin-padding', 'content-box': 'bg-origin-content' } },
   { root: 'rounded', props: CORNERS.map((c) => `border-${c}-radius`), kind: 'length' },
   { root: 'rounded-t', props: ['border-top-left-radius', 'border-top-right-radius'], kind: 'length' },
   { root: 'rounded-r', props: ['border-top-right-radius', 'border-bottom-right-radius'], kind: 'length' },
@@ -212,7 +215,7 @@ function composeBases(root: Root, value: string, token: string | null): string[]
       break;
     case 'keyword':
       if (root.words?.[v]) out.push(root.words[v]);
-      out.push(`[${root.props[0]}:${arb(v)}]`);
+      out.push(`[${root.props[0]}:${arb(v.replace(/\s*,\s*/g, ','))}]`);
       break;
     case 'tracks': {
       const m = /^repeat\(\s*(\d+)\s*,\s*minmax\(\s*0(?:px)?\s*,\s*1fr\s*\)\s*\)$/.exec(v);
@@ -337,6 +340,7 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
 
   const E = physicalSet(input.props);
   if (input.remove) return removeClasses(design, input, site, E);
+  if (sameSet(E, new Set(['background-image']))) return editGradient(design, input, site);
   const root = rootFor(E);
   if (!root) return { ok: false, reason: msg('engine.tw.noUtility', { props: input.props.join(', ') }) };
 
@@ -378,16 +382,9 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   }
   if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
 
-  const addAttr = (cls: string): EditResult => ({
-    ok: true,
-    file: input.file,
-    edits: [{ start: site.nameEnd, end: site.nameEnd, text: ` ${site.insertAttr ?? 'className'}="${cls}"` }],
-    summary: `+ ${cls}`,
-    classes: { removed: [], added: [cls], attrAdded: true },
-  });
   if (!site.hasClassName) {
     if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
-    return addAttr(next);
+    return addAttr(input, site, [next]);
   }
 
   const ops: Op[] = [];
@@ -413,24 +410,9 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
     const anchor = partial[partial.length - 1] ?? null;
     if (anchor) inserted = { seg: anchor.seg, after: anchor, text: next };
     else {
-      // 追加到第一个无条件的字面量里：优先有可编辑类名的段，放在最后一个可编辑类名后面；
-      // 空段只有不贴着 ${} 时才能用（className="" 这种）
-      const fixed = site.segments.filter((s) => !s.conditional);
-      const ordered = [...fixed.filter((s) => !s.viaConst), ...fixed.filter((s) => s.viaConst)];
-      for (const seg of ordered) {
-        const toks = site.tokens.filter((t) => t.seg === seg);
-        const lastEditable = [...toks].reverse().find((t) => t.editable) ?? null;
-        if (lastEditable) {
-          inserted = { seg, after: lastEditable, text: next };
-          break;
-        }
-        if (!toks.length && !seg.fragileStart && !seg.fragileEnd) {
-          inserted = { seg, after: null, text: next };
-          break;
-        }
-      }
+      inserted = appendPoint(site, next);
       // Vue 的 :class 和 Svelte 的 class: 指令旁边可以再写一个静态 class，两者会合并
-      if (!inserted && site.insertAttr && !site.attrRange) return addAttr(next);
+      if (!inserted && site.insertAttr && !site.attrRange) return addAttr(input, site, [next]);
       if (!inserted) return { ok: false, reason: msg('engine.tw.noStaticToAppend') };
     }
     inserts.push(inserted);
@@ -483,6 +465,93 @@ export function editTailwind(design: TwDesign, input: TailwindEditInput): EditRe
   return { ok: true, file: input.file, edits, summary, classes: { removed: removedTexts, added, attrAdded: false } };
 }
 
+/** 元素上原来没有 class 属性：加一个 */
+function addAttr(input: TailwindEditInput, site: ClassSite, classes: string[]): EditResult {
+  const cls = classes.join(' ');
+  return {
+    ok: true,
+    file: input.file,
+    edits: [{ start: site.nameEnd, end: site.nameEnd, text: ` ${site.insertAttr ?? 'className'}="${cls}"` }],
+    summary: `+ ${cls}`,
+    classes: { removed: [], added: classes, attrAdded: true },
+  };
+}
+
+/**
+ * 追加到第一个无条件的字面量里：优先有可编辑类名的段，放在最后一个可编辑类名后面；
+ * 空段只有不贴着 ${} 时才能用（className="" 这种）
+ */
+function appendPoint(site: ClassSite, text: string): Insert | null {
+  const fixed = site.segments.filter((s) => !s.conditional);
+  const ordered = [...fixed.filter((s) => !s.viaConst), ...fixed.filter((s) => s.viaConst)];
+  for (const seg of ordered) {
+    const toks = site.tokens.filter((t) => t.seg === seg);
+    const lastEditable = [...toks].reverse().find((t) => t.editable) ?? null;
+    if (lastEditable) return { seg, after: lastEditable, text };
+    if (!toks.length && !seg.fragileStart && !seg.fragileEnd) return { seg, after: null, text };
+  }
+  return null;
+}
+
+/** 元素上同一变体的渐变类：画背景图的类（role 为 null），加上 from / via / to 色标类；条件分支里的只算主类所在那段 */
+function gradientGroup(design: TwDesign, site: ClassSite, variant: string, important: 'prefix' | 'suffix' | null, primarySeg: Segment | null): Array<{ token: ClassToken; role: GradientRole | null }> {
+  return site.tokens.flatMap((t): Array<{ token: ClassToken; role: GradientRole | null }> => {
+    const s = splitCandidate(t.text);
+    if (s.variant !== variant || !!s.important !== !!important) return [];
+    if (t.seg.conditional && t.seg !== primarySeg) return [];
+    if (design.info(t.text)?.hard.has('background-image')) return [{ token: t, role: null }];
+    const role = gradientRole(design, t.text);
+    return role ? [{ token: t, role }] : [];
+  });
+}
+
+/**
+ * 背景图：方向类和 from / via / to 色标类是一组，整组换成新的。
+ * 没变的类原地保留、只替换变了的，改个角度不会把色标类也重写一遍
+ */
+function editGradient(design: TwDesign, input: TailwindEditInput, site: ClassSite): EditResult {
+  const hint = input.utility ? splitCandidate(input.utility) : null;
+  const variant = hint?.variant ?? '';
+  const important = hint?.important ?? null;
+  let primary: ClassToken | null = null;
+  if (input.utility) {
+    primary = site.tokens.find((t) => t.text === input.utility) ?? null;
+    if (!primary && !input.override) return { ok: false, reason: msg('engine.tw.utilityNotLiteral', { cls: input.utility }) };
+    if (primary && !primary.editable) return { ok: false, reason: msg('engine.tw.utilityInTemplate', { cls: input.utility }) };
+  }
+  // 覆盖模式（cn / twMerge 合并）只追加，旧类交给合并去掉
+  const group = input.override ? [] : gradientGroup(design, site, variant, important, primary?.seg ?? null);
+  const stops = group.flatMap((g) => (g.role ? [{ role: g.role, text: g.token.text }] : []));
+  const next = gradientClasses(design, input.value, stops, (b) => design.canonical(join(variant, b, important)));
+  if (!next) return { ok: false, reason: msg('engine.tw.noClassForValue', { value: input.value }) };
+  if (!site.hasClassName) {
+    if (site.hasSpread) return { ok: false, reason: msg('engine.tw.spreadNoClassName') };
+    return addAttr(input, site, next);
+  }
+
+  const kept = group.map((g) => g.token).filter((t) => next.includes(t.text));
+  const dropped = group.map((g) => g.token).filter((t) => !next.includes(t.text));
+  const added = next.filter((c) => !kept.some((t) => t.text === c));
+  for (const t of dropped) if (!t.editable) return { ok: false, reason: msg('engine.tw.classInDynamic', { cls: t.text }) };
+  const ops: Op[] = [];
+  const inserts: Insert[] = [];
+  const anchor = primary && dropped.includes(primary) ? primary : (dropped[0] ?? null);
+  for (const t of dropped) ops.push(t === anchor && added.length ? { token: t, kind: 'replace', text: added.join(' ') } : { token: t, kind: 'remove' });
+  if (added.length && !anchor) {
+    const after = [...kept].reverse().find((t) => t.editable && !t.seg.conditional) ?? null;
+    const ins = after ? { seg: after.seg, after, text: added.join(' ') } : appendPoint(site, added.join(' '));
+    if (!ins && site.insertAttr && !site.attrRange) return addAttr(input, site, added);
+    if (!ins) return { ok: false, reason: msg('engine.tw.noStaticToAppend') };
+    inserts.push(ins);
+  }
+  const single = ops.find((o) => o.kind === 'remove' && o.token.seg.single);
+  if (single) return { ok: false, reason: msg('engine.tw.singleClass', { cls: single.token.text }) };
+
+  const removed = dropped.map((t) => t.text);
+  const summary = removed.length ? `${removed.join(' ')} → ${added.join(' ') || '∅'}` : `+ ${added.join(' ')}`;
+  return { ok: true, file: input.file, edits: finish(input.source, segmentEdits(input.source, site, ops, inserts)), summary, classes: { removed, added, attrAdded: false } };
+}
+
 /** 删属性：去掉各属性当前生效的类；类还管着别的属性（只删 p-4 的左边）就删不了 */
 function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSite, E: Set<string>): EditResult {
   const ops: Op[] = [];
@@ -494,6 +563,14 @@ function removeClasses(design: TwDesign, input: TailwindEditInput, site: ClassSi
     const info = design.info(cls);
     if (info && !isSubset(info.hard, E)) return { ok: false, reason: msg('engine.tw.removePartial', { cls }) };
     if (!ops.some((o) => o.token === tok)) ops.push({ token: tok, kind: 'remove' });
+  }
+  // 渐变的方向类去掉了，同一变体的色标类也就没用了
+  for (const o of [...ops]) {
+    if (!design.info(o.token.text)?.hard.has('background-image')) continue;
+    const s = splitCandidate(o.token.text);
+    for (const g of gradientGroup(design, site, s.variant, s.important, o.token.seg)) {
+      if (g.role && g.token.editable && !g.token.seg.single && !ops.some((x) => x.token === g.token)) ops.push({ token: g.token, kind: 'remove' });
+    }
   }
   if (!ops.length) return { ok: false, reason: msg('engine.tw.nothingToRemove') };
   const removed = ops.map((o) => o.token.text);

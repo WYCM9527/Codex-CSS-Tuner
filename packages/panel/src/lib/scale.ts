@@ -1,6 +1,6 @@
 import { parseCssNumber, toPx, type ElementSnapshot, type Scales, type ScaleStep } from '@css-tuner/protocol';
 
-export type ScaleKey = Exclude<keyof Scales, 'mode' | 'rem'>;
+export type ScaleKey = Exclude<keyof Scales, 'mode' | 'rem' | 'gradientIn'>;
 
 /** 属性 → 吸附用的刻度 */
 export function scaleKeyOf(prop: string): ScaleKey | null {

@@ -1,6 +1,6 @@
 import postcss, { type AtRule, type ChildNode, type Container, type Declaration, type Rule } from 'postcss';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
-import { aliasesOf, normalizeCondition, normalizeSelector, resolveNested, shorthandsOf, splitTopLevel, t } from '@css-tuner/protocol';
+import { aliasesOf, backgroundLayers, isGradient, normalizeCondition, normalizeSelector, resolveNested, shorthandsOf, splitTopLevel, t } from '@css-tuner/protocol';
 import type { EditResult, TextEdit } from '../types';
 import { physical, physicalSet } from '../physical';
 import { sfcKind, styleSource, unscopePage, unscopeSource } from '../sfc';
@@ -317,6 +317,18 @@ function singleValue(value: string): boolean {
   return splitTopLevel(value.trim(), ' ').length === 1 && !/url\(|gradient\(/.test(value);
 }
 
+/** background 简写只写了背景图（一层或几层渐变、url，没有颜色、位置、尺寸） */
+function imageOnly(value: string): boolean {
+  const layers = backgroundLayers(value);
+  return layers.length > 0 && layers.every((l) => splitTopLevel(l, ' ').length === 1 && (isGradient(l) || /^url\(/i.test(l)));
+}
+
+/** 改的正好是 background 简写里唯一写了的那部分（背景色或背景图），整条简写可以直接替换或删掉 */
+function wholeBackground(name: string, props: string[], value: string): boolean {
+  if (name !== 'background' || props.length !== 1) return false;
+  return (props[0] === 'background-color' && singleValue(value)) || (props[0] === 'background-image' && imageOnly(value));
+}
+
 /** 自定义属性区分大小写，其余属性名不区分 */
 const propName = (d: Declaration) => (d.prop.startsWith('--') ? d.prop : d.prop.toLowerCase());
 
@@ -363,8 +375,7 @@ export function editCssRule(input: CssEditInput): EditResult {
       const all = physical(name);
       const isLonghand = all.length === 1 && E.has(all[0]);
       const coversAll = all.length > 1 && all.every((p) => E.has(p));
-      const simpleShorthand = name === 'background' && props.length === 1 && props[0] === 'background-color' && singleValue(d.value);
-      if (isLonghand || coversAll || simpleShorthand) {
+      if (isLonghand || coversAll || wholeBackground(name, props, d.value)) {
         edits.push({ start: range.start, end: range.end, text: v });
         notes.push(`${name}: ${d.value} → ${v}`);
         for (const p of props) handled.add(p);
@@ -427,7 +438,7 @@ function removeDecls(found: FoundRule, owners: Map<Declaration, string[]>, E: Se
   for (const [d, props] of owners) {
     const name = propName(d);
     const left = physical(name).filter((p) => !E.has(p));
-    const whole = !left.length || (name === 'background' && props.length === 1 && props[0] === 'background-color' && singleValue(d.value));
+    const whole = !left.length || wholeBackground(name, props, d.value);
     const rest = whole ? [] : remainder(name, d.value, left);
     if (!rest) return { ok: false, reason: t('engine.css.removePartial', { decl: `${name}: ${d.value}` }) };
     const r = declRange(d);

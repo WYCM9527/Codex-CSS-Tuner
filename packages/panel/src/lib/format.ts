@@ -1,4 +1,4 @@
-import { formatNumber, parseColor, toHex, type ElementSnapshot, type SelectionView } from '@css-tuner/protocol';
+import { backgroundLayers, formatNumber, gradientAngle, isGradient, parseColor, parseGradient, solidColorOf, t, toHex, type ElementSnapshot, type SelectionView } from '@css-tuner/protocol';
 import { valuePx, type Ctx } from './scale';
 
 /** 字段当前值：有未应用的改动用改动值，否则用计算样式 */
@@ -35,13 +35,25 @@ export function varName(value: string): string | null {
   return m ? m[1] : null;
 }
 
-/** 改动清单里的值：颜色用十六进制，变量只显示名字 */
+/** 改动清单里的值：颜色用十六进制，变量只显示名字，渐变写成「线性渐变 90°（红 → 蓝）」，多层背景用 + 连起来 */
 export function displayValue(value: string): string {
   const v = varName(value);
   if (v) return v;
   const c = parseColor(value);
   if (c) return c.a === 0 ? 'transparent' : toHex(c);
+  const layers = backgroundLayers(value);
+  if (layers.some(isGradient)) return layers.map((l) => layerSummary(l)).join(' + ');
   return value;
+}
+
+function layerSummary(layer: string): string {
+  const solid = solidColorOf(layer);
+  if (solid) return displayValue(solid);
+  const g = parseGradient(layer);
+  if (!g || g.type === 'conic') return t('paint.imageName');
+  const angle = gradientAngle(g);
+  const name = `${t(g.type === 'radial' ? 'paint.radialName' : 'paint.linearName')}${angle !== null ? ` ${Math.round(angle)}°` : ''}`;
+  return `${name}${t('common.paren', { text: g.stops.map((s) => displayValue(s.color)).join(' → ') })}`;
 }
 
 export function shortFile(file: string | null | undefined): string {

@@ -59,6 +59,8 @@ export interface ChangeRecord {
    * 删除预览开着时元素快照里已经读不到），Tailwind 还有要去掉的类（各属性当前生效的类名）
    */
   removal?: { values: Record<string, string>; from?: Record<string, string>; classes?: string[] };
+  /** 预览用的声明和 props → value 不一样时（没有填充色的渐变描边用两层背景预览） */
+  decls?: Record<string, string>;
 }
 
 /** 存下来的记录：0.2.0 及以前的没有 kind，都是样式改动 */

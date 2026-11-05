@@ -195,6 +195,7 @@ const SECTIONS: Record<string, string[]> = {
   'max-h': ['maxHeight'],
   text: ['fontSize', 'textColor'],
   bg: ['backgroundColor'],
+  ...Object.fromEntries(['from', 'via', 'to'].map((r) => [r, ['gradientColorStops', 'gradientColorStopPositions']])),
   font: ['fontWeight'],
   leading: ['lineHeight'],
   tracking: ['letterSpacing'],

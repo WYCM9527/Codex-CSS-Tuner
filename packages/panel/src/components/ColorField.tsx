@@ -16,19 +16,19 @@ export interface ColorFieldProps {
   onEdit: (e: Edit) => void;
 }
 
-function matchStep(steps: ScaleStep[] | null, value: string): ScaleStep | null {
+export function matchStep(steps: ScaleStep[] | null, value: string): ScaleStep | null {
   if (!steps) return null;
   return steps.find((s) => sameColor(s.value, value)) ?? null;
 }
 
-function hexOf(value: string): string {
+export function hexOf(value: string): string {
   const c = parseColor(value);
   if (c && c.a === 0) return t('color.transparent');
   return c ? toHex(c) : value;
 }
 
 /** 页面变量在面板里没有定义：var(--x) 要换成刻度里记下的实际颜色才能画色块 */
-function resolveColor(value: string, steps: ScaleStep[] | null): string {
+export function resolveColor(value: string, steps: ScaleStep[] | null): string {
   const name = varName(value);
   if (!name || !steps) return value;
   const s = steps.find((x) => x.token === name || x.label === name || x.value === value);
@@ -71,11 +71,10 @@ interface PickerProps {
   onClose: () => void;
 }
 
+/** 颜色弹出层：拖动时的预览按帧合并，点外面收起时提交，Esc 撤回到打开时的颜色 */
 function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
   const initial = useRef(value);
   const committed = useRef(value);
-  const [hsva, setHsva] = useState<Hsva>(() => rgbToHsv(parseColor(value) ?? { r: 0, g: 0, b: 0, a: 1 }));
-  const [hex, setHex] = useState<string | null>(null);
   const live = useRef<string | null>(null);
   const raf = useRef(0);
   const root = useRef<HTMLDivElement>(null);
@@ -120,6 +119,32 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
     };
   });
 
+  return (
+    <div className="picker" ref={root}>
+      <ColorEditor value={value} steps={steps} onPick={send} onHover={(v) => onEdit({ props: [], value: v, token: null, phase: 'live' })} />
+    </div>
+  );
+}
+
+export interface ColorEditorProps {
+  value: string;
+  steps: ScaleStep[] | null;
+  /** 拖动是 live；松手、回车、吸管、点色块是 commit（色块带上刻度令牌） */
+  onPick: (value: string, token: string | null, phase: 'live' | 'commit') => void;
+  /** 悬停色块时临时预览一下；移开时用 onPick 的 live 换回来 */
+  onHover: (value: string) => void;
+}
+
+/** 取色器本体：饱和度 / 明度面板、色相、透明度、十六进制、吸管和主题色块 */
+export function ColorEditor({ value, steps, onPick, onHover }: ColorEditorProps) {
+  const committed = useRef(value);
+  const [hsva, setHsva] = useState<Hsva>(() => rgbToHsv(parseColor(value) ?? { r: 0, g: 0, b: 0, a: 1 }));
+  const [hex, setHex] = useState<string | null>(null);
+  const send = (v: string, token: string | null, phase: 'live' | 'commit') => {
+    if (phase === 'commit') committed.current = v;
+    onPick(v, token, phase);
+  };
+
   const setFromHsva = (next: Hsva, phase: 'live' | 'commit') => {
     setHsva(next);
     send(toHex(hsvToRgb(next)), null, phase);
@@ -139,7 +164,7 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
   const hasEyeDropper = typeof (window as unknown as { EyeDropper?: unknown }).EyeDropper === 'function';
 
   return (
-    <div className="picker" ref={root}>
+    <>
       <div
         className="sv"
         ref={area}
@@ -240,7 +265,7 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
                 title={`${s.label}  ${hexOf(s.value)}`}
                 onPointerEnter={() => {
                   if (hoverBase.current === null) hoverBase.current = committed.current;
-                  onEdit({ props: [], value: s.value, token: null, phase: 'live' });
+                  onHover(s.value);
                 }}
                 onClick={() => {
                   hoverBase.current = null;
@@ -253,7 +278,7 @@ function ColorPicker({ value, steps, onEdit, onClose }: PickerProps) {
           </div>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 

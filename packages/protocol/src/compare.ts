@@ -1,4 +1,5 @@
 import { parseColor, sameColor } from './color';
+import { sameBackgroundImage } from './gradient';
 import { propMeta } from './props';
 import { splitTopLevel } from './selectors';
 import { toPx } from './values';
@@ -17,10 +18,23 @@ function visibleShadows(v: string): string {
   return layers.join(', ') || 'none';
 }
 
-/** 两个计算值是否视为相同：颜色按感知距离、长度允许 ±0.5px、纯数字允许 0.01 误差 */
+/** 按背景层数重复的列表：计算值的项数跟着背景图的层数走，padding-box 和 padding-box, padding-box 是同一个写法 */
+const LAYER_LISTS = new Set(['background-clip', 'background-origin']);
+
+function sameLayerList(a: string, b: string): boolean {
+  const la = splitTopLevel(a, ',').map((s) => s.trim());
+  const lb = splitTopLevel(b, ',').map((s) => s.trim());
+  const n = Math.max(la.length, lb.length);
+  for (let i = 0; i < n; i++) if (la[i % la.length] !== lb[i % lb.length]) return false;
+  return true;
+}
+
+/** 两个计算值是否视为相同：颜色按感知距离、长度允许 ±0.5px、纯数字允许 0.01 误差，渐变按画出来的样子 */
 export function sameValue(prop: string, a: string, b: string): boolean {
   if (a === b) return true;
   if (prop === 'box-shadow' || prop === 'text-shadow') return visibleShadows(a) === visibleShadows(b);
+  if (prop === 'background-image') return sameBackgroundImage(a, b);
+  if (LAYER_LISTS.has(prop)) return sameLayerList(a, b);
   const kind = propMeta(prop)?.kind;
   if (kind === 'color' || (parseColor(a) && parseColor(b))) return sameColor(a, b);
   const pa = toPx(a);

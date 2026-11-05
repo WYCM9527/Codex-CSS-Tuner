@@ -31,7 +31,7 @@ export function emptyScales(rem: number, mode: Scales['mode'] = 'css'): Scales {
   };
 }
 
-type Bucket = Exclude<keyof Scales, 'mode' | 'rem'>;
+type Bucket = Exclude<keyof Scales, 'mode' | 'rem' | 'gradientIn'>;
 
 /** 按变量名猜用途；猜不出的长度归到间距 */
 function bucketOf(v: CssVar): Bucket | null {

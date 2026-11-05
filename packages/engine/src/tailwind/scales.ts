@@ -88,5 +88,5 @@ export function tailwindScales(d: TwDesign, rem = d.rem): Scales {
     if (value) borderWidth.push({ label: k || 'DEFAULT', value, px: px(value, rem), token: k });
   }
 
-  return { mode: 'tailwind', rem, spacing, size, radius, fontSize, fontWeight, lineHeight, letterSpacing, shadow, colors, opacity, zIndex, borderWidth };
+  return { mode: 'tailwind', rem, spacing, size, radius, fontSize, fontWeight, lineHeight, letterSpacing, shadow, colors, opacity, zIndex, borderWidth, ...(d.major >= 4 ? { gradientIn: 'oklab' } : {}) };
 }

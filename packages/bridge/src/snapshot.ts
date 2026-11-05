@@ -1,4 +1,4 @@
-import { PROP_NAMES, propMeta, type Crumb, type DeclWinner, type ElementSnapshot, type RuleRef, type UsedVar } from '@css-tuner/protocol';
+import { overColor, PROP_NAMES, parseColor, propMeta, toHex, type Crumb, type DeclWinner, type ElementSnapshot, type Rgba, type RuleRef, type UsedVar } from '@css-tuner/protocol';
 import { collectRules, matchRules, pickWinner, type FlatRule, type Matched, type RuleIndex } from './cascade';
 import { orderInfo } from './order';
 import { kindOf } from './page';
@@ -81,6 +81,18 @@ function toWinner(el: Element, w: ReturnType<typeof pickWinner>, origin: DeclWin
     inheritedFrom: from ? crumb(from) : null,
     via: w.decl.shorthand ?? w.decl.via,
   };
+}
+
+/** 元素后面露出来的底色：祖先的背景色从近到远一层层叠，叠到不透明的那层为止，最底下是浏览器默认的白色画布 */
+function backdropOf(el: Element): string {
+  const layers: Rgba[] = [];
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const c = parseColor(getComputedStyle(p).backgroundColor);
+    if (!c || c.a <= 0) continue;
+    layers.push(c);
+    if (c.a >= 0.999) break;
+  }
+  return toHex(layers.reduceRight<Rgba>((under, c) => overColor(c, under), { r: 1, g: 1, b: 1, a: 1 }));
 }
 
 export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnSheet)): Promise<ElementSnapshot> {
@@ -175,6 +187,7 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
     inline,
     fontSizePx: parseFloat(cs.fontSize) || 16,
     rootFontSizePx: parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+    backdrop: backdropOf(el),
     text: await textInfo(el, source),
     order: await orderInfo(el),
     props: await propsInfo(el),

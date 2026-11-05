@@ -65,7 +65,10 @@ function fallbackOf(prop: string): string {
   if (/^border-.*-width$/.test(prop)) return '0px';
   if (/^border-.*-style$/.test(prop)) return 'solid';
   if (/^border-.*-color$/.test(prop)) return 'rgb(229, 231, 235)';
-  return ({ 'background-color': 'rgba(0, 0, 0, 0)', 'box-shadow': 'none', color: 'rgb(31, 35, 40)' } as Record<string, string>)[prop] ?? 'initial';
+  return (
+    ({ 'background-color': 'rgba(0, 0, 0, 0)', 'background-image': 'none', 'background-clip': 'border-box', 'background-origin': 'padding-box', 'box-shadow': 'none', color: 'rgb(31, 35, 40)' } as Record<string, string>)[prop] ??
+    'initial'
+  );
 }
 
 /** 假宿主里算一步（能撤销）的消息和这一步的说明（用的时候才按当前界面语言拼） */
@@ -143,6 +146,9 @@ function el(over: Partial<ElementSnapshot>): ElementSnapshot {
     'text-align': 'start',
     color: 'rgb(255, 255, 255)',
     'background-color': 'rgb(59, 91, 219)',
+    'background-image': 'none',
+    'background-clip': 'border-box',
+    'background-origin': 'padding-box',
     'border-top-left-radius': '0px',
     'border-top-right-radius': '0px',
     'border-bottom-right-radius': '0px',
