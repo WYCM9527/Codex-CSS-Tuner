@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from '@babel/parser';
 import { applyEdits, editTailwind, loadTailwindDesign, previewCompanions, revertTailwind, tailwindScales, type TailwindEditInput, type TwDesign } from '../src';
+import { namespaces } from '../src/tailwind/v3';
 
 const FIX = join(__dirname, '../../../fixtures/tw3-react');
 const APP = join(FIX, 'src/App.tsx');
@@ -174,6 +175,17 @@ describe('Tailwind 3 刻度', () => {
     expect(s.lineHeight.filter((x) => x.token === '6')).toHaveLength(1);
     expect(s.lineHeight.find((x) => x.token === 'tight')?.value).toBe('1.25');
     expect(s.shadow.find((x) => x.label === 'DEFAULT')?.token).toBe('');
+    expect(s.breakpoints.map((b) => `${b.name}=${b.px}`)).toEqual(['sm=640', 'md=768', 'lg=1024', 'xl=1280', '2xl=1536']);
+  });
+
+  it('断点来自 screens：字符串和 { min } 算，只有上限的、raw、数组不算', () => {
+    const { spaces } = namespaces({
+      screens: { sm: '640px', tablet: { min: '700px', max: '900px' }, narrow: { max: '500px' }, print: { raw: 'print' }, multi: ['1400px'] },
+    } as never);
+    expect([...spaces.get('--breakpoint')!]).toEqual([
+      ['sm', '640px'],
+      ['tablet', '700px'],
+    ]);
   });
 
   it('预览字号令牌时带上它的默认行高', () => {

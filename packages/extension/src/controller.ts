@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import {
   aliasesOf,
+  DEFAULT_BREAKPOINTS,
   getLocale,
   groupLabel,
   isGradient,
@@ -17,6 +18,7 @@ import {
   STROKE_ORIGIN,
   t,
   toHex,
+  viewportBands,
   type BridgeEvent,
   type EditRequest,
   type ElementSnapshot,
@@ -37,6 +39,7 @@ import {
   type SelectionView,
   type Target,
   type TextView,
+  type ViewportPreset,
 } from '@css-tuner/protocol';
 import { hasArbitraryValue, previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore } from './applier';
@@ -188,6 +191,7 @@ export class Controller implements vscode.Disposable {
       page: null,
       pickOn: false,
       measureOn: false,
+      viewport: { preset: 'actual', bands: viewportBands(DEFAULT_BREAKPOINTS, false) },
       scope: cfg.get<Scope>('tailwind.scope', 'instance'),
       selection: null,
       scales: null,
@@ -278,6 +282,9 @@ export class Controller implements vscode.Disposable {
           return;
         case 'measure':
           await this.setMeasure(msg.on);
+          return;
+        case 'setViewport':
+          await this.setViewport(msg.preset);
           return;
         case 'pick':
           await this.setPick(msg.on);
@@ -563,6 +570,7 @@ export class Controller implements vscode.Disposable {
   }
 
   private disposeSession() {
+    this.releaseViewport();
     for (const d of this.sessionSubs) d.dispose();
     this.sessionSubs = [];
     this.session?.dispose();
@@ -654,10 +662,75 @@ export class Controller implements vscode.Disposable {
     if (this.page !== page) return;
     this.design = design;
     this.state.scales = scales;
+    this.state.viewport = { ...this.state.viewport, bands: viewportBands(scales.breakpoints, scales.mode === 'tailwind') };
     // 样式表变了（懒加载的 CSS、热更新），写回目标要按新的样式表和设计系统重新判断
     if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
     this.push();
     void this.session?.call('measureSteps', { steps: measureSteps(scales) }).catch(() => undefined);
+    // 刷新、换页面后接着按选的档显示（断点在主题里改过时宽度跟着变）
+    await this.applyViewport(false).catch((e) => this.log(t('ext.log.error', { text: (e as Error).message })));
+  }
+
+  /* ---------- 视口 ---------- */
+
+  /** 面板收起时暂时按实际宽度显示，再展开时照选的档恢复 */
+  private viewportHidden = false;
+  /** 浏览器视图的实际大小：选档时量一次，刷新后重新模拟时沿用，免得先还原再模拟闪一下 */
+  private realView: { w: number; h: number } | null = null;
+  /** 正在模拟宽度的标签页 */
+  private emulating: string | null = null;
+
+  async setViewport(preset: ViewportPreset) {
+    if (preset !== 'actual' && !this.session?.connected) {
+      this.notify('warn', t('ext.pick.noPage'));
+      return;
+    }
+    this.state.viewport = { ...this.state.viewport, preset };
+    this.push();
+    await this.applyViewport(true);
+  }
+
+  panelVisible(visible: boolean) {
+    if (this.viewportHidden === !visible) return;
+    this.viewportHidden = !visible;
+    void this.applyViewport(false).catch(() => undefined);
+  }
+
+  /** 面板关掉了：页面回到实际宽度，档位也回到实际宽度 */
+  panelClosed() {
+    this.viewportHidden = true;
+    this.state.viewport = { ...this.state.viewport, preset: 'actual' };
+    void this.applyViewport(false).catch(() => undefined);
+  }
+
+  /** 按选的档模拟页面宽度（只改宽度，不模拟触摸和 UA）：比浏览器视图宽时整体缩小到放得下 */
+  async applyViewport(remeasure: boolean): Promise<void> {
+    const s = this.session;
+    if (!s?.connected) return;
+    const id = s.browserId;
+    const { preset, bands } = this.state.viewport;
+    if (preset === 'actual' || this.viewportHidden) {
+      if (this.emulating === id) await this.browser.cdp(id, 'Emulation.clearDeviceMetricsOverride');
+      this.emulating = null;
+      return;
+    }
+    const width = bands[preset].width;
+    if (!remeasure && this.emulating === id && (await this.browser.exec<number>(id, 'innerWidth')) === width) return;
+    if (remeasure || !this.realView) {
+      await this.browser.cdp(id, 'Emulation.clearDeviceMetricsOverride');
+      this.realView = await this.browser.exec<{ w: number; h: number }>(id, '({ w: innerWidth, h: innerHeight })');
+    }
+    const { w, h } = this.realView;
+    const scale = width > w ? w / width : 1;
+    await this.browser.cdp(id, 'Emulation.setDeviceMetricsOverride', { width, height: scale < 1 ? Math.round(h / scale) : 0, deviceScaleFactor: 0, mobile: false, scale });
+    this.emulating = id;
+  }
+
+  /** 换标签页、断开时还原页面宽度，档位回到实际宽度 */
+  private releaseViewport() {
+    if (this.emulating) void this.browser.cdp(this.emulating, 'Emulation.clearDeviceMetricsOverride').catch(() => undefined);
+    this.emulating = null;
+    this.state.viewport = { ...this.state.viewport, preset: 'actual' };
   }
 
   /** 设计系统还没加载好（或加载失败）时按项目里装的版本号 */

@@ -228,7 +228,7 @@ function flatten(obj: unknown, prefix = '', out: Array<[string, unknown]> = []):
 
 const LENGTH = /^(-?\d*\.?\d+)(rem|px|em)$/;
 
-function namespaces(theme: Theme): { spaces: Map<string, Map<string | null, string>>; base: string | null } {
+export function namespaces(theme: Theme): { spaces: Map<string, Map<string | null, string>>; base: string | null } {
   const entries = (key: string) => flatten(theme[key]).flatMap(([k, v]): Array<[string, string]> => {
     const s = themeString(v);
     return s === null ? [] : [[k, s]];
@@ -287,6 +287,13 @@ function namespaces(theme: Theme): { spaces: Map<string, Map<string | null, stri
     '--color',
     entries('colors').filter(([k]) => k !== 'inherit' && k !== 'current' && k !== ''),
   );
+  // screens 的值可以是 '768px'，也可以是 { min, max } 或 { raw }：只有下限的才是 md: 这种「从这个宽度起」的断点
+  const screens: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries((theme.screens ?? {}) as Record<string, unknown>)) {
+    const min = typeof v === 'string' ? v : v && typeof v === 'object' && !Array.isArray(v) ? (v as { min?: unknown }).min : null;
+    if (typeof min === 'string') screens.push([k, min]);
+  }
+  put('--breakpoint', screens);
   return { spaces, base };
 }
 

@@ -88,5 +88,31 @@ export function tailwindScales(d: TwDesign, rem = d.rem): Scales {
     if (value) borderWidth.push({ label: k || 'DEFAULT', value, px: px(value, rem), token: k });
   }
 
-  return { mode: 'tailwind', rem, spacing, size, radius, fontSize, fontWeight, lineHeight, letterSpacing, shadow, colors, opacity, zIndex, borderWidth, ...(d.major >= 4 ? { gradientIn: 'oklab' } : {}) };
+  // 媒体查询里的 rem 总是按浏览器默认的 16px 算，不跟页面根字号
+  const breakpoints = d
+    .namespace('--breakpoint')
+    .flatMap(([k, v]) => {
+      const w = k === null ? undefined : px(v, 16);
+      return w === undefined ? [] : [{ name: k!, px: w }];
+    })
+    .sort((a, b) => a.px - b.px);
+
+  return {
+    mode: 'tailwind',
+    rem,
+    spacing,
+    size,
+    radius,
+    fontSize,
+    fontWeight,
+    lineHeight,
+    letterSpacing,
+    shadow,
+    colors,
+    opacity,
+    zIndex,
+    borderWidth,
+    breakpoints,
+    ...(d.major >= 4 ? { gradientIn: 'oklab' } : {}),
+  };
 }
