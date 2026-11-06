@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0
+
+- The panel no longer covers the page. By default the page moves over and is laid out in the space next to the panel, at the width that's left, so media queries follow that width. Drag the panel's edge and the page reflows; fold the panel into its pill and the page gets the whole window. While docked, the page runs in a frame next to the panel, so the address bar shows `/__css_tuner__/frame?u=…`.
+- A new button at the top of the panel switches between docking beside the page and floating over it (the old behavior, where the page keeps the full window width and the panel covers part of it). The choice is remembered per site.
+- With *Actual width*, the viewport button shows the page's current width and its range, for example *680 · Phone*, so you can see when docking the panel moved the page into another breakpoint.
+- Pages that jump out of the frame by themselves are detected: CSS Tuner stops putting them in the frame, switches the panel to floating for that site and says so once.
+- While docked, the panel leaves the page at least 320px when the window allows it. The toolbar no longer pushes its buttons out of a narrow panel.
+
 ## 0.11.1
 
 - Apply and Revert put the full prompt straight into the composer of the Codex chat that opened the page, through a `codex://` link (Codex switches to that chat); check it and press Enter. CSS Tuner learns which chat it is when Codex calls its tools. The prompt is still copied to the clipboard as well. The annotation in the Codex in-app browser is now only used when CSS Tuner doesn't know the chat yet, because Codex often doesn't show annotations requested by the page.

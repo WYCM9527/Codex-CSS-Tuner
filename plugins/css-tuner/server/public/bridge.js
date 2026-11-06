@@ -4932,11 +4932,37 @@ ${fileName}`;
     steps = s;
   }
 
+  // src/dock.ts
+  var GUARD_MS = 4e3;
+  var GUARD_KEY = "css-tuner:wrapped";
+  function frameUrl(frame2, width, path) {
+    const q = new URLSearchParams(width === null ? { u: path } : { w: String(Math.round(width)), u: path });
+    return `${frame2}?${q}`;
+  }
+  function wrapAllowed(last, now) {
+    return now < last || now - last >= GUARD_MS;
+  }
+  function wrapIntoFrame(frame2, opts = {}) {
+    const now = Date.now();
+    try {
+      if (!opts.force && !wrapAllowed(Number(sessionStorage.getItem(GUARD_KEY)) || 0, now)) return "bounced";
+      sessionStorage.setItem(GUARD_KEY, String(now));
+    } catch {
+      if (!opts.force) return "skipped";
+    }
+    if (opts.stop) window.stop();
+    location.replace(frameUrl(frame2, null, location.pathname + location.search + location.hash));
+    return "wrapped";
+  }
+
   // src/shell.ts
+  var FLOAT_EVENT = "css-tuner-float";
   var KEY2 = "css-tuner:panel";
   var MIN2 = 300;
   var MAX = 720;
-  var DEFAULT = { side: "right", width: 380, collapsed: false };
+  var ROOM_BESIDE = 320;
+  var ROOM_OVER = 120;
+  var DEFAULT = { side: "right", width: 380, collapsed: false, float: false };
   var STYLE2 = `
 .panel { position: fixed; top: 0; bottom: 0; display: block; background: #181818; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 8px 30px rgba(0, 0, 0, 0.3); }
 .panel.right { right: 0; }
@@ -4957,29 +4983,39 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
 .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #3fb950; }
 .pill.warn .dot { background: #d29922; }
 `;
-  function load() {
+  function parsePanelState(raw, maxWidth = MAX) {
     try {
-      const v = JSON.parse(localStorage.getItem(KEY2) ?? "null");
+      const v = JSON.parse(raw ?? "null");
       if (!v || typeof v !== "object") return { ...DEFAULT };
       return {
         side: v.side === "left" ? "left" : "right",
-        width: clampWidth(Number(v.width) || DEFAULT.width),
-        collapsed: v.collapsed === true
+        width: clamp(Number(v.width) || DEFAULT.width, maxWidth),
+        collapsed: v.collapsed === true,
+        float: v.float === true
       };
     } catch {
       return { ...DEFAULT };
     }
   }
-  function clampWidth(w) {
-    return Math.round(Math.max(MIN2, Math.min(MAX, w, Math.max(MIN2, innerWidth - 120))));
+  function savedPanelState() {
+    try {
+      return parsePanelState(localStorage.getItem(KEY2), innerWidth - ROOM_OVER);
+    } catch {
+      return { ...DEFAULT };
+    }
+  }
+  function clamp(w, maxWidth) {
+    return Math.round(Math.max(MIN2, Math.min(MAX, w, Math.max(MIN2, maxWidth))));
   }
   var PanelShell = class {
-    constructor(src, text) {
+    constructor(src, text, beside = false) {
       this.src = src;
       this.text = text;
+      this.beside = beside;
     }
     src;
     text;
+    beside;
     host = null;
     panel;
     frame;
@@ -4987,9 +5023,12 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     shield;
     pill;
     label;
-    st = load();
+    st = savedPanelState();
     note = null;
     observer = null;
+    clampWidth(w) {
+      return clamp(w, innerWidth - (this.beside ? ROOM_BESIDE : ROOM_OVER));
+    }
     mount() {
       if (this.host || !document.documentElement) return;
       const host2 = document.createElement("css-tuner-panel");
@@ -5057,6 +5096,11 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     dock(side) {
       this.update({ side });
     }
+    setFloat(on3) {
+      if (on3 === this.st.float) return;
+      this.update({ float: on3 });
+      dispatchEvent(new CustomEvent(FLOAT_EVENT, { detail: { float: on3 } }));
+    }
     /** 面板退下时（同一个站点在另一个标签页里用着）只留一个提示，点了以后接回来 */
     notice(text, onClick) {
       this.note = text && onClick ? { text, onClick } : null;
@@ -5081,7 +5125,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     render() {
       if (!this.host) return;
       const { side, collapsed } = this.st;
-      const width = clampWidth(this.st.width);
+      const width = this.clampWidth(this.st.width);
       const hidden = collapsed || !!this.note;
       this.panel.className = `panel ${side}${hidden ? " hidden" : ""}`;
       this.panel.style.width = `${width}px`;
@@ -5091,7 +5135,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       this.emit();
     }
     emit() {
-      const detail = { ...this.st, width: clampWidth(this.st.width), collapsed: this.st.collapsed || !!this.note || !this.host };
+      const detail = { ...this.st, width: this.clampWidth(this.st.width), collapsed: this.st.collapsed || !!this.note || !this.host };
       dispatchEvent(new CustomEvent("css-tuner-panel", { detail }));
     }
     wireGrip() {
@@ -5099,7 +5143,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       const move2 = (e) => {
         if (!drag2 || e.pointerId !== drag2.pointer) return;
         const w = this.st.side === "right" ? innerWidth - e.clientX : e.clientX;
-        this.st = { ...this.st, width: clampWidth(w) };
+        this.st = { ...this.st, width: this.clampWidth(w) };
         this.render();
       };
       const end = (e) => {
@@ -5373,9 +5417,10 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
   var CLOSED = 4410;
   var frames = (n) => new Promise((r) => n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r)));
   var Bridge = class {
-    constructor(cfg, frame2, shell) {
+    constructor(cfg, frame2, shell, bounced = false) {
       this.frame = frame2;
       this.shell = shell;
+      this.bounced = bounced;
       this.cfg = cfg;
       if (!this.domReady) {
         document.addEventListener(
@@ -5408,6 +5453,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     }
     frame;
     shell;
+    bounced;
     cfg;
     ws = null;
     retry = 0;
@@ -5681,7 +5727,15 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         await loadSheetSources();
         return pageInfo();
       },
-      env: () => ({ w: innerWidth, h: innerHeight, ua: navigator.userAgent, lang: navigator.language, framed: !!this.frame }),
+      env: () => ({
+        w: innerWidth,
+        h: innerHeight,
+        ua: navigator.userAgent,
+        lang: navigator.language,
+        framed: !!this.frame,
+        fit: !!this.frame && this.frame.width === null,
+        bounced: this.bounced
+      }),
       navigate: ({ url }) => {
         const u = new URL(url, location.href);
         if (u.protocol !== "http:" && u.protocol !== "https:") return false;
@@ -5695,8 +5749,9 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       },
       frame: async ({ width }) => {
         const f = this.frame;
+        const docked = this.shell ? !this.shell.state().float : false;
         if (f) {
-          if (width === null) {
+          if (width === null && !docked) {
             setTimeout(() => f.exit(), 30);
             return { framed: false, width: null };
           }
@@ -5704,9 +5759,9 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
           await frames(2);
           return { framed: true, width: f.width };
         }
-        if (width === null) return { framed: false, width: null };
-        const q = new URLSearchParams({ w: String(Math.round(width)), u: location.pathname + location.search + location.hash });
-        setTimeout(() => location.assign(`${this.cfg.frame}?${q}`), 30);
+        if (width === null && !docked) return { framed: false, width: null };
+        const target2 = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
+        setTimeout(() => location.assign(target2), 30);
         return { framed: true, width };
       },
       setPick: ({ on: on3 }) => {
@@ -5847,8 +5902,8 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     }
     return { mode: "none", frame: null, shell: null };
   }
-  function mountShell(cfg) {
-    const shell = new PanelShell(cfg.panel, cfg.text);
+  function mountShell(cfg, beside = false) {
+    const shell = new PanelShell(cfg.panel, cfg.text, beside);
     window.__CSS_TUNER_PANEL_HOST__ = shell;
     const mount = () => void whenHydrated().then(() => shell.mount());
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount, { once: true });
@@ -5859,20 +5914,32 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     const { mode, frame: frame2, shell: outer } = modeOf(cfg);
     if (mode === "none") return;
     if (mode === "frame-page") {
-      mountShell(cfg);
+      mountShell(cfg, true);
       installAnnotate(() => window.__CSS_TUNER_FRAME__?.element ?? document.body);
       return;
     }
-    installHook();
     const w = window;
+    let bounced = false;
+    if (mode === "page" && !w.__CSS_TUNER_BRIDGE__ && !savedPanelState().float) {
+      const r = wrapIntoFrame(cfg.frame, { stop: true });
+      if (r === "wrapped") return;
+      bounced = r === "bounced";
+    }
+    installHook();
     if (w.__CSS_TUNER_BRIDGE__) {
       w.__CSS_TUNER_BRIDGE__.configure(cfg);
       return;
     }
     const shell = mode === "page" ? mountShell(cfg) : outer;
-    const bridge = new Bridge(cfg, frame2, shell);
+    if (bounced) shell?.setFloat(true);
+    const bridge = new Bridge(cfg, frame2, shell, bounced);
     w.__CSS_TUNER_BRIDGE__ = bridge;
-    if (mode === "page") installAnnotate((uids) => bridge.annotationTarget(uids));
+    if (mode === "page") {
+      installAnnotate((uids) => bridge.annotationTarget(uids));
+      addEventListener(FLOAT_EVENT, (e) => {
+        if (!e.detail.float) wrapIntoFrame(cfg.frame, { force: true });
+      });
+    }
   }
   return __toCommonJS(index_exports);
 })();

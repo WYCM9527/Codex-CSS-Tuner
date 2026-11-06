@@ -18,6 +18,8 @@ import {
   t,
   toHex,
   bandOf,
+  frameSettled,
+  presetOf,
   viewportBands,
   type BridgeEvent,
   type EditRequest,
@@ -219,7 +221,7 @@ export class Controller implements Disposable {
       page: null,
       pickOn: false,
       measureOn: false,
-      viewport: { preset: 'actual', bands: viewportBands(DEFAULT_BREAKPOINTS, false) },
+      viewport: { preset: 'actual', bands: viewportBands(DEFAULT_BREAKPOINTS, false), width: null },
       scope: cfg.get('scope'),
       selection: null,
       scales: null,
@@ -628,6 +630,9 @@ export class Controller implements Disposable {
         const env = await this.session?.call('env', {}).catch(() => null);
         if (env) this.onBrowserLang?.(env.lang);
         this.syncPreset(env ?? null);
+        // 又停靠成功了：之前「不让放进 iframe」的提示不再对
+        if (env?.bounced) this.notify('warn', t('ext.dock.bounced'));
+        else if (env?.fit && this.state.notice?.text === t('ext.dock.bounced')) this.state.notice = null;
         // 新文档：旧的选中元素已经不在了；换了页面就不再按源码位置找回
         const prev = this.page?.url;
         if (this.lastSelection && (!prev || !this.samePage(prev, ev.page.url))) this.lastSelection = null;
@@ -664,8 +669,12 @@ export class Controller implements Disposable {
         if (this.state.selection?.el.uid === ev.uid) await this.reorder(ev.uid, ev.to, 'commit');
         return;
       case 'resize':
-        // 拖动了浏览器窗格、换了设备框宽度：换了档的话带档位的改动跟着挂上或撤掉，选中元素上的值重新读
+        // 拖动了浏览器窗格或面板、换了设备框宽度：换了档的话带档位的改动跟着挂上或撤掉，选中元素上的值重新读
         if (this.verifyBand) return;
+        if (this.state.viewport.width !== ev.w) {
+          this.state.viewport = { ...this.state.viewport, width: ev.w };
+          this.push();
+        }
         await this.syncBandPreviews();
         await this.refreshSelection();
         return;
@@ -696,7 +705,7 @@ export class Controller implements Disposable {
 
   /* ---------- 视口 ---------- */
 
-  /** 页面在设备框里（模拟手机、平板、桌面宽度）；hello 时从页面问来 */
+  /** 页面在设备框页面里（定了宽度，或者跟着停靠的面板旁边剩下的地方走）；hello 时从页面问来 */
   private framed = false;
 
   /**
@@ -763,8 +772,8 @@ export class Controller implements Disposable {
   }
 
   /**
-   * 核对别的档的改动：页面在设备框里时临时把框换成那一档的宽度，做完换回来。
-   * 不在设备框里换不了宽度（再进设备框要整页重新加载），返回 null
+   * 核对别的档的改动：页面在设备框页面里时临时把框换成那一档的宽度，做完换回来。
+   * 不在里面（面板浮在页面上）换不了宽度（进设备框要整页重新加载），返回 null
    */
   async atBand<T>(band: ViewportBand, run: () => Promise<T>): Promise<T | null> {
     if (!this.framed || !this.session?.connected) return null;
@@ -780,7 +789,10 @@ export class Controller implements Disposable {
     }
   }
 
-  /** 按选的档放进设备框或退出：已经在设备框里时只换框的宽度，不重新加载 */
+  /**
+   * 按选的档定设备框的宽度：已经在设备框页面里时只换框的宽度，不重新加载。
+   * 实际宽度时页面怎么摆由面板决定：停靠时框跟着面板旁边剩下的地方走，浮动时退出设备框
+   */
   async applyViewport(): Promise<void> {
     const s = this.session;
     if (!s?.connected) return;
@@ -790,19 +802,17 @@ export class Controller implements Disposable {
     const env = await s.call('env', {}).catch(() => null);
     if (!env) return;
     this.framed = env.framed;
-    if (width === null ? !env.framed : env.framed && env.w === width) return;
+    if (frameSettled(width, env)) return;
     const r = await s.call('frame', { width }, 6000);
     this.framed = r.framed;
   }
 
-  /** 页面连上时：在设备框里就按框的宽度选上对应的档，不在就是实际宽度（设备框可能是在页面上退出的） */
+  /** 页面连上时：设备框定了宽度就选上对应的档，否则是实际宽度（设备框可能是在页面上退出的） */
   private syncPreset(env: PageEnv | null) {
     this.framed = !!env?.framed;
-    const { bands } = this.state.viewport;
-    const preset: ViewportPreset = env?.framed
-      ? ((['mobile', 'tablet', 'desktop'] as const).find((b) => bands[b].width === env.w) ?? bandOf(env.w, bands))
-      : 'actual';
-    if (preset !== this.state.viewport.preset) this.state.viewport = { ...this.state.viewport, preset };
+    const preset = presetOf(env, this.state.viewport.bands);
+    const width = env?.w ?? null;
+    if (preset !== this.state.viewport.preset || width !== this.state.viewport.width) this.state.viewport = { ...this.state.viewport, preset, width };
   }
 
   /** 设计系统还没加载好（或加载失败）时按项目里装的版本号 */

@@ -295,6 +295,10 @@ export interface PageEnv {
   ua: string;
   lang: string;
   framed: boolean;
+  /** 在设备框页面里，但框没定宽度、跟着停靠的面板旁边剩下的地方走：算实际宽度 */
+  fit: boolean;
+  /** 面板停靠时刚把页面放进设备框页面，它又自己跳回了顶层（不让放进 iframe）：面板这次改成浮在页面上 */
+  bounced: boolean;
 }
 
 export type PreviewTarget =
@@ -544,6 +548,8 @@ export interface ViewportView {
   preset: ViewportPreset;
   /** 每一档模拟的宽度；prefix 是这一档在 Tailwind 里的断点前缀（手机是不带前缀的基础样式，普通 CSS 项目都为 null） */
   bands: Record<ViewportBand, { width: number; prefix: string | null }>;
+  /** 页面现在的宽度（设备框里是框的宽度），页面没连上时为 null */
+  width: number | null;
 }
 
 /** 未应用 → 交给 Codex 等它改（handoff）→ 页面上核对上了（applied）→ 交给 Codex 还原（reverting）→ 核对上原样（reverted） */

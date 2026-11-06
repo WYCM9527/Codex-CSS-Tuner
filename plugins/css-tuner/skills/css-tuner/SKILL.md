@@ -47,4 +47,5 @@ Reverts work the same way: the instructions ask you to restore the original valu
 - `open_page` warns that the dev server isn't responding: start it, the page retries by itself.
 - `verify` says the page isn't connected: the CSS Tuner page was closed or navigated away. Open the URL from `open_page` again.
 - The panel says CSS Tuner is in use in another tab: only one tab per site is connected; the user can click the notice to switch.
+- The address bar shows `/__css_tuner__/frame?u=…`: that's normal. While the panel is docked, the page runs in a frame next to it and is laid out at the width that's left. If the page misbehaves in the frame, the user can switch the panel to float over the page with the button at the top of the panel.
 - Nothing appeared in the composer after Apply: the full prompt is on the clipboard too. Ask the user to paste it, or call `get_handoff` directly.

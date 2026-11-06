@@ -92,6 +92,21 @@ export const Icon = {
       <rect x={side === 'left' ? 2.5 : 9.5} y="3.5" width="4" height="9" fill="currentColor" stroke="none" opacity=".55" />
     </svg>
   ),
+  /** 浮在页面上：面板压在页面上，伸出页面的边框 */
+  float: ({ side }: { side: 'left' | 'right' }) => (
+    <svg {...S}>
+      <path d={side === 'left' ? 'M7 3.5h6a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H7' : 'M9 3.5H3a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 3 12.5h6'} />
+      <rect x={side === 'left' ? 1.5 : 8} y="1.5" width="6.5" height="13" rx="1.5" fill="currentColor" fillOpacity=".55" />
+    </svg>
+  ),
+  /** 停靠在旁边：面板和页面各占一栏，页面往另一边让 */
+  sidebar: ({ side }: { side: 'left' | 'right' }) => (
+    <svg {...S}>
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+      <path d={side === 'left' ? 'M6.5 2.5v11' : 'M9.5 2.5v11'} />
+      <path d={side === 'left' ? 'M9 8h3.5M11 6.5l1.5 1.5-1.5 1.5' : 'M7 8H3.5M5 6.5L3.5 8 5 9.5'} />
+    </svg>
+  ),
   collapse: () => (
     <svg {...S}>
       <path d="M3 12.5h10M8 3v7M5 7l3 3 3-3" />

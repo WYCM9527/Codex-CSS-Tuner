@@ -10,7 +10,8 @@ import { pageFonts, pageInfo } from './page';
 import { disposeMeasure, initMeasure, measureOn, setMeasure, setMeasureSteps } from './measure';
 import { pickOn, setPick } from './pick';
 import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders, reattachRules } from './preview';
-import { PanelShell, type ShellText } from './shell';
+import { frameUrl, wrapIntoFrame } from './dock';
+import { FLOAT_EVENT, PanelShell, savedPanelState, type ShellText } from './shell';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
@@ -36,8 +37,9 @@ const CLOSED = 4410;
 
 /** 设备框页面（pages.ts）放在 window 上的接口 */
 interface FrameApi {
-  readonly width: number;
-  setWidth(w: number): void;
+  /** 框的宽度；null 是没定宽度，跟着停靠的面板旁边剩下的地方走 */
+  readonly width: number | null;
+  setWidth(w: number | null): void;
   exit(): void;
   element: HTMLIFrameElement;
 }
@@ -71,9 +73,11 @@ class Bridge {
 
   constructor(
     cfg: BootConfig,
-    /** 在设备框里（框的宽度模拟手机、平板、桌面） */
+    /** 在设备框页面里（框定了宽度模拟手机、平板、桌面，或者跟着停靠的面板旁边剩下的地方走） */
     private readonly frame: FrameApi | null,
     private readonly shell: PanelShell | null,
+    /** 停靠时刚放进设备框页面，页面又自己跳回了顶层 */
+    private readonly bounced = false,
   ) {
     this.cfg = cfg;
     if (!this.domReady) {
@@ -389,7 +393,15 @@ class Bridge {
       await loadSheetSources();
       return pageInfo();
     },
-    env: (): PageEnv => ({ w: innerWidth, h: innerHeight, ua: navigator.userAgent, lang: navigator.language, framed: !!this.frame }),
+    env: (): PageEnv => ({
+      w: innerWidth,
+      h: innerHeight,
+      ua: navigator.userAgent,
+      lang: navigator.language,
+      framed: !!this.frame,
+      fit: !!this.frame && this.frame.width === null,
+      bounced: this.bounced,
+    }),
     navigate: ({ url }) => {
       const u = new URL(url, location.href);
       if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
@@ -404,8 +416,10 @@ class Bridge {
     },
     frame: async ({ width }) => {
       const f = this.frame;
+      // 实际宽度：面板停靠时框跟着它旁边剩下的地方走，浮动时退出设备框
+      const docked = this.shell ? !this.shell.state().float : false;
       if (f) {
-        if (width === null) {
+        if (width === null && !docked) {
           setTimeout(() => f.exit(), 30);
           return { framed: false, width: null };
         }
@@ -413,10 +427,10 @@ class Bridge {
         await frames(2);
         return { framed: true, width: f.width };
       }
-      if (width === null) return { framed: false, width: null };
+      if (width === null && !docked) return { framed: false, width: null };
       // 进设备框要整页重新加载：页面换成设备框页面，原来的地址放进框里
-      const q = new URLSearchParams({ w: String(Math.round(width)), u: location.pathname + location.search + location.hash });
-      setTimeout(() => location.assign(`${this.cfg.frame}?${q}`), 30);
+      const target = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
+      setTimeout(() => location.assign(target), 30);
       return { framed: true, width };
     },
     setPick: ({ on }) => {
@@ -572,8 +586,8 @@ function modeOf(cfg: BootConfig): { mode: Mode; frame: FrameApi | null; shell: P
 }
 
 /** 面板等页面渲染完（框架激活之后）再挂，免得跟服务端渲染的 HTML 对不上 */
-function mountShell(cfg: BootConfig): PanelShell {
-  const shell = new PanelShell(cfg.panel, cfg.text);
+function mountShell(cfg: BootConfig, beside = false): PanelShell {
+  const shell = new PanelShell(cfg.panel, cfg.text, beside);
   (window as unknown as { __CSS_TUNER_PANEL_HOST__?: PanelShell }).__CSS_TUNER_PANEL_HOST__ = shell;
   const mount = () => void whenHydrated().then(() => shell.mount());
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
@@ -586,18 +600,32 @@ export function boot(cfg: BootConfig) {
   if (mode === 'none') return;
   if (mode === 'frame-page') {
     // 设备框页面：面板在这一层，页面和桥接在框里；注释落在框上（注释接口只在顶层页面上有）
-    mountShell(cfg);
+    mountShell(cfg, true);
     installAnnotate(() => (window as unknown as { __CSS_TUNER_FRAME__?: FrameApi }).__CSS_TUNER_FRAME__?.element ?? document.body);
     return;
   }
-  installHook();
   const w = window as unknown as { __CSS_TUNER_BRIDGE__?: Bridge };
+  // 面板停靠时页面放进设备框页面，在面板旁边剩下的地方排版；放不进去就让面板浮在页面上
+  let bounced = false;
+  if (mode === 'page' && !w.__CSS_TUNER_BRIDGE__ && !savedPanelState().float) {
+    const r = wrapIntoFrame(cfg.frame, { stop: true });
+    if (r === 'wrapped') return;
+    bounced = r === 'bounced';
+  }
+  installHook();
   if (w.__CSS_TUNER_BRIDGE__) {
     w.__CSS_TUNER_BRIDGE__.configure(cfg);
     return;
   }
   const shell = mode === 'page' ? mountShell(cfg) : outer;
-  const bridge = new Bridge(cfg, frame, shell);
+  // 页面不让放进 iframe：这个站点记成浮在页面上，免得每次打开都先跳一下
+  if (bounced) shell?.setFloat(true);
+  const bridge = new Bridge(cfg, frame, shell, bounced);
   w.__CSS_TUNER_BRIDGE__ = bridge;
-  if (mode === 'page') installAnnotate((uids) => bridge.annotationTarget(uids));
+  if (mode === 'page') {
+    installAnnotate((uids) => bridge.annotationTarget(uids));
+    addEventListener(FLOAT_EVENT, (e) => {
+      if (!(e as CustomEvent<{ float: boolean }>).detail.float) wrapIntoFrame(cfg.frame, { force: true });
+    });
+  }
 }

@@ -345,7 +345,7 @@ export function createMockHost(): Host {
     page: { url: 'http://localhost:5173/', title: 'fixture · tw-react' },
     pickOn: false,
     measureOn: false,
-    viewport: { preset: 'actual', bands: viewportBands(mockScales().breakpoints, true) },
+    viewport: { preset: 'actual', bands: viewportBands(mockScales().breakpoints, true), width: 1180 },
     scope: 'instance',
     selection: null,
     scales: mockScales(),
@@ -581,7 +581,7 @@ export function createMockHost(): Host {
         if (m.on) state.pickOn = false;
         break;
       case 'setViewport':
-        state.viewport = { ...state.viewport, preset: m.preset };
+        state.viewport = { ...state.viewport, preset: m.preset, width: m.preset === 'actual' ? 1180 : state.viewport.bands[m.preset].width };
         break;
       case 'pick':
         state.pickOn = m.on;

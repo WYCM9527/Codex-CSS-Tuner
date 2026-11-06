@@ -161,6 +161,8 @@ select {
   padding: 8px 10px 6px;
   border-bottom: 1px solid var(--line);
   display: grid;
+  /* 面板窄的时候地址框让出地方，按钮不挤出面板 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 
@@ -246,8 +248,13 @@ select {
   gap: 4px;
 }
 
-.icon-btn.vp-btn.on {
+.icon-btn.vp-btn.on,
+.icon-btn.vp-btn.now {
   padding: 0 6px;
+}
+
+.icon-btn.vp-btn.now .vp-label {
+  opacity: 0.75;
 }
 
 .vp-label {

@@ -12,6 +12,8 @@ export interface PanelState {
   side: 'left' | 'right';
   width: number;
   collapsed: boolean;
+  /** 浮在页面上（盖住一块页面）；否则停靠：页面放进设备框页面，在面板旁边剩下的地方排版 */
+  float: boolean;
 }
 
 export interface PanelHostApi {
@@ -20,12 +22,19 @@ export interface PanelHostApi {
   expand(): void;
   toggle(): void;
   dock(side: 'left' | 'right'): void;
+  setFloat(on: boolean): void;
 }
+
+/** 面板浮动和停靠切换时发：页面要换到设备框页面里，或者从里面出来 */
+export const FLOAT_EVENT = 'css-tuner-float';
 
 const KEY = 'css-tuner:panel';
 const MIN = 300;
 const MAX = 720;
-const DEFAULT: PanelState = { side: 'right', width: 380, collapsed: false };
+/** 面板旁边至少给页面留的宽度：停靠时是最窄的手机宽度，浮动时至少露出一点页面 */
+const ROOM_BESIDE = 320;
+const ROOM_OVER = 120;
+const DEFAULT: PanelState = { side: 'right', width: 380, collapsed: false, float: false };
 
 const STYLE = `
 .panel { position: fixed; top: 0; bottom: 0; display: block; background: #181818; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 8px 30px rgba(0, 0, 0, 0.3); }
@@ -48,27 +57,39 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
 .pill.warn .dot { background: #d29922; }
 `;
 
-function load(): PanelState {
+/** 记在 localStorage 里的面板状态；没记过、记坏了的项用默认值 */
+export function parsePanelState(raw: string | null, maxWidth = MAX): PanelState {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<PanelState> | null;
+    const v = JSON.parse(raw ?? 'null') as Partial<PanelState> | null;
     if (!v || typeof v !== 'object') return { ...DEFAULT };
     return {
       side: v.side === 'left' ? 'left' : 'right',
-      width: clampWidth(Number(v.width) || DEFAULT.width),
+      width: clamp(Number(v.width) || DEFAULT.width, maxWidth),
       collapsed: v.collapsed === true,
+      float: v.float === true,
     };
   } catch {
     return { ...DEFAULT };
   }
 }
 
-function clampWidth(w: number): number {
-  return Math.round(Math.max(MIN, Math.min(MAX, w, Math.max(MIN, innerWidth - 120))));
+/** 这个站点上次的面板状态（页面启动时决定要不要放进设备框页面） */
+export function savedPanelState(): PanelState {
+  try {
+    return parsePanelState(localStorage.getItem(KEY), innerWidth - ROOM_OVER);
+  } catch {
+    return { ...DEFAULT };
+  }
+}
+
+function clamp(w: number, maxWidth: number): number {
+  return Math.round(Math.max(MIN, Math.min(MAX, w, Math.max(MIN, maxWidth))));
 }
 
 /**
- * 页面里的浮动面板：一个带影子根的元素，里面是同源的面板 iframe、调宽度的把手和收起后的小胶囊。
- * 位置、宽度、收起状态按站点记在 localStorage 里；页面框架把它删掉时自己挂回去
+ * 页面里的面板：一个带影子根的元素，里面是同源的面板 iframe、调宽度的把手和收起后的小胶囊。
+ * 停靠时它挂在设备框页面上，页面在旁边的 iframe 里；浮动时直接盖在页面上。
+ * 位置、宽度、收起和浮动按站点记在 localStorage 里；页面框架把它删掉时自己挂回去
  */
 export class PanelShell implements PanelHostApi {
   private host: HTMLElement | null = null;
@@ -78,14 +99,20 @@ export class PanelShell implements PanelHostApi {
   private shield!: HTMLDivElement;
   private pill!: HTMLButtonElement;
   private label!: HTMLSpanElement;
-  private st: PanelState = load();
+  private st: PanelState = savedPanelState();
   private note: { text: string; onClick: () => void } | null = null;
   private observer: MutationObserver | null = null;
 
   constructor(
     private readonly src: string,
     private readonly text: ShellText,
+    /** 挂在设备框页面上，页面在旁边的框里（不是盖在页面上） */
+    private readonly beside = false,
   ) {}
+
+  private clampWidth(w: number): number {
+    return clamp(w, innerWidth - (this.beside ? ROOM_BESIDE : ROOM_OVER));
+  }
 
   mount() {
     if (this.host || !document.documentElement) return;
@@ -164,6 +191,12 @@ export class PanelShell implements PanelHostApi {
     this.update({ side });
   }
 
+  setFloat(on: boolean) {
+    if (on === this.st.float) return;
+    this.update({ float: on });
+    dispatchEvent(new CustomEvent(FLOAT_EVENT, { detail: { float: on } }));
+  }
+
   /** 面板退下时（同一个站点在另一个标签页里用着）只留一个提示，点了以后接回来 */
   notice(text: string | null, onClick?: () => void) {
     this.note = text && onClick ? { text, onClick } : null;
@@ -192,7 +225,7 @@ export class PanelShell implements PanelHostApi {
   private render() {
     if (!this.host) return;
     const { side, collapsed } = this.st;
-    const width = clampWidth(this.st.width);
+    const width = this.clampWidth(this.st.width);
     const hidden = collapsed || !!this.note;
     this.panel.className = `panel ${side}${hidden ? ' hidden' : ''}`;
     this.panel.style.width = `${width}px`;
@@ -203,7 +236,7 @@ export class PanelShell implements PanelHostApi {
   }
 
   private emit() {
-    const detail = { ...this.st, width: clampWidth(this.st.width), collapsed: this.st.collapsed || !!this.note || !this.host };
+    const detail = { ...this.st, width: this.clampWidth(this.st.width), collapsed: this.st.collapsed || !!this.note || !this.host };
     dispatchEvent(new CustomEvent('css-tuner-panel', { detail }));
   }
 
@@ -212,7 +245,7 @@ export class PanelShell implements PanelHostApi {
     const move = (e: PointerEvent) => {
       if (!drag || e.pointerId !== drag.pointer) return;
       const w = this.st.side === 'right' ? innerWidth - e.clientX : e.clientX;
-      this.st = { ...this.st, width: clampWidth(w) };
+      this.st = { ...this.st, width: this.clampWidth(w) };
       this.render();
     };
     const end = (e: PointerEvent) => {

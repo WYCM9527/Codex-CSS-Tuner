@@ -17,6 +17,9 @@ export interface Shell {
   side(): 'left' | 'right';
   collapse(): void;
   dock(side: 'left' | 'right'): void;
+  /** 浮在页面上；否则停靠，页面在面板旁边剩下的地方排版 */
+  floating(): boolean;
+  setFloating(on: boolean): void;
   canAnnotate(): boolean;
   /** 必须在点击处理里同步调用：注释接口要求在用户操作当中 */
   annotate(req: AnnotateRequest): boolean;
@@ -44,7 +47,12 @@ declare global {
 }
 
 type ParentApi = Window & {
-  __CSS_TUNER_PANEL_HOST__?: { state(): { side: 'left' | 'right' }; collapse(): void; dock(side: 'left' | 'right'): void };
+  __CSS_TUNER_PANEL_HOST__?: {
+    state(): { side: 'left' | 'right'; float: boolean };
+    collapse(): void;
+    dock(side: 'left' | 'right'): void;
+    setFloat(on: boolean): void;
+  };
   __CSS_TUNER_ANNOTATE__?: (req: AnnotateRequest) => { ok: boolean };
   __CSS_TUNER_CAN_ANNOTATE__?: () => boolean;
 };
@@ -65,6 +73,8 @@ function pageShell(): Shell | null {
     side: () => p.__CSS_TUNER_PANEL_HOST__?.state().side ?? 'right',
     collapse: () => p.__CSS_TUNER_PANEL_HOST__?.collapse(),
     dock: (side) => p.__CSS_TUNER_PANEL_HOST__?.dock(side),
+    floating: () => p.__CSS_TUNER_PANEL_HOST__?.state().float === true,
+    setFloating: (on) => p.__CSS_TUNER_PANEL_HOST__?.setFloat(on),
     canAnnotate: () => p.__CSS_TUNER_CAN_ANNOTATE__?.() === true,
     annotate: (req) => {
       try {

@@ -24,8 +24,8 @@ export function panelHtml(boot: { ws: string; token: string }): string {
 }
 
 /**
- * 设备框：页面放进固定宽度的 iframe 里（媒体查询按这个宽度算），放不下时整体缩小显示；
- * 面板停靠在旁边，不挡页面。iframe 里的页面同源，桥接脚本在里面照常连回来
+ * 设备框：页面放进 iframe，面板停靠在旁边，不挡页面。给了宽度（w）时框定成这个宽度（媒体查询按它算），放不下时整体缩小显示；
+ * 没给时框铺满面板旁边剩下的地方，页面按那个宽度排版，这就是面板停靠时的实际宽度。iframe 里的页面同源，桥接脚本在里面照常连回来
  */
 export function frameHtml(): string {
   return `<!doctype html>
@@ -42,20 +42,30 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b1b; }
 #bar button:hover { background: #343434; }
 #box { position: relative; flex: 1; overflow: hidden; }
 #dev { position: absolute; top: 0; left: 50%; border: 0; background: #fff; transform-origin: top center; box-shadow: 0 0 0 1px #333, 0 10px 32px rgba(0, 0, 0, 0.45); }
+#stage.fit #bar { display: none; }
+#stage.fit #dev { left: 0; width: 100%; height: 100%; transform: none; box-shadow: none; }
 </style>
 ${BRIDGE_TAG}
 </head>
 <body>
 <div id="stage">
   <div id="bar"><span id="size"></span><button id="exit" type="button">${esc(t('frame.exit'))}</button></div>
-  <div id="box"><iframe id="dev" title="${esc(t('frame.title'))}"></iframe></div>
+  <div id="box"><iframe id="dev" title="${esc(t('frame.title'))}" allow="clipboard-read; clipboard-write; fullscreen; autoplay; geolocation; camera; microphone; display-capture" allowfullscreen></iframe></div>
 </div>
 <script>
 (() => {
   const q = new URLSearchParams(location.search);
-  let width = Math.max(240, Math.min(3840, Number(q.get('w')) || 390));
+  const clamp = (w) => Math.max(240, Math.min(3840, Math.round(w)));
+  let width = Number(q.get('w')) > 0 ? clamp(Number(q.get('w'))) : null;
   const u = q.get('u') || '/';
   const start = u.startsWith('/') && !u.startsWith('//') ? u : '/';
+  const host = () => window.__CSS_TUNER_PANEL_HOST__;
+  const floating = () => !!(host() && host().state().float);
+  // 面板浮动时实际宽度用不着设备框，直接打开页面
+  if (width === null && floating()) {
+    location.replace(start);
+    return;
+  }
   const dev = document.getElementById('dev');
   const box = document.getElementById('box');
   const size = document.getElementById('size');
@@ -70,12 +80,22 @@ ${BRIDGE_TAG}
   };
   let last = '';
   const remember = () => {
-    const p = new URLSearchParams({ w: String(width), u: current() }).toString();
+    try {
+      const title = dev.contentDocument && dev.contentDocument.title;
+      if (title && document.title !== title) document.title = title;
+    } catch {}
+    const p = new URLSearchParams(width === null ? { u: current() } : { w: String(width), u: current() }).toString();
     if (p === last) return;
     last = p;
     history.replaceState(null, '', location.pathname + '?' + p);
   };
   const layout = () => {
+    stage.classList.toggle('fit', width === null);
+    if (width === null) {
+      dev.style.width = dev.style.height = dev.style.transform = '';
+      size.textContent = '';
+      return;
+    }
     const avail = Math.max(120, box.clientWidth - 24);
     const scale = Math.min(1, avail / width);
     const h = Math.max(200, box.clientHeight - 12) / scale;
@@ -93,16 +113,24 @@ ${BRIDGE_TAG}
   };
   window.__CSS_TUNER_FRAME__ = {
     get width() { return width; },
-    setWidth(w) { width = Math.max(240, Math.min(3840, Math.round(w))); layout(); remember(); },
+    setWidth(w) { width = w === null ? null : clamp(w); layout(); remember(); },
     exit() { location.assign(current()); },
     element: dev,
   };
   addEventListener('css-tuner-panel', (e) => dock(e.detail));
-  dock(window.__CSS_TUNER_PANEL_HOST__ && window.__CSS_TUNER_PANEL_HOST__.state());
+  // 面板换成浮动：实际宽度的页面从框里出来
+  addEventListener('css-tuner-float', (e) => {
+    if (e.detail && e.detail.float && width === null) location.replace(current());
+  });
+  dock(host() && host().state());
   addEventListener('resize', layout);
   dev.addEventListener('load', remember);
   setInterval(remember, 1000);
-  document.getElementById('exit').addEventListener('click', () => window.__CSS_TUNER_FRAME__.exit());
+  // 回到实际宽度：面板停靠时页面还在框里，只是框不再定宽度（重新加载，本地服务按新的样子选档）
+  document.getElementById('exit').addEventListener('click', () => {
+    if (floating()) location.assign(current());
+    else location.assign(location.pathname + '?' + new URLSearchParams({ u: current() }));
+  });
   dev.src = start;
   layout();
 })();

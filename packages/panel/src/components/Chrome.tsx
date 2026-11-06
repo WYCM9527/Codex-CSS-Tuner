@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView, type ViewportPreset } from '@css-tuner/protocol';
+import { bandOf, changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView, type ViewportPreset } from '@css-tuner/protocol';
 import type { Shell } from '../host';
 import { displayValue, fontValue, shortFile } from '../lib/format';
 import { boundary, nameOf } from '../lib/names';
@@ -57,7 +57,7 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
 
 const PRESETS: ViewportPreset[] = ['actual', 'mobile', 'tablet', 'desktop'];
 
-/** 视口：按手机、平板、桌面的宽度看页面；选了一档时按钮上写着是哪一档 */
+/** 视口：按手机、平板、桌面的宽度看页面；按钮上写着选的档，实际宽度时写着页面现在多宽、落在哪一档 */
 function ViewportMenu({ state, send }: { state: PanelState; send: Send }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -76,18 +76,36 @@ function ViewportMenu({ state, send }: { state: PanelState; send: Send }) {
       window.removeEventListener('keydown', onKey);
     };
   }, [open]);
-  const { preset, bands } = state.viewport;
+  const { preset, bands, width } = state.viewport;
   const active = preset !== 'actual';
   const name = (p: ViewportPreset) => t(`panel.viewport.${p}`);
-  const title = active ? t('panel.viewport.active', { name: name(preset), width: bands[preset].width }) : t('panel.viewport.title');
+  const now = !active && width ? bandOf(width, bands) : null;
+  const title = active
+    ? t('panel.viewport.active', { name: name(preset), width: bands[preset].width })
+    : now
+      ? t('panel.viewport.actualNow', { width: width!, name: name(now) })
+      : t('panel.viewport.title');
   return (
     <div className="vp" ref={box}>
-      <button className={`icon-btn vp-btn${active ? ' on' : ''}`} title={title} aria-label={title} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button
+        className={`icon-btn vp-btn${active ? ' on' : now ? ' now' : ''}`}
+        title={title}
+        aria-label={title}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         <Icon.viewport />
-        {active && (
+        {active ? (
           <span className="vp-label">
             {name(preset)} {bands[preset].width}
           </span>
+        ) : (
+          now && (
+            <span className="vp-label">
+              {width} · {name(now)}
+            </span>
+          )
         )}
       </button>
       {open && (
@@ -119,13 +137,27 @@ function ViewportMenu({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
-/** 页内面板：换到页面另一边停靠、收起成角落里的小按钮 */
+/** 页内面板：停靠在旁边还是浮在页面上（换的时候页面会重新加载）、换到页面另一边、收起成角落里的小按钮 */
 function ShellButtons({ shell }: { shell: Shell }) {
   const [side, setSide] = useState(shell.side);
+  const [floating, setFloating] = useState(shell.floating);
   const other = side === 'right' ? 'left' : 'right';
   const dockTitle = t(other === 'left' ? 'panel.shell.dockLeft' : 'panel.shell.dockRight');
+  const floatTitle = t(floating ? 'panel.shell.dockBeside' : 'panel.shell.float');
   return (
     <>
+      <button
+        type="button"
+        className="icon-btn"
+        title={floatTitle}
+        aria-label={floatTitle}
+        onClick={() => {
+          shell.setFloating(!floating);
+          setFloating(!floating);
+        }}
+      >
+        {floating ? <Icon.sidebar side={side} /> : <Icon.float side={side} />}
+      </button>
       <button
         type="button"
         className="icon-btn"
