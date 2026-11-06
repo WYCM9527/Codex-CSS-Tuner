@@ -1,27 +1,50 @@
-import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, SelectQuery, SourceLoc } from '@css-tuner/protocol';
+import type { BridgeEvent, BridgeMethods, BridgeReply, BridgeRequest, ElementSnapshot, PageEnv, SelectQuery, SourceLoc } from '@css-tuner/protocol';
+import { inView, installAnnotate } from './annotate';
 import { assetData, listAssets } from './assets';
 import { installHook } from './devtools';
 import { beginEdit, finish as finishEdit, isEditingText, textAt } from './edit';
 import { fallbackValues } from './fallback';
 import { visibleBoxes } from './order';
 import { redraw, setDragModel, setGripHidden, setHover, setSelected } from './overlay';
-import { pageInfo } from './page';
+import { pageFonts, pageInfo } from './page';
 import { disposeMeasure, initMeasure, measureOn, setMeasure, setMeasureSteps } from './measure';
 import { pickOn, setPick } from './pick';
 import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders, reattachRules } from './preview';
+import { PanelShell, type ShellText } from './shell';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
 import { probe } from './verify';
 
+/** 本地服务在 bridge.js 末尾写进来的启动参数 */
 export interface BootConfig {
-  port: number;
   token: string;
   session: string;
+  /** 同源的 WebSocket 路径 */
+  ws: string;
+  /** 页内面板的地址 */
+  panel: string;
+  /** 设备框页面的路径 */
+  frame: string;
+  text: ShellText;
+}
+
+/** 本地服务的关闭码：被另一个标签页顶替、站点被关掉 */
+const SUPERSEDED = 4409;
+const CLOSED = 4410;
+
+/** 设备框页面（pages.ts）放在 window 上的接口 */
+interface FrameApi {
+  readonly width: number;
+  setWidth(w: number): void;
+  exit(): void;
+  element: HTMLIFrameElement;
 }
 
 type Handlers = { [K in keyof BridgeMethods]: (p: BridgeMethods[K]['p']) => Promise<BridgeMethods[K]['r']> | BridgeMethods[K]['r'] };
+
+const frames = (n: number) => new Promise<void>((r) => (n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r))));
 
 class Bridge {
   private cfg: BootConfig;
@@ -34,9 +57,10 @@ class Bridge {
   private lastHref = location.href;
   private observer: MutationObserver | null = null;
   private urlTimer = 0;
+  private resizeTimer = 0;
   private stopped = false;
-  /** 每次页面加载生成一个，exec 通道靠它发现页面刷新过 */
-  readonly instance = Math.random().toString(36).slice(2);
+  /** 被另一个标签页顶替了：不重连，等用户点提示接回来 */
+  private paused = false;
 
   /**
    * readyState 变成 interactive 之后、DOMContentLoaded 之前，模块脚本（以及 Vite 注入的 <style>）还没执行；
@@ -45,7 +69,12 @@ class Bridge {
   private domReady = document.readyState !== 'loading';
   private helloPending = false;
 
-  constructor(cfg: BootConfig) {
+  constructor(
+    cfg: BootConfig,
+    /** 在设备框里（框的宽度模拟手机、平板、桌面） */
+    private readonly frame: FrameApi | null,
+    private readonly shell: PanelShell | null,
+  ) {
     this.cfg = cfg;
     if (!this.domReady) {
       document.addEventListener(
@@ -74,33 +103,60 @@ class Bridge {
         this.sendPage();
       }
     }, 500);
+    // 窗口宽度变了（或者设备框换了宽度）：带档位的改动要按新的档挂上或撤掉预览
+    window.addEventListener('resize', this.onResize);
   }
 
-  /** 扩展卸载或换会话时调用：断开连接、撤掉预览和高亮，页面恢复原样 */
+  /** 站点被关掉时调用：断开连接、撤掉预览、高亮和面板，页面恢复原样 */
   shutdown() {
     this.stopped = true;
     clearTimeout(this.timer);
     clearTimeout(this.refreshTimer);
+    clearTimeout(this.resizeTimer);
     clearInterval(this.urlTimer);
     clearTimeout(this.textTimer);
     this.observer?.disconnect();
     window.removeEventListener('dblclick', this.onDblClick, true);
-    finishEdit(false);
-    setPick(false);
-    disposeMeasure();
-    clearAll();
-    setSelected(null);
+    window.removeEventListener('resize', this.onResize);
+    this.quiet();
     try {
       this.ws?.close();
     } catch {
       /* ignore */
     }
     this.ws = null;
-    delete (window as unknown as { __CSS_TUNER__?: Bridge }).__CSS_TUNER__;
+    this.shell?.remove();
+    delete (window as unknown as { __CSS_TUNER_BRIDGE__?: Bridge }).__CSS_TUNER_BRIDGE__;
+  }
+
+  /** 撤掉页面上的一切：预览、选中、选取和测量 */
+  private quiet() {
+    finishEdit(false);
+    setPick(false);
+    setMeasure(false);
+    disposeMeasure();
+    clearAll();
+    setSelected(null);
+    this.selected = null;
+    this.selectedLoc = null;
+  }
+
+  /** 同一个站点在另一个标签页里连上了：这边退下，用户点提示时再接回来（那边会退下） */
+  private supersede() {
+    this.paused = true;
+    clearTimeout(this.timer);
+    this.quiet();
+    if (this.shell) this.shell.superseded(() => this.resume());
+  }
+
+  private resume() {
+    this.paused = false;
+    this.retry = 0;
+    this.connect();
   }
 
   configure(cfg: BootConfig) {
-    const changed = cfg.port !== this.cfg.port || cfg.token !== this.cfg.token;
+    const changed = cfg.ws !== this.cfg.ws || cfg.token !== this.cfg.token;
     this.cfg = cfg;
     if (changed) {
       this.retry = 0;
@@ -115,10 +171,12 @@ class Bridge {
 
   private connect() {
     clearTimeout(this.timer);
-    const { port, token, session } = this.cfg;
+    if (this.stopped || this.paused) return;
+    const { ws: path, token } = this.cfg;
     let ws: WebSocket;
     try {
-      ws = new WebSocket(`ws://127.0.0.1:${port}/bridge?token=${encodeURIComponent(token)}&session=${encodeURIComponent(session)}`);
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}${path}?token=${encodeURIComponent(token)}`);
     } catch {
       this.schedule();
       return;
@@ -138,56 +196,51 @@ class Bridge {
       }
       if (msg.t === 'req') void this.handle(msg);
     };
-    ws.onclose = () => {
-      if (this.ws === ws) {
-        this.ws = null;
-        this.schedule();
-      }
+    ws.onclose = (ev) => {
+      if (this.ws !== ws) return;
+      this.ws = null;
+      if (ev.code === SUPERSEDED) this.supersede();
+      else if (ev.code === CLOSED) this.shutdown();
+      else this.schedule();
     };
     ws.onerror = () => {
       /* onclose 会跟着触发 */
     };
   }
 
+  /** 断了就重连（本地服务重启、升级后会在同一个端口上回来） */
   private schedule() {
     clearTimeout(this.timer);
-    if (this.stopped) return;
+    if (this.stopped || this.paused) return;
     const delay = Math.min(3000, 300 * 2 ** this.retry++);
     this.timer = window.setTimeout(() => this.connect(), delay);
   }
 
-  private queue: BridgeEvent[] = [];
+  private onResize = () => {
+    clearTimeout(this.resizeTimer);
+    this.resizeTimer = window.setTimeout(() => this.send({ t: 'resize', w: innerWidth, h: innerHeight }), 150);
+  };
 
+  /** 交给 Codex 的注释落在哪个元素上：这次改动里看得见的，其次是选中的，再不然把第一个滚进视口 */
+  annotationTarget(uids: string[]): Element {
+    const els = uids.map(elOf).filter((e): e is Element => !!e);
+    const seen = els.find(inView) ?? (this.selected?.isConnected && inView(this.selected) ? this.selected : null);
+    if (seen) return seen;
+    const first = els[0];
+    if (first) {
+      first.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+      return first;
+    }
+    return document.body ?? document.documentElement;
+  }
+
+  /** 断着的时候发的事件直接丢掉：连回来的 hello 会让服务端重新同步页面 */
   private send(ev: BridgeEvent | BridgeReply) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(ev));
-      return;
-    }
-    if (ev.t !== 'res') {
-      this.queue.push(ev);
-      if (this.queue.length > 50) this.queue.splice(0, this.queue.length - 50);
-    }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
   }
 
-  /** WebSocket 被页面 CSP 拦截时，扩展改用 executeJavaScript 调这两个方法 */
-  async call(m: string, p: unknown): Promise<unknown> {
-    const fn = this.handlers[m as keyof Handlers] as ((p: unknown) => unknown) | undefined;
-    if (!fn) throw new Error(`unknown method ${m}`);
-    return fn(p ?? {});
-  }
-
-  private drainedAt = 0;
-
-  drain(): BridgeEvent[] {
-    this.drainedAt = Date.now();
-    const q = this.queue;
-    this.queue = [];
-    return q;
-  }
-
-  /** WebSocket 连着，或者扩展正在用 executeJavaScript 轮询（每 200ms 取一次事件） */
   connected(): boolean {
-    return (!!this.ws && this.ws.readyState === WebSocket.OPEN) || Date.now() - this.drainedAt < 2000;
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
   private sendHello() {
@@ -280,7 +333,7 @@ class Bridge {
     return snap;
   }
 
-  /** 选中元素有可以换序的兄弟时，覆盖层上显示把手；放下时把位置（按页面上看到的顺序）发给扩展 */
+  /** 选中元素有可以换序的兄弟时，覆盖层上显示把手；放下时把位置（按页面上看到的顺序）发给服务端 */
   private setDrag(el: Element, snap: ElementSnapshot) {
     const info = snap.order;
     if (!info) {
@@ -335,6 +388,36 @@ class Bridge {
       await whenHydrated();
       await loadSheetSources();
       return pageInfo();
+    },
+    env: (): PageEnv => ({ w: innerWidth, h: innerHeight, ua: navigator.userAgent, lang: navigator.language, framed: !!this.frame }),
+    navigate: ({ url }) => {
+      const u = new URL(url, location.href);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+      // 设备框里同源的跳转留在框里；换了站点（另一个开发服务器）整页跳过去
+      const win = this.frame && u.origin !== location.origin ? (window.top ?? window) : window;
+      setTimeout(() => win.location.assign(u.href), 30);
+      return true;
+    },
+    reload: () => {
+      setTimeout(() => location.reload(), 30);
+      return true;
+    },
+    frame: async ({ width }) => {
+      const f = this.frame;
+      if (f) {
+        if (width === null) {
+          setTimeout(() => f.exit(), 30);
+          return { framed: false, width: null };
+        }
+        f.setWidth(width);
+        await frames(2);
+        return { framed: true, width: f.width };
+      }
+      if (width === null) return { framed: false, width: null };
+      // 进设备框要整页重新加载：页面换成设备框页面，原来的地址放进框里
+      const q = new URLSearchParams({ w: String(Math.round(width)), u: location.pathname + location.search + location.hash });
+      setTimeout(() => location.assign(`${this.cfg.frame}?${q}`), 30);
+      return { framed: true, width };
     },
     setPick: ({ on }) => {
       if (on) setMeasure(false);
@@ -398,6 +481,7 @@ class Bridge {
     reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
     assets: async () => (this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false }),
     assetData: ({ id, as }) => assetData(id, as),
+    fonts: () => pageFonts(),
   };
 
   private async handle(req: BridgeRequest) {
@@ -469,13 +553,51 @@ function reloadSheets(hrefs?: string[]): number {
   return n;
 }
 
+type Mode = 'page' | 'framed' | 'frame-page' | 'none';
+
+/** 这个文档是什么：普通顶层页面、设备框里的页面、设备框页面本身，或者别的 iframe（不管） */
+function modeOf(cfg: BootConfig): { mode: Mode; frame: FrameApi | null; shell: PanelShell | null } {
+  if (window.top === window) return { mode: location.pathname === cfg.frame ? 'frame-page' : 'page', frame: null, shell: null };
+  try {
+    const parent = window.parent as Window & { __CSS_TUNER_FRAME__?: FrameApi; __CSS_TUNER_PANEL_HOST__?: PanelShell };
+    if (parent.location.origin === location.origin && parent.location.pathname === cfg.frame) {
+      const api = parent.__CSS_TUNER_FRAME__;
+      // 面板在外面那层：被顶替、站点关掉时由它显示提示、收起
+      if (api && api.element === window.frameElement) return { mode: 'framed', frame: api, shell: parent.__CSS_TUNER_PANEL_HOST__ ?? null };
+    }
+  } catch {
+    // 父页面跨源
+  }
+  return { mode: 'none', frame: null, shell: null };
+}
+
+/** 面板等页面渲染完（框架激活之后）再挂，免得跟服务端渲染的 HTML 对不上 */
+function mountShell(cfg: BootConfig): PanelShell {
+  const shell = new PanelShell(cfg.panel, cfg.text);
+  (window as unknown as { __CSS_TUNER_PANEL_HOST__?: PanelShell }).__CSS_TUNER_PANEL_HOST__ = shell;
+  const mount = () => void whenHydrated().then(() => shell.mount());
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
+  else mount();
+  return shell;
+}
+
 export function boot(cfg: BootConfig) {
-  if (window.top !== window) return;
-  installHook();
-  const w = window as unknown as { __CSS_TUNER__?: Bridge };
-  if (w.__CSS_TUNER__) {
-    w.__CSS_TUNER__.configure(cfg);
+  const { mode, frame, shell: outer } = modeOf(cfg);
+  if (mode === 'none') return;
+  if (mode === 'frame-page') {
+    // 设备框页面：面板在这一层，页面和桥接在框里；注释落在框上（注释接口只在顶层页面上有）
+    mountShell(cfg);
+    installAnnotate(() => (window as unknown as { __CSS_TUNER_FRAME__?: FrameApi }).__CSS_TUNER_FRAME__?.element ?? document.body);
     return;
   }
-  w.__CSS_TUNER__ = new Bridge(cfg);
+  installHook();
+  const w = window as unknown as { __CSS_TUNER_BRIDGE__?: Bridge };
+  if (w.__CSS_TUNER_BRIDGE__) {
+    w.__CSS_TUNER_BRIDGE__.configure(cfg);
+    return;
+  }
+  const shell = mode === 'page' ? mountShell(cfg) : outer;
+  const bridge = new Bridge(cfg, frame, shell);
+  w.__CSS_TUNER_BRIDGE__ = bridge;
+  if (mode === 'page') installAnnotate((uids) => bridge.annotationTarget(uids));
 }

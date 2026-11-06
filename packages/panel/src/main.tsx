@@ -4,7 +4,7 @@ import { App } from './App';
 import { getHost } from './host';
 import './styles.css';
 
-// 扩展生成的页面在 <html lang> 上标好界面语言；浏览器里调试面板时用 ?lang=en / ?lang=zh-CN 切换
+// 服务端生成的面板页面在 <html lang> 上标好界面语言；浏览器里调试面板时用 ?lang=en / ?lang=zh-CN 切换
 setLocale(localeFrom(new URLSearchParams(location.search).get('lang') ?? document.documentElement.lang));
 document.documentElement.lang = getLocale();
 

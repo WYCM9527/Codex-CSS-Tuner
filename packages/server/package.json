@@ -1,0 +1,24 @@
+{
+  "name": "@css-tuner/server",
+  "version": "0.11.0",
+  "description": "CSS Tuner for Codex: MCP server, background service and local proxy of the css-tuner plugin.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@css-tuner/engine": "workspace:*",
+    "@css-tuner/protocol": "workspace:*",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@css-tuner/bridge": "workspace:*",
+    "@css-tuner/panel": "workspace:*",
+    "@types/ws": "^8.18.2"
+  }
+}

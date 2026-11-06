@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView, type ViewportPreset } from '@css-tuner/protocol';
-import { displayValue, shortFile } from '../lib/format';
+import type { Shell } from '../host';
+import { displayValue, fontValue, shortFile } from '../lib/format';
 import { boundary, nameOf } from '../lib/names';
 import { IconToggle } from './controls';
 import { Icon } from './icons';
 
 type Send = (m: PanelToExt) => void;
+/** 交给 Codex：应用（不给 ids 是全部未应用的）或还原 */
+export type Handoff = (mode: 'apply' | 'revert', ids?: string[]) => void;
 
-export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
+export function Toolbar({ state, send, shell }: { state: PanelState; send: Send; shell: Shell | null }) {
   const [url, setUrl] = useState(state.page?.url ?? state.defaultUrl);
   useEffect(() => {
     if (state.page?.url) setUrl(state.page.url);
@@ -28,6 +31,7 @@ export function Toolbar({ state, send }: { state: PanelState; send: Send }) {
           {connected ? t('panel.reload') : t('panel.open')}
         </button>
         <LocaleSwitch state={state} send={send} />
+        {shell && <ShellButtons shell={shell} />}
       </form>
       {connected && (
         <div className="tool-row">
@@ -112,6 +116,32 @@ function ViewportMenu({ state, send }: { state: PanelState; send: Send }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** 页内面板：换到页面另一边停靠、收起成角落里的小按钮 */
+function ShellButtons({ shell }: { shell: Shell }) {
+  const [side, setSide] = useState(shell.side);
+  const other = side === 'right' ? 'left' : 'right';
+  const dockTitle = t(other === 'left' ? 'panel.shell.dockLeft' : 'panel.shell.dockRight');
+  return (
+    <>
+      <button
+        type="button"
+        className="icon-btn"
+        title={dockTitle}
+        aria-label={dockTitle}
+        onClick={() => {
+          shell.dock(other);
+          setSide(other);
+        }}
+      >
+        <Icon.dock side={other} />
+      </button>
+      <button type="button" className="icon-btn" title={t('panel.shell.collapse')} aria-label={t('panel.shell.collapse')} onClick={() => shell.collapse()}>
+        <Icon.collapse />
+      </button>
+    </>
   );
 }
 
@@ -218,7 +248,7 @@ export function ElementHeader({ state, sel, send }: { state: PanelState; sel: Se
 }
 
 /** 改动清单、上一步 / 下一步和提交按钮，固定在工具栏下面；撤掉了最后一条也留着，好撤销回来 */
-export function ChangeList({ state, send, open, onToggle }: { state: PanelState; send: Send; open: boolean; onToggle: () => void }) {
+export function ChangeList({ state, send, handoff, open, onToggle }: { state: PanelState; send: Send; handoff: Handoff; open: boolean; onToggle: () => void }) {
   const changes = state.changes;
   if (!changes.length && !state.history.undo && !state.history.redo) return null;
   const pending = changes.filter((c) => c.status === 'pending');
@@ -241,7 +271,7 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
         )}
         <HistoryButtons state={state} send={send} />
         {pending.length > 0 && (
-          <button className="btn primary" disabled={state.busy} onClick={() => send({ t: 'apply' })} title={t('panel.applyAll.title')}>
+          <button className="btn primary" disabled={state.busy} onClick={() => handoff('apply')} title={t('panel.applyAll.title')}>
             <Icon.agent />
             {t('panel.applyAll')}
           </button>
@@ -250,7 +280,7 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
       {open && changes.length > 0 && (
         <ul className="change-items">
           {changes.map((c) => (
-            <ChangeItem key={c.id} c={c} busy={state.busy} send={send} />
+            <ChangeItem key={c.id} c={c} busy={state.busy} send={send} handoff={handoff} />
           ))}
         </ul>
       )}
@@ -258,16 +288,17 @@ export function ChangeList({ state, send, open, onToggle }: { state: PanelState;
   );
 }
 
-/** 改动前后的值：文字加引号，换序显示位置，样式按颜色、变量缩写 */
+/** 改动前后的值：文字加引号，换序显示位置，样式按颜色、变量缩写，字体栈只显示首选的字体 */
 function changeValues(c: ChangeView): [string, string] {
   if (c.kind === 'text') return [`“${c.from}”`, `“${c.to}”`];
   if (c.kind === 'reorder') return [t('panel.change.position', { n: c.from }), t('panel.change.position', { n: c.to })];
   if (c.kind === 'prop') return [c.from, c.to];
-  if (c.remove) return [displayValue(c.from), t('panel.change.removed')];
-  return [displayValue(c.from), displayValue(c.to)];
+  const show = c.props.includes('font-family') ? fontValue : displayValue;
+  if (c.remove) return [show(c.from), t('panel.change.removed')];
+  return [show(c.from), show(c.to)];
 }
 
-function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Send }) {
+function ChangeItem({ c, busy, send, handoff }: { c: ChangeView; busy: boolean; send: Send; handoff: Handoff }) {
   const file = c.target.file;
   const [from, to] = changeValues(c);
   return (
@@ -295,28 +326,23 @@ function ChangeItem({ c, busy, send }: { c: ChangeView; busy: boolean; send: Sen
       {c.note && <div className="change-note">{c.note}</div>}
       <div className="change-actions">
         {c.status === 'pending' && (
-          <button className="mini" disabled={busy} onClick={() => send({ t: 'apply', ids: [c.id] })} title={t('panel.apply.title')}>
+          <button className="mini" disabled={busy} onClick={() => handoff('apply', [c.id])} title={t('panel.apply.title')}>
             <Icon.check /> {t('panel.apply')}
           </button>
         )}
         {c.status === 'handoff' && (
-          <button className="mini" disabled={busy} onClick={() => send({ t: 'apply', ids: [c.id] })} title={t('panel.resend.title')}>
+          <button className="mini" disabled={busy} onClick={() => handoff('apply', [c.id])} title={t('panel.resend.title')}>
             <Icon.agent /> {t('panel.resend')}
           </button>
         )}
         {c.status === 'applied' && (
-          <button className="mini" disabled={busy} onClick={() => send({ t: 'revert', id: c.id })} title={t('panel.revert.title')}>
+          <button className="mini" disabled={busy} onClick={() => handoff('revert', [c.id])} title={t('panel.revert.title')}>
             <Icon.undo /> {t('panel.revert')}
           </button>
         )}
         {c.status === 'reverting' && (
-          <button className="mini" disabled={busy} onClick={() => send({ t: 'revert', id: c.id })} title={t('panel.resend.revert.title')}>
+          <button className="mini" disabled={busy} onClick={() => handoff('revert', [c.id])} title={t('panel.resend.revert.title')}>
             <Icon.agent /> {t('panel.resend')}
-          </button>
-        )}
-        {c.status !== 'pending' && (
-          <button className="mini" onClick={() => send({ t: 'diff', id: c.id })} title={t('panel.diff.title')}>
-            <Icon.diff /> {t('panel.diff')}
           </button>
         )}
         {file && c.target.line && (

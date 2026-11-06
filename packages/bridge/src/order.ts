@@ -356,7 +356,7 @@ export async function orderDecls(target: OrderTarget, hint?: Element): Promise<{
   return { decls, parents };
 }
 
-/* ---------- 纯 HTML：Agent 改完后的核对和摆放 ---------- */
+/* ---------- 纯 HTML：Codex 改完后的核对和摆放 ---------- */
 
 /** 不刷新页面，重新取一次页面 HTML，读出父元素下各子元素的指纹和给人看的样子 */
 export async function fetchedKids(parentPath: number[]): Promise<{ sigs: string[]; shorts: string[] } | null> {

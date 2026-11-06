@@ -9,7 +9,7 @@ export const CATALOGS: Record<Locale, Record<MsgKey, string>> = { en, 'zh-CN': z
 
 let current: Locale = 'en';
 
-/** 编辑器显示语言（vscode.env.language，如 zh-cn、zh-tw、en-us）换算成界面语言：中文一律用简体，其余用英文 */
+/** 浏览器或系统的语言（如 zh-CN、zh-tw、en-US）换算成界面语言：中文一律用简体，其余用英文 */
 export function localeFrom(lang: string | null | undefined): Locale {
   return /^zh(-|$)/i.test(lang ?? '') ? 'zh-CN' : 'en';
 }

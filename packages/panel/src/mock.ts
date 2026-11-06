@@ -1,7 +1,7 @@
-import { changeName, getLocale, groupLabel, setLocale, t, viewportBands, type AssetView, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
+import { changeName, getLocale, groupLabel, sameValue, setLocale, t, viewportBands, type AssetView, type ChangeView, type ElementSnapshot, type OrderView, type PanelState, type PanelToExt, type PropsView, type Scales, type ScaleStep, type Target } from '@css-tuner/protocol';
 import type { Host } from './host';
 
-/** 浏览器里调试面板用的假宿主：行为尽量贴近扩展，便于不开 Cursor 也能看交互 */
+/** 浏览器里调试面板用的假宿主：行为尽量贴近服务端，不开页面和后台服务也能看交互 */
 
 const rem = (n: number) => `${+(n / 16).toFixed(4)}rem`;
 
@@ -21,6 +21,13 @@ const PALETTE: Record<string, string[]> = {
 };
 const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
+const SANS = 'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+/** 假宿主里「本机装的字体」：常见的 macOS 字体，浏览器里打开时能看到真实字形 */
+const LOCAL_FONTS = [
+  'American Typewriter', 'Arial', 'Avenir Next', 'Baskerville', 'Didot', 'Futura', 'Georgia', 'Gill Sans', 'Helvetica Neue', 'Hiragino Sans GB',
+  'Inter', 'Kaiti SC', 'Menlo', 'Optima', 'PingFang SC', 'PingFang TC', 'Rockwell', 'Songti SC', 'Times New Roman', 'Verdana', 'Zapfino',
+];
+
 export function mockScales(): Scales {
   const sp = spacing();
   return {
@@ -32,6 +39,12 @@ export function mockScales(): Scales {
       return { label: k, value: rem(+v), px: +v, token: k };
     })],
     radius: [['xs', 2], ['sm', 4], ['md', 6], ['lg', 8], ['xl', 12], ['2xl', 16], ['3xl', 24], ['card', 14], ['full', 9999]].map(([k, v]) => ({ label: String(k), value: `${v}px`, px: +v, token: String(k) })),
+    fontFamily: [
+      ['sans', SANS],
+      ['serif', 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif'],
+      ['mono', 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'],
+      ['display', '"Playfair Display", ui-serif, serif'],
+    ].map(([k, v]) => ({ label: k, value: v, token: k })),
     fontSize: [['xs', 12], ['sm', 14], ['base', 16], ['lg', 18], ['xl', 20], ['2xl', 24], ['3xl', 30], ['4xl', 36], ['5xl', 48], ['6xl', 60]].map(([k, v]) => ({ label: String(k), value: rem(+v), px: +v, token: String(k) })),
     fontWeight: [['thin', 100], ['extralight', 200], ['light', 300], ['normal', 400], ['medium', 500], ['semibold', 600], ['bold', 700], ['extrabold', 800], ['black', 900]].map(([k, v]) => ({ label: String(k), value: String(v), token: String(k) })),
     lineHeight: [['none', '1'], ['tight', '1.25'], ['snug', '1.375'], ['normal', '1.5'], ['relaxed', '1.625'], ['loose', '2'], ...[3, 4, 5, 6, 7, 8, 9, 10].map((n) => [String(n), rem(n * 4)])].map(([k, v]) => ({ label: k, value: v, token: k })),
@@ -140,6 +153,7 @@ function el(over: Partial<ElementSnapshot>): ElementSnapshot {
     'max-width': 'none',
     'min-height': 'auto',
     'max-height': 'none',
+    'font-family': SANS,
     'font-size': '16px',
     'font-weight': '400',
     'line-height': '24px',
@@ -342,6 +356,7 @@ export function createMockHost(): Host {
     snap: true,
     locale: getLocale(),
     history: { undo: null, redo: null },
+    fonts: null,
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
   const removedByEl: Record<string, string[]> = {};
@@ -502,12 +517,18 @@ export function createMockHost(): Host {
         remove: true,
         target: sel.targets[declared[0]],
         pageUrl: state.page!.url,
+        uid: e.uid,
         createdAt: Date.now(),
       } satisfies ChangeView);
       return;
     }
     for (const p of props) sel.pending[p] = edit.edit.value;
-    if (edit.edit.phase !== 'commit') return;
+    if (edit.edit.phase !== 'commit') {
+      // 和服务端一样：这些属性没有未应用的改动、预览回到原值时不算改过
+      const touched = state.changes.some((c) => c.status === 'pending' && c.element === e.label && c.props.some((p) => props.includes(p)));
+      if (!touched && props.every((p) => sameValue(p, edit.edit.value, e.computed[p] ?? ''))) for (const p of props) delete sel.pending[p];
+      return;
+    }
     dropChanges((c) => !!c.remove && c.element === e.label && c.props.some((p) => props.includes(p)));
     for (const p of props) sel.pending[p] = edit.edit.value;
     const from = e.computed[props[0]];
@@ -526,6 +547,7 @@ export function createMockHost(): Host {
         to,
         target: sel.targets[props[0]],
         pageUrl: state.page!.url,
+        uid: sel.el.uid,
         createdAt: Date.now(),
       } satisfies ChangeView);
   };
@@ -655,6 +677,7 @@ export function createMockHost(): Host {
             to: m.value,
             target: view.target,
             pageUrl: state.page!.url,
+            uid: sel.el.uid,
             createdAt: Date.now(),
           } satisfies ChangeView);
         }
@@ -686,6 +709,7 @@ export function createMockHost(): Host {
             target: o.target,
             simulated: true,
             pageUrl: state.page!.url,
+            uid: it.uid,
             createdAt: Date.now(),
           } satisfies ChangeView);
         select(uid);
@@ -713,17 +737,18 @@ export function createMockHost(): Host {
             to: JSON.stringify(m.value),
             target: item.target,
             pageUrl: state.page!.url,
+            uid,
             createdAt: Date.now(),
           } satisfies ChangeView);
         select(uid);
         break;
       }
       case 'apply': {
-        // 交给 Agent：先等 Agent 改，过一会儿模拟它改完、页面核对上
+        // 交给 Codex：先等 Codex 改，过一会儿模拟它改完、页面核对上
         const sent = state.changes.filter((c) => (m.ids ? m.ids.includes(c.id) && (c.status === 'pending' || c.status === 'handoff') : c.status === 'pending'));
         if (!sent.length) break;
         for (const c of sent) c.status = 'handoff';
-        state.notice = { level: 'info', text: t('ext.apply.prefilled', { n: sent.length }) };
+        state.notice = { level: 'info', text: m.via === 'annotation' ? t('ext.apply.annotation', { n: sent.length, batch: m.batch ?? '' }) : t('ext.apply.clipboard', { n: sent.length }) };
         setTimeout(() => {
           for (const c of sent) if (c.status === 'handoff') c.status = 'applied';
           emit();
@@ -734,7 +759,7 @@ export function createMockHost(): Host {
         const c = state.changes.find((x) => x.id === m.id);
         if (!c) break;
         c.status = 'reverting';
-        state.notice = { level: 'info', text: t('ext.revert.prefilled') };
+        state.notice = { level: 'info', text: m.via === 'annotation' ? t('ext.revert.annotation', { n: 1, batch: m.batch ?? '' }) : t('ext.revert.clipboard') };
         setTimeout(() => {
           if (c.status === 'reverting') c.status = 'reverted';
           emit();
@@ -770,8 +795,16 @@ export function createMockHost(): Host {
           emit();
         }, 400);
         return;
+      case 'fontsOpen':
+        if (state.fonts) return;
+        state.fonts = { page: ['Inter', 'Playfair Display'], local: null };
+        setTimeout(() => {
+          state.fonts = { ...state.fonts!, local: LOCAL_FONTS };
+          emit();
+        }, 600);
+        break;
       case 'saveAsset':
-        state.notice = { level: 'info', text: t('ext.assets.saved', { name: ASSETS.find((a) => a.id === m.id)?.name ?? m.id }) };
+        state.notice = { level: 'info', text: t('ext.assets.savedTo', { name: ASSETS.find((a) => a.id === m.id)?.name ?? m.id, folder: 'Downloads' }) };
         break;
       case 'saveAllAssets':
         state.notice = { level: 'info', text: t('ext.assets.allSaved', { n: ASSETS.filter((a) => !a.streaming).length, folder: 'Downloads' }) };
@@ -782,13 +815,13 @@ export function createMockHost(): Host {
       default:
         break;
     }
-    // 交给 Agent、还原之后，之前记的几步对不上了
+    // 交给 Codex、还原之后，之前记的几步对不上了
     if (m.t === 'apply' || m.t === 'revert') undos.length = redos.length = 0;
     syncHistory();
     emit();
   };
 
-  // ?state=real-state.json：加载扩展自测导出的真实状态，用真实页面数据检查面板排版
+  // ?state=real-state.json：加载一份真实的面板状态（面板收到的 state 消息），用真实页面数据检查面板排版
   const src = new URLSearchParams(location.search).get('state');
   if (src) {
     void fetch(src)
@@ -807,10 +840,12 @@ export function createMockHost(): Host {
       cb(structuredClone(state));
       return () => subs.delete(cb);
     },
+    onPrompt: () => () => undefined,
     load: <T,>(k: string, fallback: T) => (k in store ? (store[k] as T) : fallback),
     save(k, v) {
       store[k] = v;
       localStorage.setItem('css-tuner-mock-ui', JSON.stringify(store));
     },
+    shell: null,
   };
 }

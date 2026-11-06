@@ -1,0 +1,20 @@
+{
+  "name": "codex-css-tuner",
+  "interface": {
+    "displayName": "CSS Tuner"
+  },
+  "plugins": [
+    {
+      "name": "css-tuner",
+      "source": {
+        "source": "local",
+        "path": "./plugins/css-tuner"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

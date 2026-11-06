@@ -24,9 +24,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm package
+      - run: pnpm build
+      # Codex 装插件只复制文件夹，提交的构建产物必须和源码对得上
+      - name: 构建产物是最新的
+        run: |
+          if [ -n "$(git status --porcelain plugins/css-tuner)" ]; then
+            git status --short plugins/css-tuner
+            echo "::error::plugins/css-tuner 里的构建产物和源码对不上：本地 pnpm build 之后一起提交"
+            exit 1
+          fi
+      - run: pnpm check:plugin
+      - run: node scripts/mcp-smoke.mjs
       - uses: actions/upload-artifact@v7
         with:
-          name: cursor-css-tuner-vsix
-          path: packages/extension/dist/cursor-css-tuner.vsix
+          name: css-tuner-plugin
+          path: plugins/css-tuner
+          include-hidden-files: true
           if-no-files-found: error

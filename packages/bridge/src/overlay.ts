@@ -98,7 +98,8 @@ function ensure() {
   if (!document.documentElement) return;
   host = document.createElement('css-tuner-overlay');
   host.setAttribute(OWN_ATTR, '');
-  host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; display: block;';
+  // 比页内面板低一层：高亮框不画到面板上
+  host.style.cssText = 'all: initial; position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; display: block;';
   root = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
   style.textContent = STYLE;

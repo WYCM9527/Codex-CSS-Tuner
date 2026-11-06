@@ -6,7 +6,7 @@ export const OWN_ATTR = 'data-css-tuner';
 const byEl = new WeakMap<Element, string>();
 const byId = new Map<string, WeakRef<Element>>();
 let seq = 0;
-/** 每次加载页面不同：扩展里存着的旧 uid 在刷新后必须失效，不能碰巧指到别的元素 */
+/** 每次加载页面不同：服务端存着的旧 uid 在刷新后必须失效，不能碰巧指到别的元素 */
 const DOC = Math.random().toString(36).slice(2, 6);
 
 export function uidOf(el: Element): string {
@@ -56,7 +56,7 @@ export function sheetDevId(sheet: CSSStyleSheet): string | null {
 
 /**
  * 读新出现的同源外链样式表的 sourcemap，记下对应的源文件；有新发现时返回 true。
- * 没有 sourcemap 时看 webpack 的 pathinfo 注释，记下相对项目根的路径（扩展按项目根解析）
+ * 没有 sourcemap 时看 webpack 的 pathinfo 注释，记下相对项目根的路径（服务端按项目根解析）
  */
 export async function loadSheetSources(): Promise<boolean> {
   const hrefs = Array.from(document.styleSheets)

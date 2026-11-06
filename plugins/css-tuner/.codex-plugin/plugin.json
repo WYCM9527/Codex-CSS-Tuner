@@ -1,0 +1,33 @@
+{
+  "name": "css-tuner",
+  "version": "0.11.0",
+  "description": "Tune a running web page visually (styles, text, element order, component props) in a panel inside the page, then let Codex write the changes into your source code and check them on the page.",
+  "author": {
+    "name": "WYCM9527",
+    "url": "https://github.com/WYCM9527"
+  },
+  "homepage": "https://github.com/WYCM9527/Codex-CSS-Tuner#readme",
+  "repository": "https://github.com/WYCM9527/Codex-CSS-Tuner",
+  "license": "MIT",
+  "keywords": ["css", "tailwind", "visual editor", "live preview", "react", "vue", "svelte", "nextjs", "in-app browser"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "CSS Tuner",
+    "shortDescription": "Tune a page visually, then let Codex write the code",
+    "longDescription": "CSS Tuner adds a tuning panel to your local dev server or HTML files in the Codex in-app browser. Pick an element and adjust spacing, colors, typography, layout, text, sibling order and component props with live preview. CSS Tuner finds where each value lives in your source (Tailwind classes, CSS rules, CSS variables, JSX props), and Apply hands the changes to Codex as an annotation. Codex writes the code, and CSS Tuner checks the live page to confirm every change took effect. Works with React, Next.js, Vue, Nuxt, Svelte and SvelteKit projects using Tailwind 3 / 4 or regular CSS.",
+    "developerName": "WYCM9527",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/WYCM9527/Codex-CSS-Tuner",
+    "defaultPrompt": [
+      "Open my dev server in CSS Tuner",
+      "Write the changes I made in CSS Tuner into the code",
+      "Check whether my CSS Tuner changes are live"
+    ],
+    "brandColor": "#141414",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": ["./assets/screenshot.png"]
+  }
+}

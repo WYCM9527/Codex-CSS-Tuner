@@ -197,7 +197,7 @@ export function setEditing(node: Text | null, original = '') {
 
 /**
  * 编辑结束：自己改的文字不算 React 的改写；还没被预览占着的节点记下编辑前的文字。
- * 提交时页面上先留着新文字，等扩展发来预览；取消时按预览恢复
+ * 提交时页面上先留着新文字，等服务端发来预览；取消时按预览恢复
  */
 export function endEditing(node: Text, original: string, committed: boolean) {
   observer.takeRecords();
@@ -236,7 +236,7 @@ function matching(chain: Array<{ depth: number; props: Record<string, unknown> }
   return out.slice(0, 6);
 }
 
-/** 纯 HTML：元素从 <html> 起逐层在父元素里的下标（不算扩展自己插进去的节点） */
+/** 纯 HTML：元素从 <html> 起逐层在父元素里的下标（不算 CSS Tuner 自己插进去的节点） */
 export function htmlPathOf(el: Element): number[] | null {
   const path: number[] = [];
   for (let e: Element = el; e !== document.documentElement; ) {

@@ -13,7 +13,7 @@ type StyleTarget = Extract<PreviewTarget, { kind: 'inline' | 'rule' }>;
 type Refind = () => Promise<Element | null>;
 
 /**
- * attached：预览还作用在页面上（元素被重建、样式表被热更新换掉后会掉，扩展据此重新挂）；
+ * attached：预览还作用在页面上（元素被重建、样式表被热更新换掉后会掉，服务端据此重新挂）；
  * found：页面上找得到这个元素（找不到时不用去重新挂预览）
  */
 interface ProbeResult {
@@ -102,7 +102,7 @@ async function probeStyle(id: string, target: StyleTarget, expected: Record<stri
 }
 
 /**
- * 交给 Agent 之后核对一条改动：读源码现在在页面上给出的值，不等待、不撤预览，扩展隔一会儿再来问；对上了才撤掉预览。
+ * 交给 Codex 之后核对一条改动：读源码现在在页面上给出的值，不等待、不撤预览，服务端隔一会儿再来问；对上了才撤掉预览。
  * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"，props 是属性名
  */
 export function probe(id: string, target: PreviewTarget, expected: Record<string, string>, refind: Refind): Promise<ProbeResult> {

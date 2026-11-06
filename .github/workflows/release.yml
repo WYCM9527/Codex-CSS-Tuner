@@ -1,14 +1,13 @@
 name: Release
 
-# 推 v* 标签发布：标签必须和 packages/extension/package.json 的 version 一致。
-# 需要仓库密钥 OVSX_PAT（Open VSX 的访问令牌，勾选 Publishing only 即可）。
-# 与 publisher 同名的命名空间要先存在：Publishing only 的令牌不能创建命名空间。
+# 推 v* 标签发布：标签必须和插件清单 plugins/css-tuner/.codex-plugin/plugin.json 的 version 一致。
+# 发布 GitHub Release，附上插件文件夹的 zip；从插件市场装这个版本用 --ref <标签>。
 on:
   push:
     tags: ['v*']
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -23,29 +22,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: 标签和版本号一致
         run: |
-          version="v$(node -p "require('./packages/extension/package.json').version")"
+          version="v$(node -p "require('./plugins/css-tuner/.codex-plugin/plugin.json').version")"
           if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "标签 $GITHUB_REF_NAME 和扩展版本 $version 不一致" >&2
+            echo "标签 $GITHUB_REF_NAME 和插件版本 $version 不一致" >&2
             exit 1
           fi
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm package
-      - name: 发布到 Open VSX
-        working-directory: packages/extension
+      - run: pnpm build
+      - name: 构建产物是最新的
         run: |
-          publisher="$(node -p "require('./package.json').publisher")"
-          status="$(curl -s -o /dev/null -w '%{http_code}' "https://open-vsx.org/api/$publisher")"
-          if [ "$status" = 404 ]; then
-            pnpm exec ovsx create-namespace "$publisher" || {
-              echo "::error::Open VSX 上没有命名空间 $publisher，当前令牌也无法创建。请在 https://open-vsx.org/user-settings/namespaces 创建后重新运行。"
-              exit 1
-            }
+          if [ -n "$(git status --porcelain plugins/css-tuner)" ]; then
+            git status --short plugins/css-tuner
+            echo "::error::plugins/css-tuner 里的构建产物和源码对不上：本地 pnpm build 之后一起提交"
+            exit 1
           fi
-          pnpm exec ovsx publish dist/cursor-css-tuner.vsix
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - run: pnpm check:plugin
+      - run: node scripts/mcp-smoke.mjs
+      # zip 保留可执行位，scripts/launch-mcp 解压后还能直接跑
+      - name: 打包插件
+        working-directory: plugins
+        run: zip -qr "../css-tuner-${GITHUB_REF_NAME#v}.zip" css-tuner
       - uses: softprops/action-gh-release@v3
         with:
-          files: packages/extension/dist/cursor-css-tuner.vsix
+          files: css-tuner-*.zip
           generate_release_notes: true

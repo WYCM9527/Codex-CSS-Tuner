@@ -148,7 +148,7 @@ interface LoadedMap {
   jsxFile: string | null;
 }
 
-/** 开发态 JSX 转换会把模块的绝对路径写进代码（_jsxFileName / fileName），扩展据此直接定位文件 */
+/** 开发态 JSX 转换会把模块的绝对路径写进代码（_jsxFileName / fileName），服务端据此直接定位文件 */
 function jsxFileName(code: string): string | null {
   const m = /(?:var|const|let)\s+_jsxFileName\s*=\s*("(?:[^"\\]|\\.)*")/.exec(code) ?? /fileName:\s*("(?:[^"\\]|\\.)*")/.exec(code);
   if (!m) return null;

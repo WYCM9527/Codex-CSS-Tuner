@@ -25,7 +25,9 @@ interface Hook {
   renderers?: Map<number, RendererInternals>;
   inject?: (internals: RendererInternals) => number;
   onCommitFiberRoot?: (...args: unknown[]) => unknown;
-  __cssTuner?: Tap;
+  __cssTunerTap?: Tap;
+  /** Cursor 版 CSS Tuner 的桥接也会挂在这个钩子上（两个可能同时在页面里） */
+  __cssTuner?: { own?: boolean };
 }
 
 const KEY = '__REACT_DEVTOOLS_GLOBAL_HOOK__';
@@ -35,8 +37,8 @@ const hookOf = () => (window as unknown as Record<string, Hook | undefined>)[KEY
 export function installHook(): void {
   const w = window as unknown as Record<string, Hook | undefined>;
   let hook = w[KEY];
-  if (hook?.__cssTuner) return;
-  const own = !hook;
+  if (hook?.__cssTunerTap) return;
+  const own = !hook || hook.__cssTuner?.own === true;
   if (!hook) {
     let next = 1;
     const renderers = new Map<number, RendererInternals>();
@@ -76,16 +78,16 @@ export function installHook(): void {
     }
     return r;
   };
-  hook.__cssTuner = tap;
+  hook.__cssTunerTap = tap;
 }
 
-const tapOf = () => hookOf()?.__cssTuner ?? null;
+const tapOf = () => hookOf()?.__cssTunerTap ?? null;
 
 /** 页面用了 React：拿到过渲染器，或者钩子是页面自己（DevTools、React Refresh）挂的 */
 export function reactHooked(): boolean {
   const hook = hookOf();
   if (!hook) return false;
-  const tap = hook.__cssTuner;
+  const tap = hook.__cssTunerTap;
   return !tap || !tap.own || tap.renderers.size > 0;
 }
 

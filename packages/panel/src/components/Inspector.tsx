@@ -11,9 +11,11 @@ import {
   PADDING,
   parseColor,
   parseGradient,
+  primaryFamily,
   RADIUS,
   sameBackgroundImage,
   sameColor,
+  sameFontStack,
   solidColorOf,
   STROKE_CLIP,
   STROKE_ORIGIN,
@@ -35,6 +37,7 @@ import { Assets } from './Assets';
 import { ColorField } from './ColorField';
 import { Content } from './Content';
 import { AddRemove, Corner, IconToggle, Row, Section, Segmented, SelectField, SliderField } from './controls';
+import { FontField } from './FontField';
 import { Icon } from './icons';
 import { NumberField } from './NumberField';
 import { PaintField } from './PaintField';
@@ -134,7 +137,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
 
   // 填充和描边的渐变：背景图是一层渐变就是渐变填充；渐变描边用两层背景叠出来
   // （上层是填充、只铺到内边距，下层是描边渐变、铺到边框，边框颜色透明）。
-  // 没有不透明的填充时两层背景会把元素里面也盖住，这种描边交给 Agent，扩展只拿两层背景预览
+  // 没有不透明的填充时两层背景会把元素里面也盖住，这种描边交给 Codex，页面上只拿两层背景预览
   const bgColor = currentValue(sel, 'background-color');
   const image = currentValue(sel, 'background-image');
   const layers = strokeLayers(image, currentValue(sel, 'background-clip'));
@@ -189,7 +192,7 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
     const white = scales?.colors.find((s) => s.label === 'white');
     const color = white?.value ?? '#ffffff';
     const token = white ? (white.token ?? white.label) : null;
-    // 渐变描边之前没有填充只能交给 Agent，有了填充就能用两层背景写（填充和描边一起改，不走撤销删除）
+    // 渐变描边之前没有填充只能交给 Codex，有了填充就能用两层背景写（填充和描边一起改，不走撤销删除）
     if (agentStroke) return many([req(['background-color'], color, token), ...layeredEdits(fillLayer(color), agentStroke)]);
     if (removed(['background-color']).length) return send({ t: 'resetProps', props: ['background-color'] });
     commit(['background-color'], color, token);
@@ -470,6 +473,21 @@ export function Inspector({ state, sel, prefs, setPrefs, edit, editText, editPro
       </Section>
 
       <Section id="typography" title={t('insp.typography')} open={open('typography')} onToggle={toggle}>
+        <Row label={t('insp.font')}>
+          <FontField
+            title={t('insp.font')}
+            value={currentValue(sel, 'font-family')}
+            display={fontLabel(sel, scales?.fontFamily)}
+            steps={scales?.fontFamily ?? []}
+            vars={!tailwind}
+            fonts={state.fonts}
+            pending={isPending(sel, ['font-family'])}
+            target={sel.targets['font-family']}
+            corner={corner(['font-family'])}
+            onOpen={() => send({ t: 'fontsOpen' })}
+            onEdit={(e) => edit(['font-family'], e)}
+          />
+        </Row>
         <Row label={t('insp.sizeWeight')}>
           {num(['font-size'], <b className="glyph">T</b>, t('insp.fontSize'), { min: 0 })}
           <SelectField
@@ -743,6 +761,22 @@ function strokeProps(part: 'style' | 'color', sides: Side[], tailwind: boolean):
   const key = sides.join();
   const exact = sides.length === 1 || sides.length === 4 || key === 'top,bottom' || key === 'right,left';
   return (exact && !(part === 'style' && tailwind) ? sides : SIDES).map((s) => `border-${s}-${part}`);
+}
+
+/** 字体字段上的名字：主题里的字体显示令牌名，源码写的是变量时显示变量名，其余显示首选的字体 */
+function fontLabel(sel: SelectionView, steps: ScaleStep[] | undefined): string {
+  const value = currentValue(sel, 'font-family');
+  const step = steps?.find((s) => sameFontStack(s.value, value));
+  if (step) return step.label;
+  if (!('font-family' in sel.pending)) {
+    // Tailwind 4 的 font-sans 生成的是 var(--font-sans)，next/font 这类变量算出来的字体栈对不上主题的值，按类名认
+    const utility = sel.el.winners['font-family']?.rule?.utility?.replace(/^.*:/, '');
+    const token = utility?.startsWith('font-') ? steps?.find((s) => s.token === utility.slice(5)) : undefined;
+    if (token) return token.label;
+    const v = declaredVar(sel.el, 'font-family');
+    if (v) return v;
+  }
+  return primaryFamily(value) || value;
 }
 
 function weightLabel(value: string, steps: ScaleStep[] | undefined): string {

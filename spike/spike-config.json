@@ -1,8 +1,0 @@
-{
-  "out": "/tmp/css-tuner-spike-results.json",
-  "mode": "inject",
-  "closeWindow": true,
-  "targets": [
-    { "name": "tw-react", "url": "http://127.0.0.1:5411/", "cssProbeSelector": "[class]" }
-  ]
-}

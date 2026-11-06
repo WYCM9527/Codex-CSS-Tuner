@@ -349,7 +349,7 @@ export async function propsInfo(el: Element): Promise<PropsInfo | undefined> {
   };
 }
 
-/* ---------- 交给 Agent 后核对 ---------- */
+/* ---------- 交给 Codex 后核对 ---------- */
 
 const asJson = (v: unknown) => (v === undefined ? 'undefined' : (JSON.stringify(v) ?? 'null'));
 

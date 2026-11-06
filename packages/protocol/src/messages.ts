@@ -134,7 +134,7 @@ export interface AssetItem {
   url: string | null;
   /** 页面上正在显示的地址 */
   shown: string | null;
-  /** 建议的文件名；没有扩展名时扩展按 Content-Type 补 */
+  /** 建议的文件名；没有扩展名时服务端按 Content-Type 补 */
   name: string;
   /** 要下载的那份的像素尺寸，SVG 是页面上显示的尺寸；不知道时为 null */
   width: number | null;
@@ -242,7 +242,7 @@ export interface PropsInfo {
   props: PropInfo[];
   /** 服务端组件：页面上不能预览，应用后才看得到效果 */
   server: boolean;
-  /** 页面上能预览：React 开发构建初始化前钩子就挂上了（扩展连上之前就打开的页面要刷新一次） */
+  /** 页面上能预览：React 开发构建初始化前钩子就挂上了（桥接脚本加载之前就打开的页面要刷新一次） */
   live: boolean;
   /** 页面上由同一个调用处创建的组件实例数 */
   same: number;
@@ -271,7 +271,7 @@ export interface PageInfo {
   rootVars: CssVar[];
 }
 
-/* ---------- 桥接脚本 <-> 扩展 ---------- */
+/* ---------- 桥接脚本 <-> 服务端 ---------- */
 
 export type BridgeEvent =
   | { t: 'hello'; session: string; page: PageInfo }
@@ -284,7 +284,18 @@ export type BridgeEvent =
   | { t: 'editText'; uid: string; segment: number; value: string; phase: 'live' | 'commit' }
   /** 在页面上拖动选中元素的把手换位置：to 是放下处在兄弟组里的位置（按页面上现在看到的顺序，0 起） */
   | { t: 'reorder'; uid: string; to: number }
+  /** 页面宽度变了（拖动浏览器窗格、设备框换了宽度），停下来一会儿才发 */
+  | { t: 'resize'; w: number; h: number }
   | { t: 'log'; level: 'info' | 'warn' | 'error'; msg: string };
+
+/** 页面所在的环境：视口大小、浏览器的界面语言，以及是不是在设备框（模拟手机、平板宽度）里 */
+export interface PageEnv {
+  w: number;
+  h: number;
+  ua: string;
+  lang: string;
+  framed: boolean;
+}
 
 export type PreviewTarget =
   /**
@@ -345,7 +356,7 @@ export interface BridgeMethods {
   fallback: { p: { uid: string; props: string[] }; r: Record<string, string> | null };
   /** 面板结构树上悬停的元素，在页面上描边；null 取消 */
   hover: { p: { uid: string | null }; r: boolean };
-  /** 交给 Agent 后核对一次：源码现在在页面上给出的值对不对得上（读预览底下的，不等待），对上了才撤掉预览 */
+  /** 交给 Codex 后核对一次：源码现在在页面上给出的值对不对得上（读预览底下的，不等待），对上了才撤掉预览 */
   probe: {
     /**
      * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"（兄弟的 sig 按期望的顺序排，一行一项），props 是属性名（值为 JSON）。
@@ -358,11 +369,22 @@ export interface BridgeMethods {
   reloadSheets: { p: { hrefs?: string[] }; r: number };
   /** 选中元素连同子元素里看得见的图片、背景图、SVG 和视频（限时） */
   assets: { p: Record<string, never>; r: AssetList };
+  /** 页面用 @font-face 加载的字体名（next/font 这类带哈希的内部名字不算） */
+  fonts: { p: Record<string, never>; r: string[] };
   /** 清单里一条资源的内容：SVG 是代码（file 换成页面上实际的颜色，copy 保留 currentColor），blob: 地址是 base64 字节 */
   assetData: {
     p: { id: string; as: 'file' | 'copy' };
     r: { text?: string; base64?: string; mime?: string; error?: 'gone' | 'streaming' | 'too-large' | 'unsupported' };
   };
+  env: { p: Record<string, never>; r: PageEnv };
+  /** 页面跳到别的地址（面板上换地址） */
+  navigate: { p: { url: string }; r: boolean };
+  reload: { p: Record<string, never>; r: boolean };
+  /**
+   * 设备框：width 是要模拟的宽度，页面放进这么宽的框里显示（媒体查询按框的宽度算）；null 回到实际宽度。
+   * 进出设备框会整页跳转，页面重新连上以后才算换好
+   */
+  frame: { p: { width: number | null }; r: { framed: boolean; width: number | null } };
 }
 
 export type BridgeMethod = keyof BridgeMethods;
@@ -382,7 +404,7 @@ export interface BridgeReply {
   error?: string;
 }
 
-/* ---------- 面板 <-> 扩展 ---------- */
+/* ---------- 面板 <-> 服务端 ---------- */
 
 export type Scope = 'instance' | 'source';
 
@@ -473,7 +495,7 @@ export interface TextView {
   /** 去掉首尾空白的文字：有未应用的改动时是改动后的值 */
   value: string;
   pending: boolean;
-  /** 文字写在哪：JSX 字面量、调用处的属性、多语言文件、HTML 文件，或动态内容（交给 Agent） */
+  /** 文字写在哪：JSX 字面量、调用处的属性、多语言文件、HTML 文件，或动态内容（交给 Codex） */
   origin: TextOrigin;
   target: Target;
 }
@@ -491,6 +513,8 @@ export interface Scales {
   spacing: ScaleStep[];
   size: ScaleStep[];
   radius: ScaleStep[];
+  /** 字体：Tailwind 是主题里的 --font-*，普通 CSS 项目是 :root 上像字体的变量；值是整串字体栈 */
+  fontFamily: ScaleStep[];
   fontSize: ScaleStep[];
   fontWeight: ScaleStep[];
   lineHeight: ScaleStep[];
@@ -522,7 +546,7 @@ export interface ViewportView {
   bands: Record<ViewportBand, { width: number; prefix: string | null }>;
 }
 
-/** 未应用 → 交给 Agent 等它改（handoff）→ 页面上核对上了（applied）→ 交给 Agent 还原（reverting）→ 核对上原样（reverted） */
+/** 未应用 → 交给 Codex 等它改（handoff）→ 页面上核对上了（applied）→ 交给 Codex 还原（reverting）→ 核对上原样（reverted） */
 export type ChangeStatus = 'pending' | 'handoff' | 'applied' | 'reverting' | 'reverted';
 
 /** 改动类型：样式、文字、同一父元素内换序、组件 props */
@@ -547,6 +571,8 @@ export interface ChangeView {
   remove?: boolean;
   pageUrl: string;
   createdAt: number;
+  /** 页面上的元素（交给 Codex 的注释落在它上面）；刷新以后预览重新挂上时更新 */
+  uid: string;
 }
 
 /** 清单和上一步提示里改动叫什么：文字、换序按当前界面语言叫，样式和 props 用属性名 */
@@ -581,6 +607,15 @@ export interface PanelState {
   locale: Locale;
   /** 上一步 / 下一步会撤销、重做的操作说明，没有可撤销、重做的为 null */
   history: { undo: string | null; redo: string | null };
+  /** 字体菜单里的候选，第一次打开字体菜单之前为 null */
+  fonts: FontsView | null;
+}
+
+/** 页面用 @font-face 加载的字体；这台电脑装的字体（还在读时为 null，读不到时是空的、failed 为真） */
+export interface FontsView {
+  page: string[];
+  local: string[] | null;
+  failed?: boolean;
 }
 
 export type PanelToExt =
@@ -610,15 +645,17 @@ export type PanelToExt =
   | { t: 'resetText'; segment: number }
   | { t: 'resetProp'; name: string }
   | { t: 'resetOrder' }
-  /** 应用：整理成提示词预填进新的 Agent 对话。不给 ids 是全部未应用的；给了 ids 时，还在等 Agent 改的那几条再发一次 */
-  | { t: 'apply'; ids?: string[] }
-  /** 还原：交给 Agent 改回原样（还在等它还原的再发一次） */
-  | { t: 'revert'; id: string }
-  /** 放弃：未应用、等 Agent 改的撤掉预览移出清单；等 Agent 还原的不还原了，回到已应用 */
+  /**
+   * 应用：整理成提示词交给 Codex。不给 ids 是全部未应用的；给了 ids 时，还在等 Codex 改的那几条再发一次。
+   * batch 是面板起的批次号（注释里带着它，Codex 按它取完整的提示词）；via 是面板怎么交出去的
+   */
+  | { t: 'apply'; ids?: string[]; batch?: string; via?: HandoffVia }
+  /** 还原：交给 Codex 改回原样（还在等它还原的再发一次） */
+  | { t: 'revert'; id: string; batch?: string; via?: HandoffVia }
+  /** 放弃：未应用、等 Codex 改的撤掉预览移出清单；等 Codex 还原的不还原了，回到已应用 */
   | { t: 'discard'; id: string }
+  /** 在编辑器里打开源码 */
   | { t: 'openSource'; file: string; line: number; column: number }
-  /** 对比：交给 Agent 之前的文件 ↔ 现在 */
-  | { t: 'diff'; id: string }
   | { t: 'setScope'; scope: Scope }
   | { t: 'setSnap'; on: boolean }
   | { t: 'setLocale'; locale: Locale }
@@ -626,13 +663,24 @@ export type PanelToExt =
   | { t: 'dismissNotice' }
   /** 「图片和视频」分区展开 / 收起：展开时才取完整清单 */
   | { t: 'assetsOpen'; open: boolean }
-  /** 另存为（每次弹保存对话框） */
+  /** 存一个到设置里的文件夹（默认「下载」） */
   | { t: 'saveAsset'; id: string }
   /** 全部存进一个文件夹 */
   | { t: 'saveAllAssets' }
   | { t: 'copySvg'; id: string }
   | { t: 'revealAsset'; id: string }
-  /** 面板里的未捕获异常，写进扩展的输出面板 */
+  /** 打开字体菜单：取页面加载的字体，本机字体读过一次就用读到的 */
+  | { t: 'fontsOpen' }
+  /** 面板里的未捕获异常，写进日志 */
   | { t: 'error'; message: string };
 
-export type ExtToPanel = { t: 'state'; state: PanelState };
+/**
+ * 面板把改动交给 Codex 的方式：annotation 是用内置浏览器的注释接口放进了 Codex 的输入框（Codex 再按批次号取提示词）；
+ * clipboard 是注释接口用不了，要把完整的提示词复制到剪贴板
+ */
+export type HandoffVia = 'annotation' | 'clipboard';
+
+/**
+ * state：面板状态；prompt：剪贴板写不进去时把提示词（text 是别的要复制的内容，如 SVG 代码）给面板，让你自己复制
+ */
+export type ExtToPanel = { t: 'state'; state: PanelState } | { t: 'prompt'; text: string; mode: 'apply' | 'revert' | 'text' };

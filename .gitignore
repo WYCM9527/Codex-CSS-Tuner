@@ -7,18 +7,9 @@ next-env.d.ts
 .output/
 .svelte-kit/
 *.tsbuildinfo
-*.vsix
 .DS_Store
 *.log
-spike/results*.json
-spike/close.flag
-packages/extension/media/bridge.js
-packages/extension/media/panel/
 .vitest-cache/
-
-packages/extension/selftest.json
-# 自测的 config 步骤会写工作区设置；不忽略的话 Tailwind 会把它当源文件扫描并整页刷新
-fixtures/*/.vscode/
 
 # 面板开发页用的真实状态快照
 packages/panel/public/*.json

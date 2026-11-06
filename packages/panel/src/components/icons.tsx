@@ -85,10 +85,16 @@ export const Icon = {
       <path d="M9 1.5v3h3" />
     </svg>
   ),
-  diff: () => (
+  /** 停靠到哪一边：实心的那一栏是面板 */
+  dock: ({ side }: { side: 'left' | 'right' }) => (
     <svg {...S}>
-      <path d="M5 2v6M2 5h6M9 12h5" />
-      <rect x="1.5" y="1.5" width="7" height="7" rx="1" opacity=".35" />
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+      <rect x={side === 'left' ? 2.5 : 9.5} y="3.5" width="4" height="9" fill="currentColor" stroke="none" opacity=".55" />
+    </svg>
+  ),
+  collapse: () => (
+    <svg {...S}>
+      <path d="M3 12.5h10M8 3v7M5 7l3 3 3-3" />
     </svg>
   ),
   undo: () => (

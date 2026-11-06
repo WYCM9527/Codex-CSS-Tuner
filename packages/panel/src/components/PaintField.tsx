@@ -213,7 +213,7 @@ function GradientEditor({ gradient, steps, cssVars, onChange, onPreview }: Gradi
   const drag = useRef<{ stop: GradientStop; moved: boolean } | null>(null);
   const bar = useRef<HTMLDivElement>(null);
 
-  // 外面的渐变变了（撤销、换元素、扩展回传）且没在拖动时跟上
+  // 外面的渐变变了（撤销、换元素、服务端回传）且没在拖动时跟上
   const text = formatGradient(gradient);
   useEffect(() => {
     if (drag.current) return;

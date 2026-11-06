@@ -1,8 +1,7 @@
-/* 只用灰阶：底色取侧栏背景的明度、去掉色相，其余层级按比例往白（深色主题）或黑（浅色主题）里混 */
+/* 只用灰阶：深色、浅色跟着系统；其余层级按比例往白（深色）或黑（浅色）里混 */
 body {
   color-scheme: dark;
-  --sidebar: var(--vscode-sideBar-background, #181818);
-  --bg: var(--sidebar);
+  --bg: #181818;
   --lift: #fff;
   --fg: #ededed;
   --fg-2: #c4c4c4;
@@ -24,58 +23,39 @@ body {
   --ink-fg: var(--bg);
   --ink-hover: #fff;
   --pop-shadow: 0 12px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.32);
-  --mono: var(--vscode-editor-font-family, ui-monospace, 'SF Mono', Menlo, monospace);
-  --font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --r: 4px;
   --row: 24px;
 }
 
-@supports (color: oklch(from red l c h)) {
+@media (prefers-color-scheme: light) {
   body {
-    --bg: oklch(from var(--sidebar) l 0 0);
+    color-scheme: light;
+    --bg: #f8f8f8;
+    --lift: #000;
+    --fg: #171717;
+    --fg-2: #3d3d3d;
+    --muted: #6b6b6b;
+    --faint: #a3a3a3;
+    --raised: #fff;
+    --chip: #fff;
+    --chip-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.1);
+    --ink-hover: #000;
+    --pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
   }
 }
 
-body.vscode-light {
-  color-scheme: light;
-  --sidebar: var(--vscode-sideBar-background, #f8f8f8);
-  --lift: #000;
-  --fg: #171717;
-  --fg-2: #3d3d3d;
-  --muted: #6b6b6b;
-  --faint: #a3a3a3;
-  --raised: #fff;
-  --chip: #fff;
-  --chip-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.1);
-  --ink-hover: #000;
-  --pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
-}
-
-body.vscode-high-contrast {
-  --sidebar: var(--vscode-sideBar-background, #000);
-  --fg: #fff;
-  --fg-2: #fff;
-  --muted: #d4d4d4;
-  --faint: #9e9e9e;
-  --field: var(--bg);
-  --field-border: var(--fg);
-  --line: color-mix(in srgb, var(--bg), var(--lift) 45%);
-  --line-strong: var(--fg);
-  --chip-shadow: inset 0 0 0 1px var(--fg);
-  --focus: var(--fg);
-  --pop-shadow: none;
-}
-
-body.vscode-high-contrast-light {
-  color-scheme: light;
-  --sidebar: var(--vscode-sideBar-background, #fff);
-  --lift: #000;
-  --fg: #000;
-  --fg-2: #000;
-  --muted: #3d3d3d;
-  --faint: #6b6b6b;
-  --raised: var(--bg);
-  --ink-hover: #000;
+@media (prefers-contrast: more) {
+  body {
+    --fg-2: var(--fg);
+    --field-border: var(--fg);
+    --line: color-mix(in srgb, var(--bg), var(--lift) 45%);
+    --line-strong: var(--fg);
+    --chip-shadow: inset 0 0 0 1px var(--fg);
+    --focus: var(--fg);
+    --pop-shadow: none;
+  }
 }
 
 * {
@@ -98,7 +78,7 @@ body {
 }
 
 body.mock-host {
-  max-width: 320px;
+  max-width: 380px;
   border-right: 1px solid var(--line);
 }
 
@@ -1233,7 +1213,7 @@ select {
   background: var(--ink);
 }
 
-/* 交给 Agent 的标记统一用四角星，和按钮上的图标一致 */
+/* 交给 Codex 的标记统一用四角星，和按钮上的图标一致 */
 .nf-agent {
   flex: none;
   width: 9px;
@@ -1379,6 +1359,101 @@ select {
 .sel-menu button.on {
   background: var(--chip);
   box-shadow: var(--chip-shadow);
+}
+
+/* ---------- 字体 ---------- */
+
+.font-sel .sel-value {
+  font-size: 12.5px;
+}
+
+/* 搜索框固定在上面，下面的列表自己滚 */
+.font-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  overflow: hidden;
+  padding: 0;
+}
+
+.font-search {
+  flex: none;
+  height: 24px;
+  margin: 4px;
+  padding: 0 7px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r);
+  font-size: 11.5px;
+}
+
+.font-search:focus {
+  outline: none;
+  border-color: var(--focus);
+}
+
+.font-search::placeholder {
+  color: var(--muted);
+}
+
+.font-list {
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 0 3px 3px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg) 18%, transparent) transparent;
+}
+
+.font-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 6px 3px;
+  background: var(--raised);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.font-typed {
+  padding-bottom: 3px;
+  margin-bottom: 1px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 几百个本机字体：看不见的项不排版，滚到时才加载字形 */
+.sel-menu .font-list button {
+  height: 24px;
+  align-items: center;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24px;
+}
+
+.font-list button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.font-list button small {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+}
+
+.font-list button.is-active {
+  background: var(--hover);
+}
+
+.font-note {
+  padding: 6px;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 /* ---------- 分段 ---------- */
@@ -1827,7 +1902,7 @@ select {
   min-width: 0;
 }
 
-/* 状态靠形状区分：空心 未应用 → 半满 等 Agent 改 → 实心 已应用；短横 已还原。等 Agent 的两种会慢慢闪 */
+/* 状态靠形状区分：空心 未应用 → 半满 等 Codex 改 → 实心 已应用；短横 已还原。等 Codex 的两种会慢慢闪 */
 .status {
   width: 7px;
   height: 7px;
@@ -1962,4 +2037,54 @@ select {
 
 .change.is-reverted .change-main {
   opacity: 0.6;
+}
+
+/* 剪贴板写不进去时的提示词 */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.modal-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--raised);
+  box-shadow: var(--pop-shadow);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-box p {
+  margin: 0;
+}
+
+.modal-text {
+  min-height: 160px;
+  flex: 1;
+  resize: none;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--field);
+  color: var(--fg);
+  font: 11px/1.5 var(--mono);
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
 }
