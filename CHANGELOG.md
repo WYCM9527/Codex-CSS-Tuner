@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+- Apply and Revert put the full prompt straight into the composer of the Codex chat that opened the page, through a `codex://` link (Codex switches to that chat); check it and press Enter. CSS Tuner learns which chat it is when Codex calls its tools. The prompt is still copied to the clipboard as well. The annotation in the Codex in-app browser is now only used when CSS Tuner doesn't know the chat yet, because Codex often doesn't show annotations requested by the page.
+- CSS Tuner now prefers Node.js 20 or later from `PATH` on macOS and Linux, and only falls back to the Node that ships with Codex. On macOS the Codex app's Node can't load native modules from your project, so Tailwind 4 themes (which need lightningcss) failed to load. When a native module can't be loaded, the log now says which Node is running and how to pick another one (`CSS_TUNER_NODE`).
+- The messages after Apply say where the prompt went, and what to do if it didn't show up.
+
 ## 0.11.0
 
 CSS Tuner is now a Codex plugin. The Cursor extension continues as [Cursor CSS Tuner](https://github.com/WYCM9527/Cursor-CSS-Tuner).

@@ -6,7 +6,7 @@ English · [简体中文](README.zh-CN.md)
 
 ![The tuning panel on a pricing page: the Pro card is selected, its padding and corner radius are changed, and the change list shows where each change is in the code](./assets/screenshot.png)
 
-It does one job: **adjust styles, text, order and props on the page, see the result, and put it in your code**. The tuning panel sits inside the page. When you click Apply, CSS Tuner adds an annotation on one of the changed elements to the Codex composer, with a short comment and a batch number; you check it and send. Codex fetches the full description of the batch from CSS Tuner, edits the code and checks the page. CSS Tuner doesn't edit your files itself.
+It does one job: **adjust styles, text, order and props on the page, see the result, and put it in your code**. The tuning panel sits inside the page. When you click Apply, CSS Tuner puts a description of the changes, with a batch number, into the composer of the Codex chat that opened the page; you check it and send. Codex edits the code and asks CSS Tuner to check the page. CSS Tuner doesn't edit your files itself.
 
 ## Features
 
@@ -23,7 +23,7 @@ It does one job: **adjust styles, text, order and props on the page, see the res
 - **Ruler**: turn on the ruler in the panel's toolbar and hover an element on the page to measure its distance from the selected element, with the spacing scale's name next to each number. Click to select the hovered element, and press Esc to leave. With the ruler off, hold Alt while hovering after you select an element.
 - **Viewport**: view the page at phone (390px), tablet or desktop width; the tablet and desktop widths come from your theme's `md` and `lg` breakpoints. The page is shown in a frame of that width, so media queries apply, and it's scaled down when it doesn't fit. With a width picked, style changes only apply to that range of widths, and the prompt says which range. The preview also only shows at those widths, and the check switches the page to them.
 - **Live preview**: changes only touch the page, not your code. After you hand them to Codex, the preview stays until the page matches it.
-- **Codex changes the code**: click Apply All, or Apply on one change. In the Codex in-app browser, the batch goes into the Codex composer as an annotation on one of the changed elements; check it, add anything you like, and send. Anywhere else, or if the annotation isn't accepted, the full prompt is copied to the clipboard for you to paste into a Codex chat. Nothing is sent automatically. The description has one item per element saying where it is and what it should become (several changes to the same element share an item), without prescribing how to write it, and ends with just two requests: consider whether other affected places should change too, asking you when unsure, and list what was changed. Matching theme tokens and CSS variables are included (for example `2rem (Tailwind token 8)`). Where CSS Tuner can pin it down, the description also gives the place in your code:
+- **Codex changes the code**: click Apply All, or Apply on one change. The description of the batch goes into the composer of the Codex chat that opened the page (Codex switches to that chat); check it, add anything you like, and send. It's copied to the clipboard as well, so when CSS Tuner can't reach that chat (for example with the Codex CLI), paste it into a Codex chat. Nothing is sent automatically. The description has one item per element saying where it is and what it should become (several changes to the same element share an item), without prescribing how to write it, and ends with just two requests: consider whether other affected places should change too, asking you when unsure, and list what was changed. Matching theme tokens and CSS variables are included (for example `2rem (Tailwind token 8)`). Where CSS Tuner can pin it down, the description also gives the place in your code:
   - Tailwind classes (Tailwind 4, or Tailwind 3 with the theme from `tailwind.config`): string and template literals in JSX, `clsx` / `cn` / `twMerge` arguments, `cva` base classes and variants, class-name constants, and the `className` passed in at a component's call site. In Vue and Svelte components: the `class` attribute, `:class` strings, arrays and object literals, `class:` directives, and the `class` written where the component is used.
   - Plain CSS: the matching rule and its file. Nesting with `&`, `@import`ed files and CSS Modules are supported (hashed class names map back to the class in your source), as well as Vue `<style scoped>` and Svelte `<style>` blocks.
   - CSS variables: the definition (`:root`, Tailwind's `@theme`), so everything that uses the variable changes together.
@@ -55,8 +55,8 @@ The page must run in development mode: locating an element's source relies on Re
 
 ## Requirements
 
-- The Codex app, so that Apply can hand changes over as annotations in its in-app browser. The Codex CLI works too: open the page in any browser, and Apply copies the prompt to the clipboard.
-- Node.js: CSS Tuner runs on the Node that ships with Codex. If it can't find that, it uses Node.js 20 or later from your `PATH`.
+- The Codex app, so that Apply can put the prompt into your chat. The Codex CLI works too: open the page in any browser, and Apply copies the prompt to the clipboard.
+- Node.js: CSS Tuner runs on Node.js 20 or later from your `PATH`, the Node your dev server uses, so it can load your project's native modules (such as Tailwind 4's lightningcss). Without one, it uses the Node that ships with Codex. Set `CSS_TUNER_NODE` to the path of a `node` binary to choose one yourself.
 - Tested on macOS. Launchers for Windows and Linux are included but haven't been tested yet.
 
 ## Install
@@ -68,7 +68,7 @@ codex plugin marketplace add WYCM9527/Codex-CSS-Tuner
 codex plugin add css-tuner@codex-css-tuner
 ```
 
-This follows the default branch; add `--ref v0.11.0` to stay on a release. From a local clone, pass its path instead: `codex plugin marketplace add /path/to/Codex-CSS-Tuner`. Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
+This follows the default branch; add `--ref v0.11.1` to stay on a release. From a local clone, pass its path instead: `codex plugin marketplace add /path/to/Codex-CSS-Tuner`. Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
 
 To update, refresh the marketplace and install again:
 
@@ -82,7 +82,7 @@ codex plugin add css-tuner@codex-css-tuner
 1. Ask Codex: **Open my dev server in CSS Tuner**. Codex starts the dev server if it isn't running yet, opens the page through CSS Tuner (for `http://localhost:5173/` that's `http://localhost:15173/`) and shows it in the in-app browser. Hot reload keeps working through it.
 2. Click **Pick Element** in the panel, then click an element on the page.
 3. Drag the values in the panel; the page updates as you go, and each change appears in the list at the top of the panel, where Undo and Redo step back and forth through them. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in Layers. To change the props of its component, use the Component props section.
-4. Click **Apply All** (or **Apply** on one change). An annotation for the batch appears in the Codex composer; check it and send. Once Codex has changed the code and the page has updated, the change in the list turns **Applied**. Afterwards, **Revert** any single change.
+4. Click **Apply All** (or **Apply** on one change). The description of the batch appears in the Codex composer; check it and send. Once Codex has changed the code and the page has updated, the change in the list turns **Applied**. Afterwards, **Revert** any single change.
 
 For plain HTML, ask Codex to open an HTML file or folder in CSS Tuner, and it serves the files itself. To try it without a project of your own, download the [demo page](https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip), unzip it, start a Codex chat in that folder and ask Codex to **open index.html in CSS Tuner**.
 
@@ -127,7 +127,7 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 
 ## Limitations
 
-- **Annotations need the Codex in-app browser**: they use the in-app browser's annotation API. In any other browser, Apply copies the prompt to the clipboard instead.
+- **Filling in the composer needs the Codex app on this computer**: CSS Tuner opens a `codex://` link to the chat that last called its tools for the project, so it works with the Codex app on macOS and Windows. Before any chat has called its tools, the Codex in-app browser is asked to open an annotation on the page instead; anywhere else, Apply only copies the prompt to the clipboard.
 - **The page runs through a local proxy**: CSS Tuner opens your dev server at another port on localhost (usually the original port + 10000), adds the panel script to HTML pages and removes their `Content-Security-Policy` and `X-Frame-Options` headers. Links, redirects and scripts that hard-code the original address (`http://localhost:5173/…`) leave the proxy, and the panel isn't there; open the CSS Tuner address again. Sign-in flows and APIs that only accept the original address (OAuth redirect URLs, CORS allowlists) may not work through it.
 - **One tab per site**: if the same page is opened in another tab, the newer tab takes over and the older one shows a button to take it back.
 - **Reordering stays within one parent**: it doesn't add or remove elements or move them to another parent. For lists built from props, state, API data, `filter()` / `sort()` results or `let` variables, CSS Tuner can't find the order in your source, so the description only gives the new order and Codex decides how to change it.
@@ -149,7 +149,7 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 - The proxy and the static server listen on `127.0.0.1` and `::1` only, and the background service's control port on `127.0.0.1`. The page's connection needs a random token for each site, and the control port needs a token kept in `~/.css-tuner/daemon.json`, which only you can read.
 - CSS Tuner doesn't modify your project files; Codex edits them after you send the request.
 - CSS Tuner makes no internet requests of its own. The proxy only connects to dev servers on this computer or your local network (localhost, private and link-local addresses, and host names that resolve to them) and refuses public websites. When you save an image or video, CSS Tuner downloads that file from the address the page uses. The list of installed fonts is read on your computer, with the system tools above, the first time you open the Font menu.
-- Settings, change history and logs are kept in `~/.css-tuner` (set `CSS_TUNER_DATA` to use another folder). The background service stops by itself after 30 minutes without a connected page.
+- Settings, change history, the id of the Codex chat that uses each project (so Apply knows where to put the prompt) and logs are kept in `~/.css-tuner` (set `CSS_TUNER_DATA` to use another folder). The background service stops by itself after 30 minutes without a connected page.
 - Details are in the [privacy policy](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/PRIVACY.md) and the [terms of use](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/TERMS.md).
 
 ## Troubleshooting
@@ -158,7 +158,7 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 - The background service's log is `~/.css-tuner/logs/daemon.log`.
 - *The dev server isn't responding*: start it, and the page reloads by itself.
 - *CSS Tuner is in use in another tab*: click it to use CSS Tuner in this tab.
-- *The annotation didn't appear*: the prompt is on the clipboard, so paste it into Codex. You can also ask Codex to write your CSS Tuner changes into the code; it fetches the latest batch that's waiting.
+- *Nothing appeared in the composer after Apply*: the prompt is on the clipboard, so paste it into Codex. You can also ask Codex to write your CSS Tuner changes into the code; it fetches the latest batch that's waiting.
 - *Can't find this element in the code* for a selected element: make sure the page is served by the dev server in development mode (for React, with React's development build).
 
 ## License

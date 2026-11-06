@@ -7,7 +7,7 @@ import type { Disposable } from './events';
 import type { ChangeRecord } from './journal';
 import type { PromptMode } from './prompt';
 import type { Memento } from './store';
-import { copyText } from './system';
+import { codexLink, copyText, openCodexLink } from './system';
 import { watchTree } from './watch';
 
 /** 文件变了之后隔多久核对：热更新一般几百毫秒到一两秒，大一些的 Next 项目里服务端组件要好几秒 */
@@ -48,7 +48,7 @@ export interface Batch {
   mode: PromptMode;
   ids: string[];
   at: number;
-  /** annotation：注释接口；clipboard：剪贴板；mcp：Codex 用 get_handoff 取走的 */
+  /** composer：codex:// 链接放进对话输入框；annotation：注释接口；clipboard：剪贴板；mcp：Codex 用 get_handoff 取走的 */
   via: HandoffVia | 'mcp';
   prompt: string;
   pageUrl: string;
@@ -87,8 +87,8 @@ export class SnapshotStore {
 }
 
 /**
- * 应用和还原都交给 Codex：把改动整理成提示词，经注释接口放进 Codex 的输入框（Codex 按批次号取完整提示词），
- * 或者复制到剪贴板。交出去的改动预览留在页面上，Codex 改了文件、页面热更新后读预览底下源码给的值来核对，对上了才撤预览
+ * 应用和还原都交给 Codex：把改动整理成提示词，用 codex:// 链接放进 Codex 对话的输入框，或者经注释接口交给 Codex
+ * （Codex 按批次号取完整提示词），或者复制到剪贴板。交出去的改动预览留在页面上，Codex 改了文件、页面热更新后读预览底下源码给的值来核对，对上了才撤预览
  */
 export class Applier implements Disposable {
   private watcher: Disposable | null = null;
@@ -175,7 +175,10 @@ export class Applier implements Disposable {
     return batch;
   }
 
-  /** 注释接口已经把批次号放进了 Codex 的输入框；完整提示词另外复制到剪贴板备用。剪贴板写不进去就让面板显示出来 */
+  /**
+   * composer 用 codex:// 链接把提示词放进 Codex 对话的输入框（完整提示词放不进链接时放一句话，Codex 按批次号来取），打不开就按剪贴板的办；
+   * 注释接口已经请 Codex 打开了带批次号的注释框。完整提示词都另外复制到剪贴板备用，写不进去就让面板显示出来
+   */
   private async deliver(b: Batch) {
     const c = this.c;
     if (b.via === 'mcp') return;
@@ -186,6 +189,17 @@ export class Applier implements Disposable {
       this.handoffNotice = text;
       c.notify('info', text);
     };
+    if (b.via === 'composer') {
+      const thread = c.thread;
+      const short = t(b.mode === 'apply' ? 'handoff.annotate.apply' : 'handoff.annotate.revert', { n, batch: b.id });
+      const link = thread ? (codexLink(thread, prompt) ?? codexLink(thread, short)) : null;
+      if (link && (await openCodexLink(link))) {
+        sent(t(b.mode === 'apply' ? 'ext.apply.composer' : 'ext.revert.composer', { n }));
+        return;
+      }
+      b.via = 'clipboard';
+      this.remember(b);
+    }
     if (b.via === 'annotation') {
       sent(t(b.mode === 'apply' ? 'ext.apply.annotation' : 'ext.revert.annotation', { n, batch: b.id }));
       return;

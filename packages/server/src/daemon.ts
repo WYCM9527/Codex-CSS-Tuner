@@ -199,9 +199,13 @@ export class Daemon {
     return c;
   }
 
-  /** 没说哪个项目时：最近有动静的那个 */
-  private pick(root?: string): Controller {
-    if (root) return this.controllerFor(root);
+  /** 没说哪个项目时：最近有动静的那个。说了项目时，调用工具的 Codex 对话记给它 */
+  private pick(root?: string, thread?: string): Controller {
+    if (root) {
+      const c = this.controllerFor(root);
+      c.useThread(thread);
+      return c;
+    }
     const list = [...this.controllers.values()].sort((a, b) => b.lastActive - a.lastActive);
     if (!list.length) throw new Error(t('mcp.noProject'));
     return list[0];
@@ -234,9 +238,9 @@ export class Daemon {
   private readonly handlers: { [M in RpcMethod]: (p: RpcMethods[M]['p']) => Promise<RpcMethods[M]['r']> | RpcMethods[M]['r'] } = {
     ping: () => ({ version: VERSION, pid: process.pid, projects: [...this.controllers.keys()] }),
 
-    open: async ({ root, url }) => {
+    open: async ({ root, url, thread }) => {
       if (!root) throw new Error(t('mcp.rootRequired'));
-      const c = this.controllerFor(root);
+      const c = this.pick(root, thread);
       c.lastActive = Date.now();
       const connected = c.session?.connected ?? false;
       const { url: local, site } = await c.openPage(url, { navigate: connected });
@@ -251,8 +255,8 @@ export class Daemon {
       };
     },
 
-    status: async ({ root, waitMs }) => {
-      const c = this.pick(root);
+    status: async ({ root, waitMs, thread }) => {
+      const c = this.pick(root, thread);
       const deadline = Date.now() + Math.min(Math.max(waitMs ?? 0, 0), 60000);
       while (!c.session?.connected && Date.now() < deadline) await sleep(250);
       const counts: Partial<Record<ChangeStatus, number>> = {};
@@ -269,8 +273,8 @@ export class Daemon {
       };
     },
 
-    handoff: async ({ root, batch, pending }) => {
-      const c = this.pick(root);
+    handoff: async ({ root, batch, pending, thread }) => {
+      const c = this.pick(root, thread);
       c.lastActive = Date.now();
       const b = await c.takeHandoff(batch, pending ?? false);
       if (batch && !b) throw new Error(t('mcp.noBatch', { batch }));
@@ -280,8 +284,8 @@ export class Daemon {
       return { project: c.root, batch: b ? (meta as Omit<NonNullable<typeof b>, 'prompt'>) : null, prompt, changes };
     },
 
-    verify: async ({ root, waitMs }) => {
-      const c = this.pick(root);
+    verify: async ({ root, waitMs, thread }) => {
+      const c = this.pick(root, thread);
       c.lastActive = Date.now();
       const wait = Math.min(Math.max(waitMs ?? 6000, 500), 30000);
       const ids = c.session?.connected ? await c.applier.verify(wait) : c.journal.waiting().map((r) => r.id);
@@ -301,8 +305,8 @@ export class Daemon {
       };
     },
 
-    changes: ({ root, status }) => {
-      const c = this.pick(root);
+    changes: ({ root, status, thread }) => {
+      const c = this.pick(root, thread);
       return { project: c.root, changes: c.journal.all().filter((r) => !status || r.status === status).map(summarize) };
     },
 

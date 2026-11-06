@@ -85,8 +85,10 @@ import type { ChannelState, PageSession } from './session';
 import type { Settings } from './settings';
 import { ClassSiteReader, CssRuleLocator } from './sites';
 import { JsonStore } from './store';
-import { openInEditor } from './system';
+import { canOpenCodex, openInEditor, THREAD_ID } from './system';
 import { TailwindService } from './tailwind';
+
+const THREAD_KEY = 'cssTuner.thread';
 
 /**
  * 静态站点的根目录：从 HTML 所在目录往上找，取项目目录内最高一层带 index.html 的目录，
@@ -229,6 +231,7 @@ export class Controller implements Disposable {
       locale: getLocale(),
       history: { undo: null, redo: null },
       fonts: null,
+      composer: canOpenCodex && this.thread !== null,
     };
     this.disposables.push(
       this.journal,
@@ -256,6 +259,18 @@ export class Controller implements Disposable {
 
   get remBase(): number {
     return this.settings.get('remBase');
+  }
+
+  /** 最近调用 CSS Tuner 工具的 Codex 对话：应用、还原时提示词放进它的输入框 */
+  get thread(): string | null {
+    return this.store.get<string>(THREAD_KEY) ?? null;
+  }
+
+  useThread(thread: string | undefined) {
+    if (!thread || !THREAD_ID.test(thread) || thread === this.thread) return;
+    void this.store.update(THREAD_KEY, thread);
+    this.state.composer = canOpenCodex;
+    this.push();
   }
 
   /* ---------- 面板 ---------- */

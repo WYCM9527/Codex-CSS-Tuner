@@ -86,13 +86,14 @@ export interface VerifyResult {
   latest?: { batch: string; changes: ChangeSummary[] };
 }
 
+/** thread 是调用工具的 Codex 对话，带了 root 时记给那个项目 */
 export interface RpcMethods {
   ping: { p: Record<string, never>; r: { version: string; pid: number; projects: string[] } };
-  open: { p: { root: string; url?: string }; r: OpenResult };
-  status: { p: { root?: string; waitMs?: number }; r: StatusResult };
-  handoff: { p: { root?: string; batch?: string; pending?: boolean }; r: HandoffResult };
-  verify: { p: { root?: string; waitMs?: number }; r: VerifyResult };
-  changes: { p: { root?: string; status?: ChangeStatus }; r: { project: string; changes: ChangeSummary[] } };
+  open: { p: { root: string; url?: string; thread?: string }; r: OpenResult };
+  status: { p: { root?: string; waitMs?: number; thread?: string }; r: StatusResult };
+  handoff: { p: { root?: string; batch?: string; pending?: boolean; thread?: string }; r: HandoffResult };
+  verify: { p: { root?: string; waitMs?: number; thread?: string }; r: VerifyResult };
+  changes: { p: { root?: string; status?: ChangeStatus; thread?: string }; r: { project: string; changes: ChangeSummary[] } };
   close: { p: { root?: string; all?: boolean }; r: { closed: string[] } };
   settings: { p: { set?: Partial<SettingsData> }; r: SettingsData };
   shutdown: { p: Record<string, never>; r: boolean };

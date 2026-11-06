@@ -5,7 +5,7 @@ description: Visually tune a running local web page with CSS Tuner (styles, text
 
 # CSS Tuner
 
-CSS Tuner puts a tuning panel inside the user's page. The user picks elements and adjusts them with live preview; the panel finds where each value is written in the source (Tailwind class, CSS rule, CSS variable, JSX prop). When the user clicks **Apply**, the panel adds a browser annotation to the Codex composer with a short comment and a batch id. You turn that batch into code edits, then ask CSS Tuner to check the live page.
+CSS Tuner puts a tuning panel inside the user's page. The user picks elements and adjusts them with live preview; the panel finds where each value is written in the source (Tailwind class, CSS rule, CSS variable, JSX prop). When the user clicks **Apply**, CSS Tuner puts a prompt describing the changes, with a batch id, into the composer of the chat that opened the page, and the user sends it. You turn it into code edits, then ask CSS Tuner to check the live page.
 
 The tools come from the `css-tuner` MCP server: `open_page`, `status`, `get_handoff`, `verify`, `list_changes`, `close_page`.
 
@@ -16,17 +16,17 @@ The tools come from the `css-tuner` MCP server: `open_page`, `status`, `get_hand
    - Or a local HTML file or folder, for sites without a dev server.
    - CSS Tuner refuses public websites: it only opens dev servers on this computer or the local network. If the user asks to tune a site on the internet, explain that CSS Tuner changes their own local project, and offer to open its dev server instead.
 2. Call `open_page` with `projectRoot` (absolute path) and `url`. It returns a local address such as `http://localhost:15173/pricing`: the same site through a local proxy that adds the panel. Hot reload keeps working.
-3. Open that address in the in-app browser with the Browser plugin (`control-in-app-browser`). If you cannot control the browser, give the user the link and ask them to open it in the Codex in-app browser. Annotations only work there; in another browser, Apply copies the full prompt to the clipboard instead.
+3. Open that address in the in-app browser with the Browser plugin (`control-in-app-browser`). If you cannot control the browser, give the user the link and ask them to open it in the Codex in-app browser. When CSS Tuner can't reach the Codex app (for example in the Codex CLI), Apply copies the full prompt to the clipboard instead.
 4. Tell the user briefly how to use it: pick an element in the panel (or on the page), tune it, then press **Apply** or **Apply All** and send the message that appears in the composer.
 
 Don't drive the panel yourself unless the user asks you to; the user makes the visual decisions.
 
 ## Write a handoff into code
 
-When the user's message has a CSS Tuner annotation or mentions a CSS Tuner batch (for example "batch a1b2c3"):
+When the user's message is a CSS Tuner prompt, has a CSS Tuner annotation, or mentions a CSS Tuner batch (for example "batch a1b2c3"):
 
-1. Call `get_handoff` with that `batch` (and `projectRoot`). If the user asks to write their CSS Tuner changes without a batch, call `get_handoff` without one: it returns the latest batch still waiting. Pass `includePending: true` only when the user wants the changes they haven't applied yet.
-2. Follow the returned instructions. They list each element, the old and new values, where CSS Tuner located the code, and whether a change only applies at one viewport width. Make the smallest edit that produces exactly the previewed result:
+1. If the message already has the full instructions (the prompt CSS Tuner put into the composer), work from them. Otherwise call `get_handoff` with that `batch` (and `projectRoot`). If the user asks to write their CSS Tuner changes without a batch, call `get_handoff` without one: it returns the latest batch still waiting. Pass `includePending: true` only when the user wants the changes they haven't applied yet.
+2. Follow the instructions. They list each element, the old and new values, where CSS Tuner located the code, and whether a change only applies at one viewport width. Make the smallest edit that produces exactly the previewed result:
    - Change the class, rule, variable or prop named in the instructions rather than adding overrides elsewhere.
    - Keep the project's conventions (Tailwind scale tokens instead of arbitrary values when the instructions give a token, existing CSS files and variables).
    - When the instructions say the spot couldn't be located, search for the element using the page path, text and labels given.
@@ -47,4 +47,4 @@ Reverts work the same way: the instructions ask you to restore the original valu
 - `open_page` warns that the dev server isn't responding: start it, the page retries by itself.
 - `verify` says the page isn't connected: the CSS Tuner page was closed or navigated away. Open the URL from `open_page` again.
 - The panel says CSS Tuner is in use in another tab: only one tab per site is connected; the user can click the notice to switch.
-- The annotation didn't appear in the composer: the panel copied the full prompt to the clipboard instead. Ask the user to paste it, or call `get_handoff` directly.
+- Nothing appeared in the composer after Apply: the full prompt is on the clipboard too. Ask the user to paste it, or call `get_handoff` directly.

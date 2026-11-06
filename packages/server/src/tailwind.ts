@@ -49,7 +49,10 @@ export class TailwindService {
         return d;
       },
       (e) => {
-        this.log(t('ext.log.twFailed', { error: (e as Error).message }));
+        const error = (e as Error).message;
+        // lightningcss 这类原生模块加载失败时，真正的错误被它自己吞掉，只剩一句找不到 .node 文件
+        const native = /\.node\b|dlopen/.test(error) ? ` ${t('ext.log.nativeModule', { node: process.execPath })}` : '';
+        this.log(t('ext.log.twFailed', { error }) + native);
         this.cache.delete(entry);
         return null;
       },

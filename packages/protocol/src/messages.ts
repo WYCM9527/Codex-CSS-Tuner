@@ -609,6 +609,8 @@ export interface PanelState {
   history: { undo: string | null; redo: string | null };
   /** 字体菜单里的候选，第一次打开字体菜单之前为 null */
   fonts: FontsView | null;
+  /** 知道是哪个 Codex 对话在用这个项目、这台电脑上能用 codex:// 链接：应用、还原时提示词直接放进那个对话的输入框 */
+  composer: boolean;
 }
 
 /** 页面用 @font-face 加载的字体；这台电脑装的字体（还在读时为 null，读不到时是空的、failed 为真） */
@@ -647,7 +649,7 @@ export type PanelToExt =
   | { t: 'resetOrder' }
   /**
    * 应用：整理成提示词交给 Codex。不给 ids 是全部未应用的；给了 ids 时，还在等 Codex 改的那几条再发一次。
-   * batch 是面板起的批次号（注释里带着它，Codex 按它取完整的提示词）；via 是面板怎么交出去的
+   * batch 是面板起的批次号（提示词和注释里都带着它，Codex 可以按它取完整的提示词）；via 是面板怎么交出去的
    */
   | { t: 'apply'; ids?: string[]; batch?: string; via?: HandoffVia }
   /** 还原：交给 Codex 改回原样（还在等它还原的再发一次） */
@@ -675,10 +677,11 @@ export type PanelToExt =
   | { t: 'error'; message: string };
 
 /**
- * 面板把改动交给 Codex 的方式：annotation 是用内置浏览器的注释接口放进了 Codex 的输入框（Codex 再按批次号取提示词）；
- * clipboard 是注释接口用不了，要把完整的提示词复制到剪贴板
+ * 面板把改动交给 Codex 的方式：composer 是本地服务用 codex:// 链接把提示词放进在用这个项目的 Codex 对话的输入框；
+ * annotation 是请内置浏览器的注释接口在页面上打开注释框（用户确认后进 Codex 的输入框，Codex 再按批次号取提示词）；
+ * clipboard 是这两种都用不了，要把完整的提示词复制到剪贴板
  */
-export type HandoffVia = 'annotation' | 'clipboard';
+export type HandoffVia = 'composer' | 'annotation' | 'clipboard';
 
 /**
  * state：面板状态；prompt：剪贴板写不进去时把提示词（text 是别的要复制的内容，如 SVG 代码）给面板，让你自己复制

@@ -17,6 +17,7 @@ CSS Tuner is an open-source Codex plugin published by WYCM9527 ("we"). It runs e
 | The pages you open in CSS Tuner: their addresses and titles, element structure and styles, and the first words of an element's text | To show the tuning panel, preview your changes and describe them | On your computer. The parts that describe a change go to Codex when it calls CSS Tuner's tools |
 | Your project's source files | To find where each value is defined (Tailwind classes, CSS rules, CSS variables, component props) | Read on your computer. CSS Tuner doesn't modify them; Codex edits them after you send the request |
 | Change records, the descriptions handed to Codex, and copies of the affected files as they were before the first handoff | To list your changes, hand them to Codex, check them on the page and revert them | `~/.css-tuner/projects/` |
+| The id of the Codex chat that last called CSS Tuner's tools for a project | To put the description into that chat when you select Apply | `~/.css-tuner/projects/` |
 | Settings and the list of open sites | To keep your preferences and reconnect open pages after a restart | `~/.css-tuner/settings.json` and `sites.json` |
 | Diagnostic logs: addresses and folders opened, and error messages from CSS Tuner and the page | Troubleshooting | `~/.css-tuner/logs/` |
 | The list of fonts installed on your computer | The Font menu | Read when you open the menu, and kept in memory only |
@@ -33,7 +34,7 @@ CSS Tuner's own servers listen only on `127.0.0.1` and `::1`, and every connecti
 
 ## Sharing with Codex and OpenAI
 
-CSS Tuner returns change descriptions to Codex through its MCP tools: the elements, old and new values, places in your code, and page addresses. In the Codex in-app browser it also adds an annotation with a short comment and the batch number. In other browsers it copies the description to your clipboard instead. What you share with Codex is handled by OpenAI under OpenAI's terms and privacy policy. We don't receive any of it.
+CSS Tuner returns change descriptions to Codex through its MCP tools: the elements, old and new values, places in your code, and page addresses. When you select Apply, it opens a `codex://` link on your computer that puts the description into the Codex chat using the project, and copies it to your clipboard. Where that isn't possible, the Codex in-app browser gets an annotation with a short comment and the batch number instead, and other browsers only the clipboard copy. What you share with Codex is handled by OpenAI under OpenAI's terms and privacy policy. We don't receive any of it.
 
 ## Retention
 
@@ -78,6 +79,7 @@ CSS Tuner 是 WYCM9527（下称“我们”）发布的开源 Codex 插件，完
 | 在 CSS Tuner 里打开的页面：地址和标题、元素结构和样式、元素文字的开头几个字 | 显示调节面板、预览和描述改动 | 你的电脑上；描述改动的那部分在 Codex 调用工具时交给 Codex |
 | 项目的源码文件 | 找出每个值写在哪里（Tailwind 类名、CSS 规则、CSS 变量、组件属性） | 在你的电脑上读取。CSS Tuner 不改它们，由 Codex 在你发送请求后修改 |
 | 改动记录、交给 Codex 的说明、涉及的文件第一次交出前的副本 | 列出改动、交给 Codex、在页面上核对和还原 | `~/.css-tuner/projects/` |
+| 最近调用 CSS Tuner 工具的 Codex 对话的 id（每个项目一个） | 点“应用”时把说明放进那个对话 | `~/.css-tuner/projects/` |
 | 设置和打开过的站点列表 | 记住偏好，重启后让打开着的页面连回来 | `~/.css-tuner/settings.json` 和 `sites.json` |
 | 诊断日志：打开过的地址和文件夹，CSS Tuner 和页面的错误信息 | 排查问题 | `~/.css-tuner/logs/` |
 | 电脑上安装的字体列表 | 字体菜单 | 打开菜单时读取，只保存在内存里 |
@@ -94,7 +96,7 @@ CSS Tuner 自己的服务只监听 `127.0.0.1` 和 `::1`，每个连接都要带
 
 ## 与 Codex 和 OpenAI 共享
 
-CSS Tuner 通过 MCP 工具把改动说明返回给 Codex：涉及的元素、原值和新值、在代码里的位置、页面地址。在 Codex 内置浏览器里，它还会加一条带简短说明和批次号的注释；在别的浏览器里，改为把说明复制到剪贴板。你交给 Codex 的内容由 OpenAI 按其条款和隐私政策处理，我们收不到其中任何内容。
+CSS Tuner 通过 MCP 工具把改动说明返回给 Codex：涉及的元素、原值和新值、在代码里的位置、页面地址。点“应用”时，它在你的电脑上打开一个 `codex://` 链接，把说明放进在用这个项目的 Codex 对话，同时复制到剪贴板；做不到时，在 Codex 内置浏览器里改为加一条带简短说明和批次号的注释，在别的浏览器里只复制到剪贴板。你交给 Codex 的内容由 OpenAI 按其条款和隐私政策处理，我们收不到其中任何内容。
 
 ## 保留期限
 

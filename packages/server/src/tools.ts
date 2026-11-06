@@ -5,6 +5,8 @@ import type { ChangeSummary } from './rpc';
 export interface ToolContext {
   /** 客户端给了工作目录（MCP roots）时用第一个 */
   defaultRoot(): Promise<string | null>;
+  /** 调用这个工具的 Codex 对话 */
+  thread?: string;
 }
 
 interface ToolResult {
@@ -137,20 +139,23 @@ function num(v: unknown): number | undefined {
 
 export async function callTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const root = str(args.projectRoot) ?? (await ctx.defaultRoot()) ?? undefined;
+  const thread = ctx.thread;
   switch (name) {
     case 'open_page': {
       if (!root) return text('projectRoot is required: pass the absolute path of the project you are working in.', undefined, true);
-      const r = await rpc('open', { root, url: str(args.url) });
+      const r = await rpc('open', { root, url: str(args.url), thread });
       const lines = [`Open this URL in the in-app browser: ${r.url}`];
       if (r.kind === 'proxy') lines.push(`It shows ${r.target} with the CSS Tuner panel added.`);
       else lines.push('It serves the local files with the CSS Tuner panel added (no hot reload; CSS files reload when they change).');
       if (r.reachable === false) lines.push(`Warning: ${r.target} is not responding. Start the dev server first; the page retries by itself.`);
       if (r.connected) lines.push('A CSS Tuner page is already connected; it was sent to this address.');
-      lines.push('In the panel the user picks elements and tunes styles, text, order and props; the page previews them live. "Apply" hands the changes to you as a CSS Tuner annotation with a batch id.');
+      lines.push(
+        'In the panel the user picks elements and tunes styles, text, order and props; the page previews them live. "Apply" puts a prompt with a CSS Tuner batch id into the composer of this chat for the user to send (or onto the clipboard when that is not possible).',
+      );
       return text(lines.join('\n'), r);
     }
     case 'status': {
-      const r = await rpc('status', { root, waitMs: num(args.waitForPageMs) });
+      const r = await rpc('status', { root, waitMs: num(args.waitForPageMs), thread });
       const counts = STATUSES.filter((s) => r.counts[s]).map((s) => `${r.counts[s]} ${STATUS_TEXT[s]}`);
       const lines = [
         `Project: ${r.project}`,
@@ -162,7 +167,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
       return text(lines.join('\n'), r);
     }
     case 'get_handoff': {
-      const r = await rpc('handoff', { root, batch: str(args.batch), pending: args.includePending === true });
+      const r = await rpc('handoff', { root, batch: str(args.batch), pending: args.includePending === true, thread });
       if (!r.prompt) {
         const pending = r.changes.length;
         return text(
@@ -177,7 +182,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
       return text(r.prompt + footer, r);
     }
     case 'verify': {
-      const r = await rpc('verify', { root, waitMs: num(args.waitMs) });
+      const r = await rpc('verify', { root, waitMs: num(args.waitMs), thread });
       if (!r.connected) {
         return text(
           `The CSS Tuner page is not connected, so nothing could be checked. Ask the user to open the page (open_page gives the URL), then call verify again.${r.changes.length ? `\n${r.changes.map(line).join('\n')}` : ''}`,
@@ -193,7 +198,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
     }
     case 'list_changes': {
       const status = STATUSES.find((s) => s === args.status);
-      const r = await rpc('changes', { root, status });
+      const r = await rpc('changes', { root, status, thread });
       return text(r.changes.length ? r.changes.map(line).join('\n') : 'No changes.', r);
     }
     case 'close_page': {

@@ -101,6 +101,29 @@ function openUrl(url: string): Promise<boolean> {
   return launch('xdg-open', [url]);
 }
 
+/** Codex 对话的 id（Codex 调工具时在 _meta.threadId 里带着） */
+export const THREAD_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+/** Codex 桌面应用只有 macOS 和 Windows 版，别的系统上没有东西接 codex:// 链接 */
+export const canOpenCodex = MAC || WIN;
+
+/** 太长的链接不一定传得到 Codex：Windows 的命令行最长 32767 个字符 */
+const MAX_CODEX_LINK = 30_000;
+
+/** 打开 Codex 里的对话 thread、把 prompt 放进它输入框（不发送）的链接；太长时为 null */
+export function codexLink(thread: string, prompt: string): string | null {
+  if (!THREAD_ID.test(thread)) return null;
+  const url = `codex://threads/${thread}?prompt=${encodeURIComponent(prompt)}`;
+  return url.length > MAX_CODEX_LINK ? null : url;
+}
+
+/** 让系统把 codex:// 链接交给 Codex。Windows 上不经过 cmd（会把链接里的 % 和 & 当成它的语法） */
+export function openCodexLink(url: string): Promise<boolean> {
+  if (MAC) return run('open', [url]);
+  if (WIN) return launch('rundll32.exe', ['url.dll,FileProtocolHandler', url]);
+  return Promise.resolve(false);
+}
+
 const MAC_APPS: Array<{ app: string; scheme: string }> = [
   { app: '/Applications/Cursor.app', scheme: 'cursor' },
   { app: '/Applications/Visual Studio Code.app', scheme: 'vscode' },

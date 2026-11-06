@@ -357,6 +357,7 @@ export function createMockHost(): Host {
     locale: getLocale(),
     history: { undo: null, redo: null },
     fonts: null,
+    composer: true,
   };
   const pendingByEl: Record<string, Record<string, string>> = {};
   const removedByEl: Record<string, string[]> = {};
@@ -748,7 +749,10 @@ export function createMockHost(): Host {
         const sent = state.changes.filter((c) => (m.ids ? m.ids.includes(c.id) && (c.status === 'pending' || c.status === 'handoff') : c.status === 'pending'));
         if (!sent.length) break;
         for (const c of sent) c.status = 'handoff';
-        state.notice = { level: 'info', text: m.via === 'annotation' ? t('ext.apply.annotation', { n: sent.length, batch: m.batch ?? '' }) : t('ext.apply.clipboard', { n: sent.length }) };
+        state.notice = {
+          level: 'info',
+          text: t(m.via === 'composer' ? 'ext.apply.composer' : m.via === 'annotation' ? 'ext.apply.annotation' : 'ext.apply.clipboard', { n: sent.length, batch: m.batch ?? '' }),
+        };
         setTimeout(() => {
           for (const c of sent) if (c.status === 'handoff') c.status = 'applied';
           emit();
@@ -759,7 +763,10 @@ export function createMockHost(): Host {
         const c = state.changes.find((x) => x.id === m.id);
         if (!c) break;
         c.status = 'reverting';
-        state.notice = { level: 'info', text: m.via === 'annotation' ? t('ext.revert.annotation', { n: 1, batch: m.batch ?? '' }) : t('ext.revert.clipboard') };
+        state.notice = {
+          level: 'info',
+          text: t(m.via === 'composer' ? 'ext.revert.composer' : m.via === 'annotation' ? 'ext.revert.annotation' : 'ext.revert.clipboard', { n: 1, batch: m.batch ?? '' }),
+        };
         setTimeout(() => {
           if (c.status === 'reverting') c.status = 'reverted';
           emit();

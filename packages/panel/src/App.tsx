@@ -82,8 +82,9 @@ export function App({ host }: { host: Host }) {
   const send = useCallback((m: PanelToExt) => host.send(m), [host]);
 
   /**
-   * 交给 Codex：先在点击当中把注释放进 Codex 的输入框（注释只带批次号和一句话），再让本地服务记下这一批；
-   * 注释接口不在（不是 Codex 的内置浏览器）或者没接收时，本地服务把完整提示词复制到剪贴板
+   * 交给 Codex：本地服务知道是哪个 Codex 对话在用这个项目时，由它把提示词放进那个对话的输入框；
+   * 不知道时在点击当中请注释接口打开注释框（只带批次号和一句话）。注释接口不在（不是 Codex 的内置浏览器）或者没接收时，
+   * 本地服务把完整提示词复制到剪贴板
    */
   const handoff = useCallback<Handoff>(
     (mode, ids) => {
@@ -93,8 +94,9 @@ export function App({ host }: { host: Host }) {
       const batch = newBatch();
       const n = items.length;
       const comment = mode === 'apply' ? t('handoff.annotate.apply', { n, batch }) : t('handoff.annotate.revert', { batch });
-      const ok = host.shell?.annotate({ comment, uids: items.map((c) => c.uid), metadata: { 'CSS Tuner batch': batch, Changes: n, Action: mode } }) ?? false;
-      const via: HandoffVia = ok ? 'annotation' : 'clipboard';
+      const annotate = () =>
+        host.shell?.annotate({ comment, uids: items.map((c) => c.uid), metadata: { 'CSS Tuner batch': batch, Changes: n, Action: mode } }) ?? false;
+      const via: HandoffVia = state?.composer ? 'composer' : annotate() ? 'annotation' : 'clipboard';
       if (mode === 'apply') host.send({ t: 'apply', ids, batch, via });
       else host.send({ t: 'revert', id: items[0].id, batch, via });
     },

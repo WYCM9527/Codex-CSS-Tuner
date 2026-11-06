@@ -1,6 +1,6 @@
 {
   "name": "css-tuner",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Tune a running web page visually (styles, text, element order, component props) in a panel inside the page, then let Codex write the changes into your source code and check them on the page.",
   "author": {
     "name": "WYCM9527",
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "CSS Tuner",
     "shortDescription": "Tune a page visually, then let Codex write the code",
-    "longDescription": "CSS Tuner adds a tuning panel to your local dev server or HTML files in the Codex in-app browser. Pick an element and adjust spacing, colors, typography, layout, text, sibling order and component props with live preview. CSS Tuner finds where each value lives in your source (Tailwind classes, CSS rules, CSS variables, JSX props), and Apply hands the changes to Codex as an annotation. Codex writes the code, and CSS Tuner checks the live page to confirm every change took effect. Works with React, Next.js, Vue, Nuxt, Svelte and SvelteKit projects using Tailwind 3 / 4 or regular CSS.",
+    "longDescription": "CSS Tuner adds a tuning panel to your local dev server or HTML files in the Codex in-app browser. Pick an element and adjust spacing, colors, typography, layout, text, sibling order and component props with live preview. CSS Tuner finds where each value lives in your source (Tailwind classes, CSS rules, CSS variables, JSX props), and Apply puts a ready-to-send prompt into your Codex chat. Codex writes the code, and CSS Tuner checks the live page to confirm every change took effect. Works with React, Next.js, Vue, Nuxt, Svelte and SvelteKit projects using Tailwind 3 / 4 or regular CSS.",
     "developerName": "WYCM9527",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
@@ -46,10 +46,10 @@
               "file_attachment_urls": ["https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip"]
             },
             {
-              "description": "Write tuned styles into the source. With the demo page open in CSS Tuner, select Pick Element and click the Pro card, set Left and right padding and Top and bottom padding to 32 and Radius to 24, then select Apply All and send the annotation that appears in the composer together with this prompt.",
-              "prompt": "Write the changes I made in CSS Tuner into the code. Changing all three cards is fine.",
-              "tools_triggered": "get_handoff, verify",
-              "expected_behavior": "Codex reads the batch with get_handoff and edits styles.css so the .plan rule has 32px padding and the cards have a 24px radius (for example by changing --card-radius). verify reports the three changes as applied, and the panel shows \"Codex is done: every change you handed off has been checked.\""
+              "description": "Write tuned styles into the source. With the demo page open in CSS Tuner, select Pick Element and click the Pro card, set Left and right padding and Top and bottom padding to 32 and Radius to 24, then select Apply All. CSS Tuner puts its prompt for the three changes into the composer of this chat; add this prompt after it and send.",
+              "prompt": "Changing all three cards is fine.",
+              "tools_triggered": "verify",
+              "expected_behavior": "Codex edits styles.css so the .plan rule has 32px padding and the cards have a 24px radius (for example by changing --card-radius), reading the batch with get_handoff if it needs more detail. verify reports the three changes as applied, and the panel shows \"Codex is done: every change you handed off has been checked.\""
             },
             {
               "description": "Check changes on the live page after the code was edited, for example after the previous case.",
@@ -91,11 +91,11 @@
         "commerce": false
       },
       "publication": {
-        "release_notes": "First release in the plugin directory. Tune a local page visually in a panel inside the page (spacing, colors, typography, fonts, layout, text, sibling order and component props), then hand the changes to Codex, which writes them into the source while CSS Tuner checks the live page to confirm each one.",
+        "release_notes": "First release in the plugin directory. Tune a local page visually in a panel inside the page (spacing, colors, typography, fonts, layout, text, sibling order and component props), then select Apply: the prompt goes straight into your Codex chat, Codex writes the changes into the source, and CSS Tuner checks the live page to confirm each one.",
         "translations": {
           "zh-CN": {
             "subtitle": "在页面上调样式，Codex 写进代码",
-            "description": "CSS Tuner 在 Codex 内置浏览器里给你本地的开发服务器或 HTML 文件加上一个调节面板。选中元素，就能调间距、颜色、字体排版、布局、文字、兄弟顺序和组件属性，页面实时预览。CSS Tuner 会找出每个值在源码里的位置（Tailwind 类名、CSS 规则、CSS 变量、JSX 属性），点“应用”后以注释的形式交给 Codex；Codex 改好代码，CSS Tuner 再在页面上核对每一处是否生效。支持使用 Tailwind 3 / 4 或普通 CSS 的 React、Next.js、Vue、Nuxt、Svelte 和 SvelteKit 项目。"
+            "description": "CSS Tuner 在 Codex 内置浏览器里给你本地的开发服务器或 HTML 文件加上一个调节面板。选中元素，就能调间距、颜色、字体排版、布局、文字、兄弟顺序和组件属性，页面实时预览。CSS Tuner 会找出每个值在源码里的位置（Tailwind 类名、CSS 规则、CSS 变量、JSX 属性），点“应用”后提示词直接放进 Codex 对话的输入框；Codex 改好代码，CSS Tuner 再在页面上核对每一处是否生效。支持使用 Tailwind 3 / 4 或普通 CSS 的 React、Next.js、Vue、Nuxt、Svelte 和 SvelteKit 项目。"
           }
         }
       }

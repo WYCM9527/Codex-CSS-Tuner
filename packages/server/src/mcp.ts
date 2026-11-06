@@ -1,5 +1,6 @@
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { THREAD_ID } from './system';
 import { TOOLS, callTool, type ToolContext } from './tools';
 import { VERSION } from './version';
 
@@ -17,8 +18,15 @@ const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 const INSTRUCTIONS = `CSS Tuner lets the user tweak a local web page visually (styles, text, order, component props) in a panel inside the page, then hands the changes to you to write into the source code.
 - open_page starts a local proxy in front of the dev server and returns a URL; open it in the in-app browser.
-- When an annotation or message mentions a CSS Tuner batch, call get_handoff with that batch id and follow the returned instructions.
+- "Apply" in the panel puts a prompt with a CSS Tuner batch id into the composer of the chat that opened the page. When a message or annotation mentions a batch without the details, call get_handoff with that batch id and follow the returned instructions.
 - After editing the code, call verify so CSS Tuner checks the live page, then report what matched and what didn't.`;
+
+/** Codex 调工具时在 _meta.threadId 里带着是哪个对话 */
+export function threadOf(params: Record<string, unknown> | undefined): string | undefined {
+  const meta = params?._meta;
+  const id = meta && typeof meta === 'object' ? (meta as Record<string, unknown>).threadId : undefined;
+  return typeof id === 'string' && THREAD_ID.test(id) ? id : undefined;
+}
 
 /**
  * MCP 服务（stdio，一行一个 JSON-RPC 消息）：Codex 每个对话起一个，工具调用转给后台服务。
@@ -87,7 +95,7 @@ export function runMcp(): void {
         const name = String(msg.params?.name ?? '');
         const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
         try {
-          reply(id, await callTool(name, args, ctx));
+          reply(id, await callTool(name, args, { ...ctx, thread: threadOf(msg.params) }));
         } catch (e) {
           reply(id, { content: [{ type: 'text', text: (e as Error).message }], isError: true });
         }
