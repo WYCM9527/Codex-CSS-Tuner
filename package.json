@@ -10,7 +10,8 @@
     "build": "pnpm --filter @css-tuner/bridge build && pnpm --filter @css-tuner/panel build && pnpm --filter @css-tuner/server build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "check:plugin": "node scripts/check-plugin.mjs"
+    "check:plugin": "node scripts/check-plugin.mjs",
+    "pack:submission": "node scripts/pack-submission.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",

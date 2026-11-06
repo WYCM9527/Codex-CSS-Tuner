@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
-import { Hub, type Site } from '../src/hub';
+import { Hub, targetScope, type Site } from '../src/hub';
 import { BRIDGE_TAG } from '../src/inject';
 
 interface Res {
@@ -166,6 +166,37 @@ describe('Hub：静态站点', () => {
   });
 });
 
+describe('targetScope：只代理本机和局域网', () => {
+  const resolvesTo =
+    (...addresses: string[]) =>
+    async () =>
+      addresses.map((address) => ({ address }));
+
+  it('localhost、回环和内网 IP 不查 DNS 直接算本地', async () => {
+    for (const u of ['http://localhost:5173', 'http://app.localhost:3000', 'http://127.0.0.1:8080', 'http://[::1]:5173', 'http://0.0.0.0:3000', 'http://192.168.1.20:5173', 'http://10.0.0.5', 'http://172.20.3.4:8000', 'http://100.101.102.103:3000', 'http://[fd12::1]:5173'])
+      expect(await targetScope(new URL(u), resolvesTo('8.8.8.8')), u).toBe('local');
+  });
+
+  it('公网 IP 不算', async () => {
+    for (const u of ['http://8.8.8.8', 'http://172.32.0.1:3000', 'https://[2606:4700::1111]']) expect(await targetScope(new URL(u)), u).toBe('public');
+  });
+
+  it('主机名看解析出的地址：都在内网才算，有一个公网地址就不算', async () => {
+    expect(await targetScope(new URL('http://myapp.test:3000'), resolvesTo('127.0.0.1'))).toBe('local');
+    expect(await targetScope(new URL('http://devbox:3000'), resolvesTo('192.168.1.8', 'fe80::1'))).toBe('local');
+    expect(await targetScope(new URL('https://example.com'), resolvesTo('93.184.215.14'))).toBe('public');
+    expect(await targetScope(new URL('http://mixed.test'), resolvesTo('127.0.0.1', '93.184.215.14'))).toBe('public');
+  });
+
+  it('解析不出来的主机名', async () => {
+    const fail = async () => {
+      throw new Error('ENOTFOUND');
+    };
+    expect(await targetScope(new URL('http://nowhere.invalid'), fail)).toBe('unknown');
+    expect(await targetScope(new URL('http://empty.test'), resolvesTo())).toBe('unknown');
+  });
+});
+
 describe('Hub：代理开发服务器', () => {
   const env = setup();
   let upstream: http.Server;
@@ -212,6 +243,11 @@ describe('Hub：代理开发服务器', () => {
     upstream.closeAllConnections();
     await new Promise((r) => upstream.close(r));
     rmSync(env.dir, { recursive: true, force: true });
+  });
+
+  it('公网网站不代理', async () => {
+    await expect(hub.ensureProxy(new URL('http://8.8.8.8/'), env.dir)).rejects.toThrow(/8\.8\.8\.8/);
+    expect(hub.list()).toEqual([site]);
   });
 
   it('按开发服务器的源复用站点；开发服务器用 127.0.0.1 时地址也用它', async () => {

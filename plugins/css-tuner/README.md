@@ -84,7 +84,7 @@ codex plugin add css-tuner@codex-css-tuner
 3. Drag the values in the panel; the page updates as you go, and each change appears in the list at the top of the panel, where Undo and Redo step back and forth through them. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in Layers. To change the props of its component, use the Component props section.
 4. Click **Apply All** (or **Apply** on one change). An annotation for the batch appears in the Codex composer; check it and send. Once Codex has changed the code and the page has updated, the change in the list turns **Applied**. Afterwards, **Revert** any single change.
 
-For plain HTML, ask Codex to open an HTML file or folder in CSS Tuner, and it serves the files itself.
+For plain HTML, ask Codex to open an HTML file or folder in CSS Tuner, and it serves the files itself. To try it without a project of your own, download the [demo page](https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip), unzip it, start a Codex chat in that folder and ask Codex to **open index.html in CSS Tuner**.
 
 ## Tools
 
@@ -148,8 +148,9 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 
 - The proxy and the static server listen on `127.0.0.1` and `::1` only, and the background service's control port on `127.0.0.1`. The page's connection needs a random token for each site, and the control port needs a token kept in `~/.css-tuner/daemon.json`, which only you can read.
 - CSS Tuner doesn't modify your project files; Codex edits them after you send the request.
-- CSS Tuner makes no internet requests of its own. It talks to your dev server, and when you save an image or video it downloads that file from the address the page uses. The list of installed fonts is read on your computer, with the system tools above, the first time you open the Font menu.
+- CSS Tuner makes no internet requests of its own. The proxy only connects to dev servers on this computer or your local network (localhost, private and link-local addresses, and host names that resolve to them) and refuses public websites. When you save an image or video, CSS Tuner downloads that file from the address the page uses. The list of installed fonts is read on your computer, with the system tools above, the first time you open the Font menu.
 - Settings, change history and logs are kept in `~/.css-tuner` (set `CSS_TUNER_DATA` to use another folder). The background service stops by itself after 30 minutes without a connected page.
+- Details are in the [privacy policy](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/PRIVACY.md) and the [terms of use](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/TERMS.md).
 
 ## Troubleshooting
 

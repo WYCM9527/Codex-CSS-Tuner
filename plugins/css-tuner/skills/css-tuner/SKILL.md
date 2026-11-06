@@ -14,6 +14,7 @@ The tools come from the `css-tuner` MCP server: `open_page`, `status`, `get_hand
 1. Work out the project root (your working directory) and the page to tune:
    - A dev server URL such as `http://localhost:5173/pricing`. If no dev server is running, start the project's dev script in the background first (check `package.json`), and wait until it prints its URL.
    - Or a local HTML file or folder, for sites without a dev server.
+   - CSS Tuner refuses public websites: it only opens dev servers on this computer or the local network. If the user asks to tune a site on the internet, explain that CSS Tuner changes their own local project, and offer to open its dev server instead.
 2. Call `open_page` with `projectRoot` (absolute path) and `url`. It returns a local address such as `http://localhost:15173/pricing`: the same site through a local proxy that adds the panel. Hot reload keeps working.
 3. Open that address in the in-app browser with the Browser plugin (`control-in-app-browser`). If you cannot control the browser, give the user the link and ask them to open it in the Codex in-app browser. Annotations only work there; in another browser, Apply copies the full prompt to the clipboard instead.
 4. Tell the user briefly how to use it: pick an element in the panel (or on the page), tune it, then press **Apply** or **Apply All** and send the message that appears in the composer.

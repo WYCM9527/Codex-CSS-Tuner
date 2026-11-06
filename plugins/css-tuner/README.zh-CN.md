@@ -84,7 +84,7 @@ codex plugin add css-tuner@codex-css-tuner
 3. 拖动面板里的数值，页面实时变化；改动会出现在面板顶部的清单里，上一步 / 下一步可以前进后退。要改文字，在“内容”分区里改，或者在页面上双击它。要在兄弟之间换位置，拖页面上元素标签旁边的把手，或拖“图层”里它那一行。要改它所属组件的属性，用“组件属性”分区。
 4. 点“全部应用”（或某一条的“应用”），这一批改动的注释会出现在 Codex 的输入框里，检查后发送。Codex 改完代码、页面更新后，清单里这一条会变成“已应用”；之后可以对任意一条点“还原”。
 
-纯 HTML 项目：请 Codex 用 CSS Tuner 打开某个 HTML 文件或文件夹，CSS Tuner 自己起一个静态服务。
+纯 HTML 项目：请 Codex 用 CSS Tuner 打开某个 HTML 文件或文件夹，CSS Tuner 自己起一个静态服务。手头没有项目也想试试的话，下载[示例页](https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip)解压，在那个文件夹里开一个 Codex 对话，跟它说：**用 CSS Tuner 打开 index.html**。
 
 ## 工具
 
@@ -148,8 +148,9 @@ node <插件目录>/server/cli.mjs stop                                    # 停
 
 - 代理和静态服务只监听 `127.0.0.1` 和 `::1`，后台服务的控制端口只监听 `127.0.0.1`。页面的连接要带每个站点各自的随机 token，控制端口要带 `~/.css-tuner/daemon.json` 里的 token，这个文件只有你自己能读。
 - CSS Tuner 不改项目文件；代码由 Codex 在你发送之后修改。
-- CSS Tuner 自己不访问外网：只请求你的开发服务器；保存图片或视频时，从页面用的那个地址下载。本机字体列表在第一次打开字体菜单时用上面说的系统工具在本机读取。
+- CSS Tuner 自己不访问外网：代理只连本机或局域网里的开发服务器（localhost、内网和链路本地地址，以及解析到这些地址的主机名），公网网站一律拒绝；保存图片或视频时，从页面用的那个地址下载。本机字体列表在第一次打开字体菜单时用上面说的系统工具在本机读取。
 - 设置、改动记录和日志放在 `~/.css-tuner`（设置 `CSS_TUNER_DATA` 可以换地方）。没有页面连着时，后台服务 30 分钟后自己退出。
+- 详见[隐私政策](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/PRIVACY.md)和[使用条款](https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/TERMS.md)。
 
 ## 排查问题
 

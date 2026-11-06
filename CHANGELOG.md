@@ -13,6 +13,9 @@ CSS Tuner is now a Codex plugin. The Cursor extension continues as [Cursor CSS T
 - Fonts: the Font field at the top of the Text section opens a searchable list of your theme's fonts (Tailwind's `font-*`, or CSS variables that hold a font stack), fonts the page loads with `@font-face`, fonts installed on your computer and generic families. Each name is shown in its own typeface, and hovering one previews it on the page. Type a name or a whole font stack to use a font that isn't listed. When you pick a font that's only installed on your computer, the description says the page doesn't load it.
 - Settings are no longer editor settings: `language`, `defaultUrl`, `remBase`, `snap`, `scope` (was `cssTuner.tailwind.scope`), and the new `editor` and `assetsDir`, changed with `cli.mjs config`. Settings, change history and logs are kept in `~/.css-tuner`.
 - Images & video: *Save* puts a file straight into Downloads (or `assetsDir`), and *Download All* into a new folder there.
+- CSS Tuner only opens dev servers on your computer or your local network (`localhost`, private and link-local addresses, and hostnames that resolve to them). Public websites are refused, because the proxy removes the page's CSP and the browser would send it the cookies it keeps for `localhost`.
+- When the panel has already checked a handoff by the time Codex calls `verify`, `verify` reports how the latest batch turned out.
+- A [privacy policy](PRIVACY.md) and [terms of use](TERMS.md). Each release also includes `css-tuner-demo.zip`, a demo page to try CSS Tuner on.
 - Removed with the Cursor extension: the Cursor commands, Self-Check, *Compare* and the `executeJavaScript` fallback channel (the proxy removes the page's CSP, so the connection isn't blocked).
 
 ## 0.10.1

@@ -125,6 +125,41 @@ function checkMcp(root, p) {
   return Object.keys(servers);
 }
 
+function checkUrl(u, what) {
+  if (typeof u !== 'string' || !/^https:\/\/[^\s@]+$/.test(u) || u.length > 1024) fail(`plugin.json: ${what} must be an HTTPS URL of at most 1024 characters (got ${JSON.stringify(u)})`);
+}
+
+/** 插件目录提交门户的导入规则：审核用例、发布说明和翻译 */
+function checkOpenAI(ext) {
+  if (ext === undefined) return;
+  const review = ext.review ?? {};
+  for (const k of ['test_credentials', 'reviewer_instructions']) if (k in review) fail(`plugin.json: review.${k} is rejected by the submission portal; enter it in the dashboard`);
+  const tools = new Set([...readFileSync(join(repo, 'packages/server/src/tools.ts'), 'utf8').matchAll(/^\s+name: '([a-z_]+)'/gm)].map((x) => x[1]));
+  const cases = review.test_cases;
+  if (cases) {
+    const { positive = [], negative = [] } = cases;
+    if (positive.length !== 5) fail(`plugin.json: review needs exactly 5 positive test cases (got ${positive.length})`);
+    if (negative.length !== 3) fail(`plugin.json: review needs exactly 3 negative test cases (got ${negative.length})`);
+    for (const [n, c] of [...positive.map((c) => ['positive', c]), ...negative.map((c) => ['negative', c])]) {
+      const required = n === 'positive' ? ['description', 'prompt', 'tools_triggered', 'expected_behavior'] : ['description', 'prompt'];
+      for (const k of required) if (typeof c[k] !== 'string' || !c[k].trim()) fail(`plugin.json: ${n} test case is missing ${k}: ${JSON.stringify(c.description ?? c)}`);
+      if (typeof c.description === 'string' && c.description.length > 4000) fail(`plugin.json: ${n} test case description is longer than 4000 characters`);
+      for (const t of (c.tools_triggered ?? '').split(',').map((s) => s.trim()).filter(Boolean)) if (!tools.has(t)) fail(`plugin.json: ${n} test case names unknown tool ${t}`);
+      for (const u of c.file_attachment_urls ?? []) checkUrl(u, `${n} test case file_attachment_urls`);
+    }
+  }
+  if (review.demo_recording_url !== undefined) checkUrl(review.demo_recording_url, 'review.demo_recording_url');
+  const pub = ext.publication ?? {};
+  for (const c of pub.countries ?? []) if (!/^[A-Z]{2}$/.test(c)) fail(`plugin.json: publication.countries has a bad country code ${JSON.stringify(c)}`);
+  for (const [locale, tr] of Object.entries(pub.translations ?? {})) {
+    if (!tr) continue;
+    if (tr.subtitle && tr.subtitle.length > 30) fail(`plugin.json: ${locale} subtitle is longer than 30 characters`);
+    if (tr.subtitle && /\n/.test(tr.subtitle)) fail(`plugin.json: ${locale} subtitle must be one line`);
+    if (tr.description && tr.description.length > 4000) fail(`plugin.json: ${locale} description is longer than 4000 characters`);
+    for (const s of [tr.subtitle, tr.description]) if (s && /[\u0000-\u0009\u000b-\u001f]/.test(s)) fail(`plugin.json: ${locale} translation has tabs or control characters`);
+  }
+}
+
 function checkPlugin(root, expectName) {
   const file = join(root, '.codex-plugin', 'plugin.json');
   if (!existsSync(file)) {
@@ -149,6 +184,11 @@ function checkPlugin(root, expectName) {
     for (const s of i.defaultPrompt ?? []) if (typeof s !== 'string' || s.length > 128) fail(`plugin.json: defaultPrompt entry longer than 128 characters: ${JSON.stringify(s)}`);
   }
   if (i.brandColor && !/^#[0-9a-fA-F]{6}$/.test(i.brandColor)) fail('plugin.json: interface.brandColor must be #RRGGBB');
+  if ((m.description ?? '').length > 1024) fail('plugin.json: description is longer than 1024 characters');
+  if (!m.author?.name) fail('plugin.json: author.name is required');
+  if ((i.developerName ?? '').length > 80) fail('plugin.json: interface.developerName is longer than 80 characters');
+  for (const k of ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL']) if (i[k] !== undefined) checkUrl(i[k], `interface.${k}`);
+  checkOpenAI(m.extensions?.['com.openai']);
   if (i.composerIcon) checkIcon(root, i.composerIcon, 'interface.composerIcon');
   if (i.logo) checkIcon(root, i.logo, 'interface.logo');
   for (const s of i.screenshots ?? []) inside(root, s, 'interface.screenshots');

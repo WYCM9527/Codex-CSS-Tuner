@@ -82,6 +82,8 @@ export interface VerifyResult {
   connected: boolean;
   page: string | null;
   changes: ChangeSummary[];
+  /** 没有在等核对的改动时，最近交出的那一批现在的状态：页面更新后面板往往已经自己核对完了 */
+  latest?: { batch: string; changes: ChangeSummary[] };
 }
 
 export interface RpcMethods {

@@ -184,7 +184,10 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
           r,
         );
       }
-      if (!r.changes.length) return text('Nothing is waiting to be checked.', r);
+      if (!r.changes.length) {
+        const latest = r.latest?.changes ?? [];
+        return text(latest.length ? `Nothing is waiting to be checked. Latest batch ${r.latest?.batch}:\n${latest.map(line).join('\n')}` : 'Nothing is waiting to be checked.', r);
+      }
       const ok = r.changes.filter((c) => c.status === 'applied' || c.status === 'reverted').length;
       return text(`Checked ${r.changes.length} change(s) on ${r.page}: ${ok} matched.\n${r.changes.map(line).join('\n')}`, r);
     }

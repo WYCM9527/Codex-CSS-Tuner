@@ -24,7 +24,9 @@ Codex 插件：在运行中的页面上点选元素、可视化调 CSS、改文�
 | `packages/panel` | 调参面板（React），在页面里的同源 iframe 中运行，经 WebSocket 连服务端（`host.ts`）；`pnpm --filter @css-tuner/panel dev` 可以脱离页面用模拟宿主调 |
 | `packages/server` | 服务端，构建成 `plugins/css-tuner/server/` 下的几个入口：`mcp.mjs`（MCP stdio 前端，`mcp.ts` + `tools.ts`）、`daemon.mjs`（后台服务）、`cli.mjs`（命令行）、`ts-worker.mjs`（TS 语言服务，给属性补全用）。后台服务一个用户一个（`daemon.ts`；`client.ts` 负责找到或拉起它，版本旧了就换掉），控制端口是带 token 的 HTTP RPC（`rpc.ts`）。站点（`hub.ts`）：每个站点一个本地端口，开发服务器走反向代理（`proxy.ts`，HTML 由 `inject.ts` 插入桥接脚本），本地 HTML 走静态服务（`static.ts`）；`/__css_tuner__/` 下是桥接脚本、面板页、视口框页（`pages.ts`）和 WebSocket；后台服务重启后按 `sites.json` 在原端口恢复站点。会话（`session.ts`）：同一个站点只认最新连上的标签页。其余从 Cursor 版移植：控制器（`controller.ts`）、定位计划（`planner.ts`）、属性的可选值（`completions.ts`）、改动清单（`journal.ts`）、上一步 / 下一步（`history.ts`）、交给 Codex（`prompt.ts` 写说明，`applier.ts` 记批次、复制剪贴板、盯着文件变化和页面更新核对）、图片和视频（`assets.ts`）、视口档位（`band.ts`）、本机字体列表（`fonts.ts`：macOS 用 JXA 调 `NSFontManager`，Windows 用 PowerShell，Linux 用 `fc-list`；第一次打开字体菜单时读，缓存一分钟）；新增的设置（`settings.ts`）、文件监听（`watch.ts`）、系统操作（`system.ts`：剪贴板、在编辑器里打开、在访达里显示） |
 | `fixtures/` | 端到端测试用的小项目：`tw-react`（Vite + Tailwind 4，带 react-i18next）、`tw3-react`（Vite + Tailwind 3.4，主题在 `tailwind.config.ts`）、`react-css`（Vite + 普通 CSS / CSS Modules）、`next16`（Next.js 16 App Router，带 next-intl；`dev` 是 Turbopack，`dev:webpack` 是 webpack）、`vue3`（Vite + Vue 3 + Tailwind 4，带 scoped 样式、插槽、透传类名的组件）、`svelte5`（Vite + Svelte 5 + Tailwind 4，带组件样式、snippet、`class:` 指令）、`nuxt`（Nuxt 4）和 `sveltekit`（SvelteKit 3）两个冒烟用的最小项目、`static-html`；`demo` 是截图用的英文演示页 |
-| `scripts/` | `check-plugin.mjs`（按 Codex 插件目录的规则检查清单、图标、技能、MCP 配置和构建产物）、`mcp-smoke.mjs`（起一个真的 MCP 服务，走一遍握手、列工具、打开静态页、查状态、关掉）、`mcp-call.mjs`（像 Codex 那样调一次工具）、`screenshots.mjs`（重新生成截图） |
+| `examples/static-demo` | 不用开发服务器的英文示例页（普通 CSS），插件目录的审核用例和试用都用它；发布时打包成 `css-tuner-demo.zip` |
+| `PRIVACY.md`、`TERMS.md` | 隐私政策和使用条款（中英），插件清单里的链接指向 GitHub 上的这两个文件 |
+| `scripts/` | `check-plugin.mjs`（按 Codex 插件目录的规则检查清单、图标、技能、MCP 配置、审核用例和构建产物）、`mcp-smoke.mjs`（起一个真的 MCP 服务，走一遍握手、列工具、打开静态页、查状态、关掉）、`mcp-call.mjs`（像 Codex 那样调一次工具）、`screenshots.mjs`（重新生成截图）、`pack-submission.mjs`（生成提交到 OpenAI 插件目录的 ZIP） |
 
 一次调参的数据流：Codex 调 `open_page` → MCP 前端找到（没有就拉起）后台服务 → 后台服务给站点开一个本地端口，代理开发服务器（HTML 的 `<head>` 最前面插入 `<script src="/__css_tuner__/bridge.js">`，去掉 CSP 和 `X-Frame-Options`，Host、Origin、Referer 换成开发服务器的，`Location` 换回代理的，热更新的 WebSocket 原样转发）或者给本地 HTML 起静态服务 → Codex 在内置浏览器里打开这个地址 → 桥接脚本在页面里挂上面板，两边各自经带 token 的 WebSocket 连回后台服务 → 选中元素时页面上报样式快照、文字分段、兄弟组、所属组件收到的 props 和源码位置 → 服务端为每个属性、每段文字、兄弟组和组件属性找代码位置（找不到时记下原因）→ 拖动和输入时页面只做预览 → 应用时面板在点击当中生成批次号，调内置浏览器的注释接口把一条注释（一句话 + 批次号）放进 Codex 的输入框，服务端记下这一批，把完整说明复制到剪贴板（没有注释接口时只走剪贴板），预览留着 → 用户发送后 Codex 按批次号调 `get_handoff` 取说明、改代码、调 `verify` 核对 → 同时服务端盯着项目里的文件变化和页面热更新（改翻译文件时 Vite 会整页刷新，Next 的 webpack 模式改 CSS Module 也会，页面重新连上后再核对），页面脚本临时撤下预览，读出源码给出的计算样式、文字、兄弟的顺序和组件收到的 props，和预览对上就标为已应用、撤掉预览，面板上的提示换成“改好了”；只改某一档的改动切到那一档的宽度再读 → 还原同样交给 Codex。
 
@@ -92,8 +94,22 @@ Cursor 版 CSS Tuner 的桥接也可能在同一个页面里（在 Cursor 的内
 ## 发布
 
 1. 改 `plugins/css-tuner/.codex-plugin/plugin.json` 和 `packages/server/package.json` 的 `version`（两处要一致，`check:plugin` 会查），在 `CHANGELOG.md` 里写更新内容，`pnpm build` 后一起提交。
-2. 推送同名标签（如 `v0.11.0`），`Release` 工作流会检查版本号、测试、确认构建产物是最新的，创建 GitHub Release 并附上插件文件夹的 zip。
+2. 推送同名标签（如 `v0.11.0`），`Release` 工作流会检查版本号、测试、确认构建产物是最新的，创建 GitHub Release，附上插件文件夹的 zip 和示例页 `css-tuner-demo.zip`（审核用例按 `releases/latest/download/css-tuner-demo.zip` 引用它）。
 3. 用户通过 `codex plugin marketplace add WYCM9527/Codex-CSS-Tuner` 拿到的是默认分支上的插件（`--ref <标签>` 固定在某个版本）；`codex plugin marketplace upgrade codex-css-tuner` 刷新之后，再 `codex plugin add css-tuner@codex-css-tuner` 装上新版本。
+
+## 提交到 OpenAI 插件目录
+
+CSS Tuner 带本机 MCP 服务，属于“仅桌面端”插件（上架后带 Desktop only 标记，只能在支持的桌面应用里装）。[官方规定](https://developers.openai.com/plugins/deploy/desktop-only)本地 MCP 插件只接受获批合作伙伴的提交，所以要先拿到白名单：
+
+1. 在 [OpenAI Platform 的组织设置](https://platform.openai.com/settings/organization/general)里完成个人或企业身份验证，记下组织 ID。目录里显示的开发者名称取自这个身份，和清单里的 `developerName` 无关。提交的人要有 `api.apps.write` 权限（组织 Owner 自带）。
+2. 把组织 ID 发给 OpenAI 的对接人，申请加入本地 MCP 提交的白名单，等对方确认。
+3. `pnpm build && pnpm pack:submission`，得到 `dist/css-tuner-<版本>-submission.zip`。它和插件文件夹一样，只是去掉了截图：这条路线不接受 `interface.screenshots`。
+4. 在[提交门户](https://platform.openai.com/plugins)选 **Create plugin → Skills only**，上传这个 ZIP，处理自动检查的结果。
+5. 录一段演示视频，走一遍审核用例，把链接填进 **Review details**（或写进 `plugin.json` 的 `extensions.com.openai.review.demo_recording_url` 再打包上传），确认导入的用例后提交审核。通过后在门户里点 **Publish**。
+
+已经写进清单的：网站、支持、隐私政策和使用条款的链接（`interface.*URL`，都要是 HTTPS 而且能打开）；5 个正向、3 个反向审核用例（`extensions.com.openai.review.test_cases`，用 Release 里的示例页），`check:plugin` 会检查数量、必填字段和工具名，改了工具或面板文案时要跟着改；发布说明和简体中文的标题、简介（`extensions.com.openai.publication`）。
+
+以后改了插件信息或技能，要换新的 `version` 重新打包上传，审核通过后再发布。同一时间只能有一个版本在审核，提交后想改就先 **Cancel Review**，改完重新提交。
 
 ## 许可
 

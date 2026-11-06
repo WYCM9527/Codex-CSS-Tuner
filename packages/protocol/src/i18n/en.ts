@@ -53,6 +53,8 @@ export const en = {
   'ext.revert.annotation': 'Added the revert to the Codex composer (batch {batch}). Check it and send. The full prompt is on the clipboard too.',
   'ext.open.noEditor': "Couldn't open {file} in an editor: neither Cursor nor VS Code was found.",
   'ext.open.badUrl': 'Only http(s) addresses and local HTML files are supported: {target}',
+  'ext.open.notLocal': 'CSS Tuner only opens dev servers on this computer or your local network, and {target} is on the internet. Open your local dev server or an HTML file instead.',
+  'ext.open.unknownHost': "Couldn't find {target}. Check the address: CSS Tuner only opens dev servers on this computer or your local network.",
   'ext.pick.noPage': 'Open a page before picking elements.',
   'ext.plan.strokeGradient': "Gradient stroke: the element has no fill, so the two-layer background trick would cover its inside too. Use a technique that keeps the rounded corners and leaves the inside transparent (for example a pseudo-element with a mask)",
   'ext.remove.nothing': "These values aren't set in your code (they're inherited, browser defaults or framework defaults), so there's nothing to remove",

@@ -1,0 +1,144 @@
+:root {
+  --ink: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
+  --card-radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--ink);
+  background: #fafaf9;
+}
+
+.page {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 48px 40px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.title {
+  margin: 8px 0 0;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #57534e;
+}
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.plan {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  background: #fff;
+}
+
+.plan-featured {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.plan-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.price {
+  margin: 16px 0 0;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.per {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.blurb {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.plan-featured .blurb {
+  color: #d6d3d1;
+}
+
+.features {
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.features li {
+  display: flex;
+  gap: 8px;
+}
+
+.features li + li {
+  margin-top: 8px;
+}
+
+.features li::before {
+  content: '✓';
+  opacity: 0.5;
+}
+
+.choose {
+  width: 100%;
+  margin-top: 32px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+}
+
+.plan-featured .choose {
+  color: var(--ink);
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 32px 20px;
+  }
+
+  .plans {
+    grid-template-columns: 1fr;
+  }
+}

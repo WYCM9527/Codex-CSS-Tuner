@@ -1,6 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { BlockList, isIP } from 'node:net';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -29,10 +31,34 @@ export interface SiteRecord {
   project: string;
 }
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+/** 本机、局域网和 Tailscale 这类内网的地址 */
+const LOCAL_NETS = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 32], ['127.0.0.0', 8], ['10.0.0.0', 8], ['172.16.0.0', 12], ['192.168.0.0', 16], ['169.254.0.0', 16], ['100.64.0.0', 10]] as const)
+  LOCAL_NETS.addSubnet(net, bits, 'ipv4');
+for (const [net, bits] of [['::1', 128], ['fc00::', 7], ['fe80::', 10]] as const) LOCAL_NETS.addSubnet(net, bits, 'ipv6');
 
-export function isLoopback(hostname: string): boolean {
-  return LOOPBACK.has(hostname.toLowerCase());
+function localAddress(address: string): boolean {
+  const family = isIP(address);
+  return family !== 0 && LOCAL_NETS.check(address, family === 4 ? 'ipv4' : 'ipv6');
+}
+
+export type LookupAll = (host: string) => Promise<Array<{ address: string }>>;
+
+/**
+ * 只代理本机和局域网里的开发服务器：公网网站经过代理会被去掉 CSP，还会收到浏览器给 localhost 的 Cookie。
+ * 主机名按系统解析（认 /etc/hosts），解析出的地址都在内网才算
+ */
+export async function targetScope(target: URL, lookupAll: LookupAll = (host) => lookup(host, { all: true })): Promise<'local' | 'public' | 'unknown'> {
+  const host = target.hostname.replace(/^\[(.*)\]$/, '$1').toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'local';
+  if (isIP(host)) return localAddress(host) ? 'local' : 'public';
+  try {
+    const all = await lookupAll(host);
+    if (!all.length) return 'unknown';
+    return all.every((a) => localAddress(a.address)) ? 'local' : 'public';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /** 一个本地站点：一个端口，代理一个开发服务器或者服务一个静态目录，带一个页面会话 */
@@ -184,8 +210,10 @@ export class Hub {
   }
 
   /** 代理这个开发服务器（已经在代理就直接用） */
-  ensureProxy(target: URL, project: string): Promise<Site> {
+  async ensureProxy(target: URL, project: string): Promise<Site> {
     const origin = target.origin;
+    const scope = await targetScope(target);
+    if (scope !== 'local') throw new Error(t(scope === 'public' ? 'ext.open.notLocal' : 'ext.open.unknownHost', { target: origin }));
     const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
     const preferred = port + 10000 <= 65535 ? [port + 10000] : [];
     return this.ensure(`proxy:${origin}`, { kind: 'proxy', target: origin, project }, preferred);

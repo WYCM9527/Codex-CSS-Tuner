@@ -1,7 +1,8 @@
 name: Release
 
 # 推 v* 标签发布：标签必须和插件清单 plugins/css-tuner/.codex-plugin/plugin.json 的 version 一致。
-# 发布 GitHub Release，附上插件文件夹的 zip；从插件市场装这个版本用 --ref <标签>。
+# 发布 GitHub Release，附上插件文件夹的 zip 和示例页 css-tuner-demo.zip；从插件市场装这个版本用 --ref <标签>。
+# 插件清单里的审核用例和使用说明按 releases/latest/download/css-tuner-demo.zip 引用示例页，别改它的文件名。
 on:
   push:
     tags: ['v*']
@@ -43,6 +44,11 @@ jobs:
       - name: 打包插件
         working-directory: plugins
         run: zip -qr "../css-tuner-${GITHUB_REF_NAME#v}.zip" css-tuner
+      - name: 打包示例页
+        run: |
+          mkdir -p "$RUNNER_TEMP/demo"
+          cp -R examples/static-demo "$RUNNER_TEMP/demo/css-tuner-demo"
+          (cd "$RUNNER_TEMP/demo" && zip -qr "$GITHUB_WORKSPACE/css-tuner-demo.zip" css-tuner-demo)
       - uses: softprops/action-gh-release@v3
         with:
           files: css-tuner-*.zip

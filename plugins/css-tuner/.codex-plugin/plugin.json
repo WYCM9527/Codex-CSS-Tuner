@@ -20,6 +20,9 @@
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
     "websiteURL": "https://github.com/WYCM9527/Codex-CSS-Tuner",
+    "supportURL": "https://github.com/WYCM9527/Codex-CSS-Tuner/issues",
+    "privacyPolicyURL": "https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/WYCM9527/Codex-CSS-Tuner/blob/main/TERMS.md",
     "defaultPrompt": [
       "Open my dev server in CSS Tuner",
       "Write the changes I made in CSS Tuner into the code",
@@ -29,5 +32,73 @@
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png",
     "screenshots": ["./assets/screenshot.png"]
+  },
+  "extensions": {
+    "com.openai": {
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Open a local HTML page with the CSS Tuner panel. Setup: download the attached css-tuner-demo.zip, unzip it, and start a local Codex chat in the css-tuner-demo folder.",
+              "prompt": "Open index.html in CSS Tuner",
+              "tools_triggered": "open_page",
+              "expected_behavior": "Codex calls open_page with the css-tuner-demo folder and opens the returned http://localhost address in the in-app browser. The pricing page appears with the CSS Tuner panel inside it.",
+              "file_attachment_urls": ["https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip"]
+            },
+            {
+              "description": "Write tuned styles into the source. With the demo page open in CSS Tuner, select Pick Element and click the Pro card, set Left and right padding and Top and bottom padding to 32 and Radius to 24, then select Apply All and send the annotation that appears in the composer together with this prompt.",
+              "prompt": "Write the changes I made in CSS Tuner into the code. Changing all three cards is fine.",
+              "tools_triggered": "get_handoff, verify",
+              "expected_behavior": "Codex reads the batch with get_handoff and edits styles.css so the .plan rule has 32px padding and the cards have a 24px radius (for example by changing --card-radius). verify reports the three changes as applied, and the panel shows \"Codex is done: every change you handed off has been checked.\""
+            },
+            {
+              "description": "Check changes on the live page after the code was edited, for example after the previous case.",
+              "prompt": "Check whether my CSS Tuner changes are live",
+              "tools_triggered": "verify",
+              "expected_behavior": "Codex calls verify and reports which changes the page now shows, such as the latest batch marked applied, and for any that don't match, what the page shows instead. It doesn't edit any files."
+            },
+            {
+              "description": "List the changes in the panel without writing code. Make one or two changes in the panel without selecting Apply.",
+              "prompt": "What changes have I made in CSS Tuner so far?",
+              "tools_triggered": "list_changes",
+              "expected_behavior": "Codex lists each change with its element, old and new value, status (not applied yet) and place in styles.css. It doesn't edit any files."
+            },
+            {
+              "description": "Check the connection, then stop CSS Tuner for the project.",
+              "prompt": "Is CSS Tuner still connected to my page? Then stop it for this project.",
+              "tools_triggered": "status, close_page",
+              "expected_behavior": "Codex reports the connected page and the change counts from status, then calls close_page, which reports \"Stopped 1 site(s).\" The changes stay in the list for the next session."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Public websites are out of scope: CSS Tuner only opens dev servers on this computer or the local network and local HTML files, because it writes changes into the user's own source code.",
+              "prompt": "Open https://www.wikipedia.org in CSS Tuner and make its header blue",
+              "expected_behavior": "Codex doesn't proxy or edit the public site. If it calls open_page, CSS Tuner refuses the address because it is on the internet, and Codex offers to open the user's local dev server instead."
+            },
+            {
+              "description": "Nothing was changed or applied in the panel (a fresh session), so there is nothing to write into code.",
+              "prompt": "Write my CSS Tuner changes into the code",
+              "expected_behavior": "get_handoff reports that no changes are waiting. Codex doesn't invent edits or change any files, and asks the user to make changes in the panel and select Apply first."
+            },
+            {
+              "description": "Deployment is out of scope: CSS Tuner tunes and checks pages on this computer and has no tools to deploy or upload anything.",
+              "prompt": "Use CSS Tuner to deploy this page to production",
+              "expected_behavior": "Codex doesn't call CSS Tuner tools for this and explains that CSS Tuner doesn't deploy pages; it may offer the project's own deploy steps instead."
+            }
+          ]
+        },
+        "commerce": false
+      },
+      "publication": {
+        "release_notes": "First release in the plugin directory. Tune a local page visually in a panel inside the page (spacing, colors, typography, fonts, layout, text, sibling order and component props), then hand the changes to Codex, which writes them into the source while CSS Tuner checks the live page to confirm each one.",
+        "translations": {
+          "zh-CN": {
+            "subtitle": "在页面上调样式，Codex 写进代码",
+            "description": "CSS Tuner 在 Codex 内置浏览器里给你本地的开发服务器或 HTML 文件加上一个调节面板。选中元素，就能调间距、颜色、字体排版、布局、文字、兄弟顺序和组件属性，页面实时预览。CSS Tuner 会找出每个值在源码里的位置（Tailwind 类名、CSS 规则、CSS 变量、JSX 属性），点“应用”后以注释的形式交给 Codex；Codex 改好代码，CSS Tuner 再在页面上核对每一处是否生效。支持使用 Tailwind 3 / 4 或普通 CSS 的 React、Next.js、Vue、Nuxt、Svelte 和 SvelteKit 项目。"
+          }
+        }
+      }
+    }
   }
 }

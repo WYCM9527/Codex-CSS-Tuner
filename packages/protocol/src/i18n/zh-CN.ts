@@ -55,6 +55,8 @@ export const zhCN: Record<keyof typeof en, string> = {
   'ext.revert.annotation': '已把还原放进 Codex 的输入框（批次 {batch}），检查后发送。完整提示词也复制到了剪贴板。',
   'ext.open.noEditor': '没能在编辑器里打开 {file}：没找到 Cursor 或 VS Code。',
   'ext.open.badUrl': '只支持 http(s) 地址或本地 HTML 文件：{target}',
+  'ext.open.notLocal': 'CSS Tuner 只打开本机或局域网里的开发服务器，{target} 在公网上。请改为打开本地的开发服务器或 HTML 文件。',
+  'ext.open.unknownHost': '找不到 {target}，检查一下地址：CSS Tuner 只打开本机或局域网里的开发服务器。',
   'ext.pick.noPage': '先打开页面再选取元素。',
   'ext.plan.strokeGradient': '描边改成渐变：元素没有填充色，用两层背景写会把元素里面也盖住。请换一种保留圆角、元素里面保持透明的写法（比如伪元素加 mask）',
   'ext.remove.nothing': '这些值不是你的代码里设置的（是继承来的、浏览器默认的或框架自带的），没有可删的',

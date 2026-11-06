@@ -285,11 +285,20 @@ export class Daemon {
       c.lastActive = Date.now();
       const wait = Math.min(Math.max(waitMs ?? 6000, 500), 30000);
       const ids = c.session?.connected ? await c.applier.verify(wait) : c.journal.waiting().map((r) => r.id);
-      const changes = ids.flatMap((id) => {
-        const r = c.journal.get(id);
-        return r ? [summarize(r)] : [];
-      });
-      return { project: c.root, connected: c.session?.connected ?? false, page: c.page && c.site ? c.site.toTarget(c.page.url) : null, changes };
+      const summaries = (list: string[]) =>
+        list.flatMap((id) => {
+          const r = c.journal.get(id);
+          return r ? [summarize(r)] : [];
+        });
+      const changes = summaries(ids);
+      const last = changes.length ? undefined : c.applier.batches()[0];
+      return {
+        project: c.root,
+        connected: c.session?.connected ?? false,
+        page: c.page && c.site ? c.site.toTarget(c.page.url) : null,
+        changes,
+        ...(last ? { latest: { batch: last.id, changes: summaries(last.ids) } } : {}),
+      };
     },
 
     changes: ({ root, status }) => {
