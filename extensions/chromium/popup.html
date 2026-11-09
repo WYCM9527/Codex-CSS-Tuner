@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSS Tuner</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <h1>CSS Tuner</h1>
+  <form>
+    <label for="pairing">Pairing link from the companion CLI</label>
+    <textarea id="pairing" rows="3" required spellcheck="false" autocomplete="off"></textarea>
+    <button type="submit">Connect this project tab</button>
+  </form>
+  <p id="status" role="status">Open your local development page before connecting.</p>
+  <button type="button" id="disconnect" hidden>Disconnect browser</button>
+</body>
+</html>

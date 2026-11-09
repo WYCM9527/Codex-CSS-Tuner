@@ -64,6 +64,7 @@ export function App({ host }: { host: Host }) {
   const [state, setState] = useState<PanelState | null>(null);
   const [prefs, setPrefsState] = useState<UiPrefs>(() => loadPrefs(host));
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
+  const [draft, setDraft] = useState<{ mode: 'apply' | 'revert'; ids: string[] } | null>(null);
   useEffect(() => host.onPrompt(setPrompt), [host]);
   const closePrompt = useCallback(() => setPrompt(null), []);
 
@@ -71,7 +72,7 @@ export function App({ host }: { host: Host }) {
     const off = host.subscribe((s) => {
       if (s.locale) {
         if (s.locale !== getLocale()) setLocale(s.locale);
-        document.documentElement.lang = s.locale;
+        if (!host.extension) document.documentElement.lang = s.locale;
       }
       setState(s);
     });
@@ -91,6 +92,10 @@ export function App({ host }: { host: Host }) {
       const all = state?.changes ?? [];
       const items = ids ? all.filter((c) => ids.includes(c.id)) : all.filter((c) => c.status === 'pending');
       if (!items.length) return;
+      if (host.extension) {
+        setDraft({ mode, ids: items.map((c) => c.id) });
+        return;
+      }
       const batch = newBatch();
       const n = items.length;
       const comment = mode === 'apply' ? t('handoff.annotate.apply', { n, batch }) : t('handoff.annotate.revert', { batch });
@@ -120,7 +125,7 @@ export function App({ host }: { host: Host }) {
       const k = e.key.toLowerCase();
       const redo = (k === 'z' && e.shiftKey) || (k === 'y' && e.ctrlKey && !e.shiftKey);
       if (!redo && !(k === 'z' && !e.shiftKey)) return;
-      if ((e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
+      if (host.extension || (e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
       host.send({ t: redo ? 'redo' : 'undo' });
     };
@@ -135,7 +140,7 @@ export function App({ host }: { host: Host }) {
 
   return (
     <div className="app">
-      <Toolbar state={state} send={send} shell={host.shell} />
+      <Toolbar state={state} send={send} shell={host.shell} direct={!!host.extension} />
       <ChangeList state={state} send={send} handoff={handoff} open={!prefs.closed.includes('changes')} onToggle={() => toggleClosed('changes')} />
       <NoticeBar state={state} send={send} />
       <main className="main">
@@ -168,6 +173,24 @@ export function App({ host }: { host: Host }) {
         )}
       </main>
       {prompt && <PromptDialog prompt={prompt} onClose={closePrompt} />}
+      {draft && host.extension && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={t('panel.draft.title')}>
+          <div className="modal-box">
+            <header className="modal-head"><b>{t('panel.draft.title')}</b></header>
+            <p>{t('panel.draft.replace')}</p>
+            <p className="muted" title={host.extension.chat}>{t('panel.draft.chat', { id: host.extension.chat.slice(-8) })}</p>
+            <footer className="modal-foot">
+              <button className="btn" onClick={() => setDraft(null)}>{t('panel.prompt.close')}</button>
+              <button className="btn primary" disabled={!connected} onClick={(e) => {
+                if (!e.nativeEvent.isTrusted) return;
+                if (draft.mode === 'apply') send({ t: 'apply', ids: draft.ids, confirmDraftReplace: true });
+                else send({ t: 'revert', id: draft.ids[0], confirmDraftReplace: true });
+                setDraft(null);
+              }}>{t('panel.draft.confirm')}</button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

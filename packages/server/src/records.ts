@@ -10,7 +10,7 @@ export interface ChangeRecord {
   createdAt: number;
   pageUrl: string;
   /** path：页面上的层级（面包屑），text：元素的文字开头；没有源码位置时让 Codex 能找到、认出元素 */
-  element: { label: string; source: SourceLoc | null; sourceIndex: number; sameSource: number; path?: string; text?: string };
+  element: { label: string; source: SourceLoc | null; sourceIndex: number; sameSource: number; path?: string; text?: string; html?: ElementSnapshot['html'] };
   /** 样式是 CSS 属性，props 是属性名，文字和换序为空 */
   props: string[];
   propLabel: string;
@@ -72,7 +72,7 @@ export function upgradeRecord(r: StoredRecord): ChangeRecord {
 
 export function recordElement(el: ElementSnapshot): ChangeRecord['element'] {
   const text = el.breadcrumb.at(-1)?.text;
-  return { label: el.label, source: el.source, sourceIndex: el.sourceIndex, sameSource: el.sameSource, path: el.breadcrumb.map((b) => b.label).join(' > '), ...(text ? { text } : {}) };
+  return { label: el.label, source: el.source, sourceIndex: el.sourceIndex, sameSource: el.sameSource, path: el.breadcrumb.map((b) => b.label).join(' > '), ...(text ? { text } : {}), ...(el.html ? { html: el.html } : {}) };
 }
 
 export function recordView(r: ChangeRecord): ChangeView {

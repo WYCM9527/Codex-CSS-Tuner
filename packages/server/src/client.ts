@@ -2,14 +2,20 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAlive, readInfo } from './daemon-info';
-import { bundleDir, dataDir } from './paths';
-import { compareVersions, type DaemonInfo, type RpcMethod, type RpcMethods } from './rpc';
+import { bundleDir, dataDir, extensionDataDir } from './paths';
+import { compareVersions, type DaemonInfo, type ExtensionRpcMethod, type RpcMethod, type RpcMethods } from './rpc';
 import { VERSION } from './version';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 各个方法最多等多久（verify、status 会在后台服务里等页面） */
-const TIMEOUT: Partial<Record<RpcMethod, number>> = { verify: 45000, status: 70000, open: 20000 };
+const TIMEOUT: Partial<Record<RpcMethod, number>> = {
+  verify: 45000,
+  status: 70000,
+  open: 20000,
+  extensionOpen: 20000,
+  extensionVerify: 45000,
+};
 
 async function post<M extends RpcMethod>(info: DaemonInfo, method: M, params: RpcMethods[M]['p'], timeoutMs?: number): Promise<RpcMethods[M]['r']> {
   const res = await fetch(`http://127.0.0.1:${info.port}/rpc`, {
@@ -44,14 +50,16 @@ function logFile(data: string): string {
   return file;
 }
 
-function spawnDaemon(data: string) {
+type DataVariable = 'CSS_TUNER_DATA' | 'CSS_TUNER_EXTENSION_DATA';
+
+function spawnDaemon(data: string, dataVariable: DataVariable) {
   const script = join(bundleDir(), 'daemon.mjs');
   if (!existsSync(script)) throw new Error(`missing ${script}; run pnpm build`);
   const out = openSync(logFile(data), 'a');
   const child = spawn(process.execPath, [script], {
     detached: true,
     stdio: ['ignore', out, out],
-    env: { ...process.env, CSS_TUNER_DATA: data },
+    env: { ...process.env, [dataVariable]: data },
     windowsHide: true,
   });
   child.unref();
@@ -78,14 +86,17 @@ export async function stopDaemon(): Promise<boolean> {
  * 找到（或启动）后台服务：版本比自己旧就换掉；比自己新的照用（另一个对话里装了新版插件）
  */
 export async function ensureDaemon(): Promise<DaemonInfo> {
-  const data = dataDir();
+  return ensureDaemonAt(dataDir(), 'CSS_TUNER_DATA');
+}
+
+async function ensureDaemonAt(data: string, dataVariable: DataVariable): Promise<DaemonInfo> {
   const known = readInfo(data);
   if (known) {
     const pong = await alive(known);
     if (pong && compareVersions(pong.version, VERSION) >= 0) return known;
     if (pong) await shutdown(known);
   }
-  spawnDaemon(data);
+  spawnDaemon(data, dataVariable);
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     await sleep(150);
@@ -111,4 +122,16 @@ export async function rpc<M extends RpcMethod>(method: M, params: RpcMethods[M][
     }
     throw e;
   }
+}
+
+/** 只有 open 可以启动扩展后台服务。其他命令只使用已经打开的会话。 */
+export async function extensionRpc<M extends ExtensionRpcMethod>(method: M, params: RpcMethods[M]['p']): Promise<RpcMethods[M]['r']> {
+  const data = extensionDataDir();
+  if (method === 'extensionOpen') {
+    const info = await ensureDaemonAt(data, 'CSS_TUNER_EXTENSION_DATA');
+    return post(info, method, params);
+  }
+  const info = readInfo(data);
+  if (!info || !(await alive(info))) throw new Error('CSS Tuner extension companion is not running. Run extension open first.');
+  return post(info, method, params);
 }

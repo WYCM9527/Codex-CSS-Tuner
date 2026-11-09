@@ -10,7 +10,7 @@ type Send = (m: PanelToExt) => void;
 /** 交给 Codex：应用（不给 ids 是全部未应用的）或还原 */
 export type Handoff = (mode: 'apply' | 'revert', ids?: string[]) => void;
 
-export function Toolbar({ state, send, shell }: { state: PanelState; send: Send; shell: Shell | null }) {
+export function Toolbar({ state, send, shell, direct = false }: { state: PanelState; send: Send; shell: Shell | null; direct?: boolean }) {
   const [url, setUrl] = useState(state.page?.url ?? state.defaultUrl);
   useEffect(() => {
     if (state.page?.url) setUrl(state.page.url);
@@ -22,13 +22,14 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
         className="url-row"
         onSubmit={(e) => {
           e.preventDefault();
-          send({ t: 'openPage', url });
+          if (direct) send({ t: 'reload' });
+          else send({ t: 'openPage', url });
         }}
       >
         <span className={`dot is-${state.connection}`} title={t(`panel.conn.${state.connection}`)} />
-        <input className="url" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} placeholder="http://localhost:5173/" aria-label={t('panel.url')} />
-        <button className="btn" type="submit" disabled={state.connection === 'opening'}>
-          {connected ? t('panel.reload') : t('panel.open')}
+        <input className="url" value={url} readOnly={direct} onChange={(e) => setUrl(e.target.value)} spellCheck={false} placeholder="http://localhost:5173/" aria-label={t('panel.url')} />
+        <button className="btn" type="submit" disabled={state.connection === 'opening' || (direct && !connected)}>
+          {connected || direct ? t('panel.reload') : t('panel.open')}
         </button>
         <LocaleSwitch state={state} send={send} />
         {shell && <ShellButtons shell={shell} />}
@@ -43,7 +44,7 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
           <IconToggle on={state.measureOn} title={state.measureOn ? t('panel.measure.on') : t('panel.measure.off')} onClick={() => send({ t: 'measure', on: !state.measureOn })}>
             <Icon.ruler />
           </IconToggle>
-          <ViewportMenu state={state} send={send} />
+          {!direct && <ViewportMenu state={state} send={send} />}
           <IconToggle on={state.snap} title={state.snap ? t('panel.snap.on') : t('panel.snap.off')} onClick={() => send({ t: 'setSnap', on: !state.snap })}>
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3">
               <path d="M2 12h12M4 12V9M7 12V6M10 12V9M13 12V4" />

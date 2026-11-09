@@ -15,6 +15,7 @@ function targetOf(e: Event): Element | null {
 }
 
 function block(e: Event) {
+  if (isOwnNode(e.target as Node | null)) return;
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
@@ -26,6 +27,7 @@ function move(e: PointerEvent) {
 }
 
 function click(e: MouseEvent) {
+  if (isOwnNode(e.target as Node | null)) return;
   block(e);
   const el = targetOf(e);
   if (!el || el === document.documentElement) return;

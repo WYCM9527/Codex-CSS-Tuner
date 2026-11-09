@@ -17,6 +17,7 @@ import {
   type RecipeInfo,
   type TextSite,
 } from '@css-tuner/engine';
+import type { PathGuard } from './project';
 
 /** JSX 位置上 className 的静态信息 */
 export interface SiteInfo {
@@ -58,13 +59,18 @@ const MAX_FILES = 64;
 export class ClassSiteReader {
   private files = new Map<string, FileEntry>();
 
-  private entry(file: string): FileEntry | null {
+  constructor(private readonly pathGuard?: PathGuard) {}
+
+  private entry(path: string): FileEntry | null {
+    const file = this.pathGuard ? this.pathGuard(path) : path;
+    if (!file) return null;
     let st;
     try {
       st = statSync(file);
     } catch {
       return null;
     }
+    if (this.pathGuard && !st.isFile()) return null;
     let f = this.files.get(file);
     if (!f || f.mtime !== st.mtimeMs || f.size !== st.size) {
       let source: string;
@@ -135,7 +141,7 @@ export class ClassSiteReader {
   arraySite(file: string, line: number, column: number, count: number): ReturnType<typeof arrayOrderSite> | null {
     const f = this.entry(file);
     if (!f) return null;
-    return arrayOrderSite({ file, source: f.source, line, column, count, read: readOrNull });
+    return arrayOrderSite({ file, source: f.source, line, column, count, read: (path) => readOrNull(path, this.pathGuard) });
   }
 
   /** (line, column) 处组件调用上 name 属性的写法 */
@@ -175,7 +181,9 @@ export class ClassSiteReader {
   }
 }
 
-function mtimeOf(file: string): number {
+function mtimeOf(path: string, pathGuard?: PathGuard): number {
+  const file = pathGuard ? pathGuard(path) : path;
+  if (!file) return -1;
   try {
     return statSync(file).mtimeMs;
   } catch {
@@ -183,8 +191,11 @@ function mtimeOf(file: string): number {
   }
 }
 
-function readOrNull(file: string): string | null {
+function readOrNull(path: string, pathGuard?: PathGuard): string | null {
+  const file = pathGuard ? pathGuard(path) : path;
+  if (!file) return null;
   try {
+    if (pathGuard && !statSync(file).isFile()) return null;
     return readFileSync(file, 'utf8');
   } catch {
     return null;
@@ -195,14 +206,20 @@ function readOrNull(file: string): string | null {
 export class CssRuleLocator {
   private indexes = new Map<string, { deps: Array<[string, number]>; index: CssRuleIndex }>();
 
-  sourceOf(entry: string, spec: Pick<CssRuleSpec, 'selector' | 'fullSelector' | 'conditions' | 'ordinal'>): { file: string; selector: string } | null {
+  constructor(private readonly pathGuard?: PathGuard) {}
+
+  sourceOf(path: string, spec: Pick<CssRuleSpec, 'selector' | 'fullSelector' | 'conditions' | 'ordinal'>): { file: string; selector: string } | null {
+    const entry = this.pathGuard ? this.pathGuard(path) : path;
+    if (!entry) return null;
     let e = this.indexes.get(entry);
-    if (!e || e.deps.some(([f, m]) => mtimeOf(f) !== m)) {
-      const index = indexCssRules(entry, readOrNull);
-      e = { deps: index.files.map((f) => [f, mtimeOf(f)]), index };
+    if (!e || e.deps.some(([f, m]) => mtimeOf(f, this.pathGuard) !== m)) {
+      const index = indexCssRules(entry, (file) => readOrNull(file, this.pathGuard));
+      e = { deps: index.files.map((f) => [f, mtimeOf(f, this.pathGuard)]), index };
       this.indexes.set(entry, e);
     }
     const r = lookupCssRule(e.index, spec);
-    return 'error' in r ? null : { file: r.file, selector: r.selector };
+    if ('error' in r) return null;
+    const file = this.pathGuard ? this.pathGuard(r.file) : r.file;
+    return file ? { file, selector: r.selector } : null;
   }
 }

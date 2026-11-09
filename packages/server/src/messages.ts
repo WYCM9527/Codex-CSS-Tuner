@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { matchMessage, type MessageMatch, type MessageRef } from '@css-tuner/engine';
+import type { PathGuard } from './project';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.turbo', '.vite', 'coverage', 'out', '.nuxt', '.output', '.svelte-kit']);
 /** 明显是配置的 JSON，不会是多语言文件 */
@@ -15,11 +16,24 @@ export class MessageFiles {
   private lists = new Map<string, { at: number; files: string[] }>();
   private contents = new Map<string, { mtime: number; size: number; source: string }>();
 
-  private list(root: string): string[] {
+  constructor(private readonly pathGuard?: PathGuard) {}
+
+  private checked(path: string): string | null {
+    return this.pathGuard ? this.pathGuard(path) : path;
+  }
+
+  private list(path: string): string[] {
+    const root = this.checked(path);
+    if (!root) return [];
     const hit = this.lists.get(root);
     if (hit && Date.now() - hit.at < LIST_TTL) return hit.files;
     const files: string[] = [];
+    const visited = new Set<string>();
     const visit = (dir: string, depth: number) => {
+      if (this.pathGuard) {
+        if (visited.has(dir)) return;
+        visited.add(dir);
+      }
       let names: string[];
       try {
         names = readdirSync(dir);
@@ -31,12 +45,14 @@ export class MessageFiles {
         if (SKIP_DIRS.has(name)) continue;
         const p = join(dir, name);
         if (/\.json$/i.test(name)) {
-          if (!CONFIG.test(name)) files.push(p);
+          if (!CONFIG.test(name) && this.checked(p)) files.push(p);
           continue;
         }
         if (name.startsWith('.') || depth >= MAX_DEPTH) continue;
+        const child = this.checked(p);
+        if (!child) continue;
         try {
-          if (statSync(p).isDirectory()) visit(p, depth + 1);
+          if (statSync(child).isDirectory()) visit(child, depth + 1);
         } catch {
           /* ignore */
         }
@@ -54,7 +70,7 @@ export class MessageFiles {
     } catch {
       return null;
     }
-    if (st.size > MAX_SIZE) return null;
+    if (st.size > MAX_SIZE || (this.pathGuard && !st.isFile())) return null;
     const c = this.contents.get(file);
     if (c && c.mtime === st.mtimeMs && c.size === st.size) return c.source;
     try {
@@ -67,7 +83,8 @@ export class MessageFiles {
   }
 
   find(root: string, ref: MessageRef, text: string, lang: string | null | ReadonlyArray<string | null>): MessageMatch | { reason: string } {
-    const files = this.list(root).flatMap((file) => {
+    const files = [...new Set(this.list(root).map((path) => this.checked(path)))].flatMap((file) => {
+      if (!file) return [];
       const source = this.read(file);
       return source === null ? [] : [{ file, source }];
     });

@@ -12,6 +12,16 @@ export function dataDir(): string {
   return resolve(v && !v.includes('${') ? v : join(homedir(), '.css-tuner'));
 }
 
+/** Chrome 扩展的后台服务单独存放数据，不使用 MCP 插件的数据目录。 */
+export function extensionDataDir(): string {
+  const v = process.env.CSS_TUNER_EXTENSION_DATA;
+  const dir = resolve(v && !v.includes('${') ? v : join(homedir(), '.css-tuner-extension'));
+  if (dir === dataDir() || dir === join(homedir(), '.css-tuner')) {
+    throw new Error('CSS_TUNER_EXTENSION_DATA must use a directory separate from the CSS Tuner plugin');
+  }
+  return dir;
+}
+
 /** 每个项目一个子目录：改动清单、交给 Codex 前的文件副本、交接批次 */
 export function projectDir(data: string, root: string): string {
   const abs = resolve(root);

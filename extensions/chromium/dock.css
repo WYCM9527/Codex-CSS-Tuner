@@ -1,0 +1,10 @@
+@media (min-width: 760px) {
+  :root:has(> body > css-tuner-extension[data-css-tuner]) {
+    --css-tuner-dock-width: clamp(320px, 42vw, 434px);
+    max-width: calc(100% - var(--css-tuner-dock-width)) !important;
+  }
+
+  :root:has(> body > css-tuner-extension[data-css-tuner][data-collapsed]) {
+    --css-tuner-dock-width: 44px;
+  }
+}

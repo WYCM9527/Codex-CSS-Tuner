@@ -81,6 +81,8 @@ export interface Crumb {
 }
 
 export interface ElementSnapshot {
+  /** Stable document position for source-free HTML elements. */
+  html?: { path: number[]; tag: string; id: string | null };
   uid: string;
   tag: string;
   id: string | null;
@@ -327,6 +329,7 @@ export interface SelectQuery {
   selector?: string;
   index?: number;
   source?: { path: string; line: number; column: number; index?: number };
+  html?: ElementSnapshot['html'];
   /** 元素暂时不在（页面刚加载、React 还没提交）时最多等多久 */
   waitMs?: number;
 }
@@ -366,7 +369,7 @@ export interface BridgeMethods {
      * expected 的键随目标类型：样式是 CSS 属性名，text 是 "text"，order 是 "order"（兄弟的 sig 按期望的顺序排，一行一项），props 是属性名（值为 JSON）。
      * source：热更新后元素可能被重建，按源码位置重新找回（不能用当前选中的元素）
      */
-    p: { id: string; target: PreviewTarget; expected: Record<string, string>; source?: { path: string; line: number; column: number; index: number } };
+    p: { id: string; target: PreviewTarget; expected: Record<string, string>; source?: { path: string; line: number; column: number; index: number }; html?: ElementSnapshot['html'] };
     /** attached：预览还作用在页面上；found：页面上找得到这个元素 */
     r: { ok: boolean; actual: Record<string, string>; attached: boolean; found: boolean };
   };
@@ -657,9 +660,9 @@ export type PanelToExt =
    * 应用：整理成提示词交给 Codex。不给 ids 是全部未应用的；给了 ids 时，还在等 Codex 改的那几条再发一次。
    * batch 是面板起的批次号（提示词和注释里都带着它，Codex 可以按它取完整的提示词）；via 是面板怎么交出去的
    */
-  | { t: 'apply'; ids?: string[]; batch?: string; via?: HandoffVia }
+  | { t: 'apply'; ids?: string[]; batch?: string; via?: HandoffVia; confirmDraftReplace?: true }
   /** 还原：交给 Codex 改回原样（还在等它还原的再发一次） */
-  | { t: 'revert'; id: string; batch?: string; via?: HandoffVia }
+  | { t: 'revert'; id: string; batch?: string; via?: HandoffVia; confirmDraftReplace?: true }
   /** 放弃：未应用、等 Codex 改的撤掉预览移出清单；等 Codex 还原的不还原了，回到已应用 */
   | { t: 'discard'; id: string }
   /** 在编辑器里打开源码 */

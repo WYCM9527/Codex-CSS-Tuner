@@ -72,8 +72,9 @@ export class Site {
   constructor(
     readonly rec: SiteRecord,
     log: (msg: string) => void,
+    private readonly directOrigin?: string,
   ) {
-    this.session = new PageSession(log);
+    this.session = new PageSession(log, directOrigin);
   }
 
   get key() {
@@ -100,7 +101,7 @@ export class Site {
     return this.target?.hostname === '127.0.0.1' ? '127.0.0.1' : 'localhost';
   }
   get origin(): string {
-    return `http://${this.hostname}:${this.port}`;
+    return this.directOrigin ?? `http://${this.hostname}:${this.port}`;
   }
 
   /** 浏览器可能用的几个写法：localhost、127.0.0.1、[::1] 加端口 */
@@ -111,6 +112,7 @@ export class Site {
   owns(url: string): boolean {
     try {
       const u = new URL(url);
+      if (this.directOrigin) return u.origin === this.directOrigin;
       return u.protocol === 'http:' && this.hosts().includes(u.host.toLowerCase());
     } catch {
       return false;

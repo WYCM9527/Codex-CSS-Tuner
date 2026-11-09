@@ -52,9 +52,17 @@ export class Journal {
 
   update(id: string, patch: Partial<ChangeRecord>) {
     const r = this.get(id);
-    if (!r) return;
+    if (!r || (Object.keys(patch) as (keyof ChangeRecord)[]).every((key) => Object.is(r[key], patch[key]))) return;
     Object.assign(r, patch);
     this.save();
+  }
+
+  /** The DOM identifier changes on reload. Refresh the panel without writing project history. */
+  refreshPreviewUid(id: string, uid: string) {
+    const r = this.get(id);
+    if (!r || r.preview.uid === uid) return;
+    r.preview = { ...r.preview, uid };
+    this.changed.fire();
   }
 
   /** 撤销 / 重做：把一条记录整条换成记下的样子，不在清单里的按创建时间放回原来的位置 */

@@ -40,7 +40,10 @@ export class PageSession implements Disposable {
   readonly onEvent = this.events.event;
   readonly onState = this.states.event;
 
-  constructor(private readonly log: (msg: string) => void) {}
+  constructor(
+    private readonly log: (msg: string) => void,
+    private readonly pageOrigin?: string,
+  ) {}
 
   /** 页面连上来了；之前连着的（另一个标签页）让它退下 */
   attach(ws: WebSocket) {
@@ -59,9 +62,10 @@ export class PageSession implements Disposable {
       } catch {
         return;
       }
+      if (!msg || typeof msg !== 'object') return;
       if (msg.t === 'res') {
         const p = this.pending.get(msg.id);
-        if (!p) return;
+        if (!p || p.ws !== ws) return;
         this.pending.delete(msg.id);
         clearTimeout(p.timer);
         if (msg.ok) p.resolve(msg.data);
@@ -70,6 +74,13 @@ export class PageSession implements Disposable {
       }
       // 换了新连接（页面刷新、换了地址）以后旧连接上还没处理的事件说的是旧页面
       if (this.socket !== ws) return;
+      if (this.pageOrigin && (msg.t === 'hello' || msg.t === 'page')) {
+        try {
+          if (new URL(msg.page.url).origin !== this.pageOrigin || !Array.isArray(msg.page.sheets)) return;
+        } catch {
+          return;
+        }
+      }
       this.dispatch(msg);
     });
     ws.on('close', () => {
@@ -143,7 +154,10 @@ export class PageSession implements Disposable {
     this.disposed = true;
     this.socket?.close(code, code === CLOSED ? 'closed' : 'shutdown');
     this.socket = null;
-    for (const p of this.pending.values()) clearTimeout(p.timer);
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(new Error(t('session.lost')));
+    }
     this.pending.clear();
     this.events.dispose();
     this.states.dispose();

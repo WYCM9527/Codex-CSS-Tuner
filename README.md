@@ -32,6 +32,8 @@ Codex 插件：在运行中的页面上点选元素、可视化调 CSS、改文�
 
 ## 开发
 
+Chrome 扩展预览版独立构建和配对。它直接在本机开发页显示现有面板，经独立 CLI 绑定 Codex 对话。参见 [Chrome 扩展开发与安装说明](extensions/chromium/README.md)。
+
 需要 Node 22、pnpm 11（`corepack enable` 后按 `packageManager` 自动取版本）。
 
 ```bash

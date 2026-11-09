@@ -21,7 +21,8 @@ var __cssTunerBridge = (() => {
   // src/index.ts
   var index_exports = {};
   __export(index_exports, {
-    boot: () => boot
+    boot: () => boot,
+    extensionBridge: () => extensionBridge
   });
 
   // src/annotate.ts
@@ -4727,6 +4728,7 @@ ${fileName}`;
     return null;
   }
   function block(e) {
+    if (isOwnNode(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -4736,6 +4738,7 @@ ${fileName}`;
     setHover(el && el !== document.documentElement && el !== document.body ? el : null);
   }
   function click(e) {
+    if (isOwnNode(e.target)) return;
     block(e);
     const el = targetOf(e);
     if (!el || el === document.documentElement) return;
@@ -4852,11 +4855,13 @@ ${fileName}`;
     setMeasureDraw(draw);
   }
   function block2(e) {
+    if (isOwnNode(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
   }
   function click2(e) {
+    if (isOwnNode(e.target)) return;
     block2(e);
     const el = hit(e);
     if (el) hooks?.pick(el);
@@ -5312,8 +5317,10 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     const source = await sourceOf2(el);
     const peers2 = source ? await sameSourceElements(el) : [el];
     const rect = el.getBoundingClientRect();
+    const htmlPath = !source && isPlainHtml(el) ? htmlPathOf(el) : null;
     return {
       uid: uidOf(el),
+      ...htmlPath ? { html: { path: htmlPath, tag: el.localName, id: el.id || null } } : {},
       tag: el.tagName.toLowerCase(),
       id: el.id || null,
       classes: Array.from(el.classList),
@@ -5417,10 +5424,11 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
   var CLOSED = 4410;
   var frames = (n) => new Promise((r) => n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r)));
   var Bridge = class {
-    constructor(cfg, frame2, shell, bounced = false) {
+    constructor(cfg, frame2, shell, bounced = false, relay) {
       this.frame = frame2;
       this.shell = shell;
       this.bounced = bounced;
+      this.relay = relay;
       this.cfg = cfg;
       if (!this.domReady) {
         document.addEventListener(
@@ -5454,8 +5462,10 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     frame;
     shell;
     bounced;
+    relay;
     cfg;
     ws = null;
+    relayOnline = false;
     retry = 0;
     timer = 0;
     selected = null;
@@ -5518,7 +5528,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       this.connect();
     }
     configure(cfg) {
-      const changed = cfg.ws !== this.cfg.ws || cfg.token !== this.cfg.token;
+      const changed = cfg.ws !== this.cfg?.ws || cfg.token !== this.cfg?.token;
       this.cfg = cfg;
       if (changed) {
         this.retry = 0;
@@ -5531,7 +5541,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     }
     connect() {
       clearTimeout(this.timer);
-      if (this.stopped || this.paused) return;
+      if (this.stopped || this.paused || !this.cfg) return;
       const { ws: path, token } = this.cfg;
       let ws;
       try {
@@ -5542,20 +5552,8 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         return;
       }
       this.ws = ws;
-      ws.onopen = () => {
-        this.retry = 0;
-        if (this.domReady) this.sendHello();
-        else this.helloPending = true;
-      };
-      ws.onmessage = (ev) => {
-        let msg;
-        try {
-          msg = JSON.parse(String(ev.data));
-        } catch {
-          return;
-        }
-        if (msg.t === "req") void this.handle(msg);
-      };
+      ws.onopen = () => this.onConnect();
+      ws.onmessage = (ev) => this.receive(String(ev.data));
       ws.onclose = (ev) => {
         if (this.ws !== ws) return;
         this.ws = null;
@@ -5565,6 +5563,26 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       };
       ws.onerror = () => {
       };
+    }
+    onConnect() {
+      this.retry = 0;
+      if (this.domReady) this.sendHello();
+      else this.helloPending = true;
+    }
+    receive(text) {
+      let msg;
+      try {
+        msg = JSON.parse(text);
+      } catch {
+        return;
+      }
+      if (msg?.t === "req") void this.handle(msg);
+    }
+    setRelayOnline(online) {
+      if (this.stopped || this.relayOnline === online) return;
+      this.relayOnline = online;
+      if (online) this.onConnect();
+      else this.quiet();
     }
     /** 断了就重连（本地服务重启、升级后会在同一个端口上回来） */
     schedule() {
@@ -5591,15 +5609,16 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     }
     /** 断着的时候发的事件直接丢掉：连回来的 hello 会让服务端重新同步页面 */
     send(ev) {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
+      if (this.relayOnline) this.relay?.(JSON.stringify(ev));
+      else if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
     }
     connected() {
-      return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+      return this.relayOnline || !!this.ws && this.ws.readyState === WebSocket.OPEN;
     }
     sendHello() {
       this.helloPending = false;
       void whenHydrated().then(() => loadSheetSources()).then(() => {
-        this.send({ t: "hello", session: this.cfg.session, page: pageInfo() });
+        this.send({ t: "hello", session: this.cfg?.session ?? "extension", page: pageInfo() });
         warmSources(0);
       });
     }
@@ -5760,6 +5779,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
           return { framed: true, width: f.width };
         }
         if (width === null && !docked) return { framed: false, width: null };
+        if (!this.cfg) return { framed: false, width: null };
         const target2 = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
         setTimeout(() => location.assign(target2), 30);
         return { framed: true, width };
@@ -5821,7 +5841,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         setHover(el);
         return !!el;
       },
-      probe: ({ id, target: target2, expected, source }) => probe(id, target2, expected, () => source ? findBySource(source.path, source.line, source.column, source.index) : this.refind()),
+      probe: ({ id, target: target2, expected, source, html }) => probe(id, target2, expected, () => source || html ? findOnce({ source, html }) : this.refind()),
       reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
       assets: async () => this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false },
       assetData: ({ id, as }) => assetData(id, as),
@@ -5845,6 +5865,10 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     if (q.uid) return elOf(q.uid);
     if (q.selector) return document.querySelectorAll(q.selector)[q.index ?? 0] ?? null;
     if (q.source) return findBySource(q.source.path, q.source.line, q.source.column, q.source.index ?? 0);
+    if (q.html) {
+      const el = q.html.id ? document.getElementById(q.html.id) : elementAtPath(q.html.path);
+      return el?.localName === q.html.tag ? el : null;
+    }
     return null;
   }
   async function find(q) {
@@ -5940,6 +5964,9 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         if (!e.detail.float) wrapIntoFrame(cfg.frame, { force: true });
       });
     }
+  }
+  function extensionBridge(send) {
+    return new Bridge(null, null, null, false, send);
   }
   return __toCommonJS(index_exports);
 })();

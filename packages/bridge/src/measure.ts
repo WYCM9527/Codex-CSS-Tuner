@@ -118,12 +118,14 @@ function aim(e: PointerEvent) {
 }
 
 function block(e: Event) {
+  if (isOwnNode(e.target as Node | null)) return;
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
 }
 
 function click(e: MouseEvent) {
+  if (isOwnNode(e.target as Node | null)) return;
   block(e);
   const el = hit(e);
   if (el) hooks?.pick(el);

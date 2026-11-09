@@ -86,6 +86,24 @@ export interface VerifyResult {
   latest?: { batch: string; changes: ChangeSummary[] };
 }
 
+export interface ExtensionOpenResult {
+  session: string;
+  url: string;
+  port: number;
+  pairingCode: string;
+  expiresAt: number;
+  chat: string;
+}
+
+export interface ExtensionStatusResult {
+  session: string;
+  project: string;
+  url: string;
+  chat: string;
+  connected: boolean;
+  paired: boolean;
+}
+
 /** thread 是调用工具的 Codex 对话，带了 root 时记给那个项目 */
 export interface RpcMethods {
   ping: { p: Record<string, never>; r: { version: string; pid: number; projects: string[] } };
@@ -97,9 +115,15 @@ export interface RpcMethods {
   close: { p: { root?: string; all?: boolean }; r: { closed: string[] } };
   settings: { p: { set?: Partial<SettingsData> }; r: SettingsData };
   shutdown: { p: Record<string, never>; r: boolean };
+  extensionOpen: { p: { root: string; url: string; chat: string; cliPath: string }; r: ExtensionOpenResult };
+  extensionStatus: { p: { session: string }; r: ExtensionStatusResult };
+  extensionHandoff: { p: { session: string; batch: string }; r: HandoffResult };
+  extensionVerify: { p: { session: string; batch: string; waitMs?: number }; r: VerifyResult & { batch: string } };
+  extensionClose: { p: { session: string }; r: { closed: boolean } };
 }
 
 export type RpcMethod = keyof RpcMethods;
+export type ExtensionRpcMethod = Extract<RpcMethod, `extension${string}`>;
 
 /** 后台服务的连接信息，写在数据目录的 daemon.json 里（只有自己能读） */
 export interface DaemonInfo {

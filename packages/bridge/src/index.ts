@@ -14,7 +14,7 @@ import { frameUrl, wrapIntoFrame } from './dock';
 import { FLOAT_EVENT, PanelShell, savedPanelState, type ShellText } from './shell';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
-import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
+import { elementAtPath, hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
 import { probe } from './verify';
 
@@ -49,8 +49,9 @@ type Handlers = { [K in keyof BridgeMethods]: (p: BridgeMethods[K]['p']) => Prom
 const frames = (n: number) => new Promise<void>((r) => (n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r))));
 
 class Bridge {
-  private cfg: BootConfig;
+  private cfg: BootConfig | null;
   private ws: WebSocket | null = null;
+  private relayOnline = false;
   private retry = 0;
   private timer = 0;
   private selected: Element | null = null;
@@ -72,12 +73,13 @@ class Bridge {
   private helloPending = false;
 
   constructor(
-    cfg: BootConfig,
+    cfg: BootConfig | null,
     /** 在设备框页面里（框定了宽度模拟手机、平板、桌面，或者跟着停靠的面板旁边剩下的地方走） */
     private readonly frame: FrameApi | null,
     private readonly shell: PanelShell | null,
     /** 停靠时刚放进设备框页面，页面又自己跳回了顶层 */
     private readonly bounced = false,
+    private readonly relay?: (text: string) => void,
   ) {
     this.cfg = cfg;
     if (!this.domReady) {
@@ -160,7 +162,7 @@ class Bridge {
   }
 
   configure(cfg: BootConfig) {
-    const changed = cfg.ws !== this.cfg.ws || cfg.token !== this.cfg.token;
+    const changed = cfg.ws !== this.cfg?.ws || cfg.token !== this.cfg?.token;
     this.cfg = cfg;
     if (changed) {
       this.retry = 0;
@@ -175,7 +177,7 @@ class Bridge {
 
   private connect() {
     clearTimeout(this.timer);
-    if (this.stopped || this.paused) return;
+    if (this.stopped || this.paused || !this.cfg) return;
     const { ws: path, token } = this.cfg;
     let ws: WebSocket;
     try {
@@ -186,20 +188,8 @@ class Bridge {
       return;
     }
     this.ws = ws;
-    ws.onopen = () => {
-      this.retry = 0;
-      if (this.domReady) this.sendHello();
-      else this.helloPending = true;
-    };
-    ws.onmessage = (ev) => {
-      let msg: BridgeRequest;
-      try {
-        msg = JSON.parse(String(ev.data));
-      } catch {
-        return;
-      }
-      if (msg.t === 'req') void this.handle(msg);
-    };
+    ws.onopen = () => this.onConnect();
+    ws.onmessage = (ev) => this.receive(String(ev.data));
     ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       this.ws = null;
@@ -210,6 +200,29 @@ class Bridge {
     ws.onerror = () => {
       /* onclose 会跟着触发 */
     };
+  }
+
+  private onConnect() {
+    this.retry = 0;
+    if (this.domReady) this.sendHello();
+    else this.helloPending = true;
+  }
+
+  receive(text: string) {
+    let msg: BridgeRequest;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (msg?.t === 'req') void this.handle(msg);
+  }
+
+  setRelayOnline(online: boolean) {
+    if (this.stopped || this.relayOnline === online) return;
+    this.relayOnline = online;
+    if (online) this.onConnect();
+    else this.quiet();
   }
 
   /** 断了就重连（本地服务重启、升级后会在同一个端口上回来） */
@@ -240,11 +253,12 @@ class Bridge {
 
   /** 断着的时候发的事件直接丢掉：连回来的 hello 会让服务端重新同步页面 */
   private send(ev: BridgeEvent | BridgeReply) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
+    if (this.relayOnline) this.relay?.(JSON.stringify(ev));
+    else if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(ev));
   }
 
   connected(): boolean {
-    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    return this.relayOnline || (!!this.ws && this.ws.readyState === WebSocket.OPEN);
   }
 
   private sendHello() {
@@ -252,7 +266,7 @@ class Bridge {
     void whenHydrated()
       .then(() => loadSheetSources())
       .then(() => {
-        this.send({ t: 'hello', session: this.cfg.session, page: pageInfo() });
+        this.send({ t: 'hello', session: this.cfg?.session ?? 'extension', page: pageInfo() });
         warmSources(0);
       });
   }
@@ -429,6 +443,7 @@ class Bridge {
       }
       if (width === null && !docked) return { framed: false, width: null };
       // 进设备框要整页重新加载：页面换成设备框页面，原来的地址放进框里
+      if (!this.cfg) return { framed: false, width: null };
       const target = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
       setTimeout(() => location.assign(target), 30);
       return { framed: true, width };
@@ -490,8 +505,8 @@ class Bridge {
       setHover(el);
       return !!el;
     },
-    probe: ({ id, target, expected, source }) =>
-      probe(id, target, expected, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind())),
+    probe: ({ id, target, expected, source, html }) =>
+      probe(id, target, expected, () => (source || html ? findOnce({ source, html }) : this.refind())),
     reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
     assets: async () => (this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false }),
     assetData: ({ id, as }) => assetData(id, as),
@@ -517,6 +532,10 @@ async function findOnce(q: SelectQuery): Promise<Element | null> {
   if (q.uid) return elOf(q.uid);
   if (q.selector) return document.querySelectorAll(q.selector)[q.index ?? 0] ?? null;
   if (q.source) return findBySource(q.source.path, q.source.line, q.source.column, q.source.index ?? 0);
+  if (q.html) {
+    const el = q.html.id ? document.getElementById(q.html.id) : elementAtPath(q.html.path);
+    return el?.localName === q.html.tag ? el : null;
+  }
   return null;
 }
 
@@ -628,4 +647,8 @@ export function boot(cfg: BootConfig) {
       if (!(e as CustomEvent<{ float: boolean }>).detail.float) wrapIntoFrame(cfg.frame, { force: true });
     });
   }
+}
+
+export function extensionBridge(send: (text: string) => void) {
+  return new Bridge(null, null, null, false, send);
 }

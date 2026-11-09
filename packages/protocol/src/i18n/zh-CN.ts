@@ -167,6 +167,7 @@ export const zhCN: Record<keyof typeof en, string> = {
   'handoff.band.above': '   - 仅在页面宽度 {min}px 及以上时（桌面）生效，更窄时不变',
   'handoff.requirements': '要求：',
   'handoff.req.sync': '- 斟酌是否需要同步修改受影响的其他地方，拿不准就先问我；',
+  'handoff.req.scope': '- 只执行列出的改动，保留其他属性、文案和源码位置。若某项指向共享源码，只在该共享位置改一次。',
   'handoff.req.report': '- 改完后列出修改的地方。',
   'handoff.annotate.apply': 'CSS Tuner：请把这 {n} 处改动写进代码（批次 {batch}，用 css-tuner 的 get_handoff 取完整说明）',
   'handoff.annotate.revert': 'CSS Tuner：请把这处改动在代码里改回去（批次 {batch}，用 css-tuner 的 get_handoff 取完整说明）',
@@ -532,4 +533,8 @@ export const zhCN: Record<keyof typeof en, string> = {
 
   // —— 面板：浏览器里调试用的假宿主 ——
   'mock.agentReason': '演示：className 是变量，CSS Tuner 找不到要改的确切位置，Codex 会自己找',
+  'panel.draft.title': '填入已绑定的 Codex 对话',
+  'panel.draft.replace': '这会替换该对话中尚未发送的草稿。继续前请先保存要保留的内容。',
+  'panel.draft.chat': '对话 ID 尾号 {id}',
+  'panel.draft.confirm': '填入 Codex 草稿',
 };

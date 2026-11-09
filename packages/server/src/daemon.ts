@@ -6,8 +6,9 @@ import { getLocale, setLocale, t, type ChangeStatus } from '@css-tuner/protocol'
 import { disposeCompletions } from './completions';
 import { Controller } from './controller';
 import { isAlive, readInfo } from './daemon-info';
+import { ExtensionSessions } from './extension-sessions';
 import { Hub, type Site } from './hub';
-import { bundleDir, dataDir, projectDir } from './paths';
+import { bundleDir, dataDir, extensionDataDir, projectDir } from './paths';
 import { summarize, type DaemonInfo, type RpcMethod, type RpcMethods, type SiteSummary } from './rpc';
 import { Settings, type SettingsData } from './settings';
 import { JsonStore } from './store';
@@ -82,9 +83,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * 每个 Codex 对话起的 MCP 前端都经本机 RPC 来调用它，页面和面板一直连着它
  */
 export class Daemon {
-  readonly data = dataDir();
+  readonly data: string;
   readonly settings: Settings;
   readonly hub: Hub;
+  private readonly extensionSessions: ExtensionSessions | null;
   private readonly controllers = new Map<string, Controller>();
   private readonly token = randomBytes(24).toString('hex');
   private rpcServer: Server | null = null;
@@ -93,7 +95,8 @@ export class Daemon {
   private browserLang: string | null = null;
   private stopping = false;
 
-  constructor() {
+  constructor({ extension = false }: { extension?: boolean } = {}) {
+    this.data = extension ? extensionDataDir() : dataDir();
     mkdirSync(this.data, { recursive: true, mode: 0o700 });
     this.settings = new Settings(new JsonStore(join(this.data, 'settings.json')));
     setLocale(this.settings.locale());
@@ -104,6 +107,7 @@ export class Daemon {
       log: (m) => this.log(m),
       onPanel: (site, ws) => this.controllerFor(site.project, site).attachPanel(ws),
     });
+    this.extensionSessions = extension ? new ExtensionSessions({ data: this.data, settings: this.settings, hub: this.hub, log: (m) => this.log(m) }) : null;
     this.hub.onSite((site) => this.siteChanged(site));
     this.settings.onChange((key) => {
       if (key === 'language') this.relocalize();
@@ -126,7 +130,7 @@ export class Daemon {
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => void this.stop());
     process.on('uncaughtException', (e) => this.log(`uncaught: ${e.stack ?? e}`));
     process.on('unhandledRejection', (e) => this.log(`unhandled: ${(e as Error)?.stack ?? e}`));
-    await this.hub.restore();
+    if (!this.extensionSessions) await this.hub.restore();
     this.idleTimer = setInterval(() => this.checkIdle(), 60 * 1000);
     return true;
   }
@@ -171,9 +175,17 @@ export class Daemon {
   }
 
   async call<M extends RpcMethod>(method: M, p: RpcMethods[M]['p']): Promise<RpcMethods[M]['r']> {
+    if (this.extensionSessions && !method.startsWith('extension') && method !== 'ping' && method !== 'shutdown') {
+      throw new Error('This service handles extension sessions.');
+    }
     const handler = this.handlers[method] as unknown as (p: RpcMethods[M]['p']) => Promise<RpcMethods[M]['r']> | RpcMethods[M]['r'];
     if (!handler) throw new Error(`unknown method ${method}`);
     return handler(p);
+  }
+
+  private extension(): ExtensionSessions {
+    if (!this.extensionSessions) throw new Error('Use the standalone CSS Tuner extension companion.');
+    return this.extensionSessions;
   }
 
   /* ---------- 项目 ---------- */
@@ -316,6 +328,12 @@ export class Daemon {
       return { closed: sites.map((s) => s.key) };
     },
 
+    extensionOpen: (p) => this.extension().open(p),
+    extensionStatus: ({ session }) => this.extension().status(session),
+    extensionHandoff: ({ session, batch }) => this.extension().handoff(session, batch),
+    extensionVerify: ({ session, batch, waitMs }) => this.extension().verify(session, batch, waitMs),
+    extensionClose: ({ session }) => this.extension().close(session),
+
     settings: ({ set }) => {
       for (const [k, v] of Object.entries(set ?? {})) this.settings.set(k as keyof SettingsData, v as never);
       return this.settings.all();
@@ -331,7 +349,7 @@ export class Daemon {
 
   private checkIdle() {
     const now = Date.now();
-    if (this.hub.active() > 0) return;
+    if (this.hub.active() > 0 || this.extensionSessions?.active) return;
     const recent = Math.max(this.lastCall, ...[...this.controllers.values()].map((c) => c.lastActive));
     if (now - recent > IDLE_MS) {
       this.log('idle, exiting');
@@ -348,6 +366,7 @@ export class Daemon {
     this.rpcServer?.close();
     this.rpcServer?.closeIdleConnections();
     for (const c of this.controllers.values()) c.dispose();
+    await this.extensionSessions?.dispose();
     await this.hub.dispose();
     disposeCompletions();
     const lock = join(this.data, 'daemon.lock');

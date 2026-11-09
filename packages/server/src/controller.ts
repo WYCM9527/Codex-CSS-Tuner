@@ -146,14 +146,15 @@ export interface ControllerDeps {
   log: (msg: string) => void;
   /** 页面连上时报告浏览器的界面语言（界面语言设成跟随时用） */
   onBrowserLang?: (lang: string) => void;
+  extension?: { session: string; deliver(batch: Batch): Promise<void> };
 }
 
 /** 一个项目的调参：页面会话、改动清单、交给 Codex 和核对。同一个项目的页面（可能在几个本地站点上）共用 */
 export class Controller implements Disposable {
   readonly project: ProjectResolver;
-  readonly classSites = new ClassSiteReader();
-  readonly cssRules = new CssRuleLocator();
-  readonly messages = new MessageFiles();
+  readonly classSites: ClassSiteReader;
+  readonly cssRules: CssRuleLocator;
+  readonly messages: MessageFiles;
   readonly tailwind: TailwindService;
   readonly journal: Journal;
   readonly applier: Applier;
@@ -161,6 +162,7 @@ export class Controller implements Disposable {
   readonly fonts: FontService;
   readonly root: string;
   readonly log: (msg: string) => void;
+  readonly extension?: ControllerDeps['extension'];
   /** 当前页面所在的本地站点 */
   site: Site | null = null;
   session: PageSession | null = null;
@@ -195,6 +197,7 @@ export class Controller implements Disposable {
   /** 当前页面 Tailwind 入口的设计系统，不是 Tailwind 页面时为 null */
   private design: TwDesign | null = null;
   private editChain: Promise<unknown> = Promise.resolve();
+  private fillingDraft = false;
   /** 上一步 / 下一步（只管未应用的改动） */
   readonly history = new History();
   /** 正在做一步（编辑提交、重置、撤销）：中途改动清单的变化不算外部改动 */
@@ -208,8 +211,12 @@ export class Controller implements Disposable {
     this.settings = deps.settings;
     this.hub = deps.hub;
     this.onBrowserLang = deps.onBrowserLang;
+    this.extension = deps.extension;
     this.store = new JsonStore(join(deps.data, 'state.json'));
-    this.project = new ProjectResolver(this.root);
+    this.project = new ProjectResolver(this.root, { restrictToWorkspace: !!this.extension });
+    this.classSites = new ClassSiteReader(this.project.pathGuard);
+    this.cssRules = new CssRuleLocator(this.project.pathGuard);
+    this.messages = new MessageFiles(this.project.pathGuard);
     this.tailwind = new TailwindService(this.log);
     this.journal = new Journal(this.store);
     this.applier = new Applier(this, new SnapshotStore(join(deps.data, 'snapshots')), this.store);
@@ -233,7 +240,7 @@ export class Controller implements Disposable {
       locale: getLocale(),
       history: { undo: null, redo: null },
       fonts: null,
-      composer: canOpenCodex && this.thread !== null,
+      composer: !!this.extension || (canOpenCodex && this.thread !== null),
     };
     this.disposables.push(
       this.journal,
@@ -355,12 +362,14 @@ export class Controller implements Disposable {
           this.log(t('ext.log.panelError', { message: msg.message }));
           return;
         case 'openPage':
+          if (this.extension) return;
           await this.openPage(msg.url, { navigate: true });
           return;
         case 'measure':
           await this.setMeasure(msg.on);
           return;
         case 'setViewport':
+          if (this.extension) return;
           await this.setViewport(msg.preset);
           return;
         case 'pick':
@@ -417,9 +426,11 @@ export class Controller implements Disposable {
   private async handleMore(msg: PanelToExt): Promise<void> {
     switch (msg.t) {
       case 'apply':
+        if (this.extension) return this.confirmedHandoff(msg);
         await this.applier.apply(msg.ids, { batch: msg.batch, via: msg.via });
         return;
       case 'revert':
+        if (this.extension) return this.confirmedHandoff(msg);
         await this.applier.revert(msg.id, { batch: msg.batch, via: msg.via });
         return;
       case 'editText':
@@ -457,11 +468,23 @@ export class Controller implements Disposable {
       case 'saveAllAssets':
       case 'copySvg':
       case 'revealAsset':
+        if (this.extension) return;
         await this.assetAction(msg);
         return;
       case 'fontsOpen':
         await this.fonts.open();
         return;
+    }
+  }
+
+  private async confirmedHandoff(msg: Extract<PanelToExt, { t: 'apply' | 'revert' }>): Promise<void> {
+    if (msg.confirmDraftReplace !== true || this.fillingDraft) return;
+    this.fillingDraft = true;
+    try {
+      if (msg.t === 'apply') await this.applier.apply(msg.ids, { via: 'composer' });
+      else await this.applier.revert(msg.id, { via: 'composer' });
+    } finally {
+      this.fillingDraft = false;
     }
   }
 
@@ -471,7 +494,7 @@ export class Controller implements Disposable {
   handoffPrompt(recs: ChangeRecord[], mode: PromptMode): string {
     const tailwind = !!this.page && !!tailwindEntry(this.page, this.project);
     const url = this.page?.url ?? recs[0].pageUrl;
-    return buildPrompt(recs, { pageUrl: this.site?.toTarget(url) ?? url, project: this.project, tailwind }, mode);
+    return buildPrompt(recs, { pageUrl: this.site?.toTarget(url) ?? url, project: this.project, tailwind, strictScope: !!this.extension }, mode);
   }
 
   /** get_handoff：取一个批次；不给批次号时取最近一批还在等 Codex 的，没有的话 pending 为真时把未应用的改动交出来 */
@@ -864,12 +887,12 @@ export class Controller implements Disposable {
         ? { source: { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } }
         : htmlPath
           ? { selector: htmlSelector(htmlPath) }
-          : null;
+          : rec.element.html ? { html: rec.element.html } : null;
     const uid = query ? await session.call('resolve', { ...query, waitMs: 3000 }, 6000).catch(() => null) : null;
     // 规则预览改的是样式表，元素找不回来也照样生效；其余都要作用在元素上
     if (!uid && rec.preview.kind !== 'rule') return;
     const target = { ...rec.preview, uid: uid ?? rec.preview.uid } as PreviewTarget;
-    this.journal.update(rec.id, { preview: target });
+    this.journal.refreshPreviewUid(rec.id, target.uid);
     await session
       .call('preview', { id: rec.previewId, target, ...(await this.previewValue(rec)) })
       .catch((e) => this.log(t('ext.log.restorePreviewFailed', { error: (e as Error).message })));
@@ -1119,6 +1142,7 @@ export class Controller implements Disposable {
     if (prop.type !== 'string' && prop.type !== 'undefined' && prop.type !== 'null') return undefined;
     const variant = recipe?.passed.includes(prop.name) ? recipe.variants[prop.name] : undefined;
     if (variant?.length && !variant.every((o) => o === 'true' || o === 'false')) return variant;
+    if (this.extension) return undefined;
     const inner = p.site?.kind === 'literal' ? p.site.inner : undefined;
     if (!inner || p.write.kind !== 'jsxProp') return undefined;
     const file = p.write.file;
@@ -1804,6 +1828,11 @@ export class Controller implements Disposable {
 
   /** 在编辑器里打开源码（设置里的 editor：auto 依次试 Cursor、VS Code） */
   async openSource(file: string, line: number, column: number) {
+    if (this.project.pathGuard) {
+      const allowed = this.project.pathGuard(file);
+      if (!allowed) return;
+      file = allowed;
+    }
     const ok = await openInEditor(file, Math.max(1, line), Math.max(1, column), this.settings.get('editor'));
     if (!ok) this.notify('warn', t('ext.open.noEditor', { file: this.project.label(file) }));
   }

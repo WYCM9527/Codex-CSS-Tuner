@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale, t } from '@css-tuner/protocol';
 import { Applier, SnapshotStore } from '../src/applier';
 import type { Controller } from '../src/controller';
+import { existingChat, extensionDraft } from '../src/extension-sessions';
 import { Journal, type ChangeRecord } from '../src/journal';
 import { threadOf } from '../src/mcp';
 import { MemoryStore } from '../src/store';
@@ -16,7 +17,7 @@ vi.mock('../src/system', async (importActual) => ({
   openCodexLink: vi.fn(async () => true),
 }));
 
-const THREAD = '01a1b013-4440-7813-be03-085b9caeea30';
+const THREAD = '00000000-0000-4000-8000-000000000001';
 
 const record: Omit<ChangeRecord, 'id' | 'createdAt' | 'status'> = {
   kind: 'style',
@@ -68,6 +69,23 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const f of cleanups.splice(0)) f();
+});
+
+it('reconnecting and repeating a verification note do not rewrite the journal', () => {
+  const store = new MemoryStore();
+  const save = vi.spyOn(store, 'update');
+  const journal = new Journal(store);
+  const { id } = journal.add(record);
+  journal.update(id, { note: 'still waiting' });
+  save.mockClear();
+
+  journal.refreshPreviewUid(id, 'after-reload');
+  journal.update(id, { note: 'still waiting' });
+
+  expect(journal.views()[0].uid).toBe('after-reload');
+  expect(save).not.toHaveBeenCalled();
+  journal.update(id, { status: 'applied', note: undefined });
+  expect(save).toHaveBeenCalledTimes(1);
 });
 
 describe('交给 Codex 对话的输入框', () => {
@@ -123,5 +141,26 @@ describe('MCP 工具调用带的对话', () => {
     expect(threadOf({ _meta: 'x' })).toBeUndefined();
     expect(threadOf({})).toBeUndefined();
     expect(threadOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('浏览器扩展交接', () => {
+  it('只接受已有本地对话的深链接', () => {
+    expect(existingChat(`codex://threads/${THREAD}`)).toBe(THREAD);
+    expect(() => existingChat('codex://threads/new')).toThrow();
+    expect(() => existingChat(`codex://threads/${THREAD}?prompt=wrong`)).toThrow();
+  });
+
+  it('长草稿用本机 CLI 读取并核对同一批次', () => {
+    const batch = { id: 'abc123', prompt: '调'.repeat(4000) };
+    const root = '/tmp/project root';
+    const cli = "/tmp/Tuner's helper/cli.mjs";
+    expect(codexLink(THREAD, extensionDraft(batch, 'session', cli, root))).toBeNull();
+    const short = extensionDraft(batch, 'session', cli, root, true);
+    const url = codexLink(THREAD, short)!;
+    expect(new URL(url).searchParams.get('prompt')).toBe(short);
+    expect(short).toContain(root);
+    expect(short).toContain("'/tmp/Tuner'\\''s helper/cli.mjs' extension handoff --session 'session' --batch 'abc123'");
+    expect(short).toContain("extension verify --session 'session' --batch 'abc123'");
   });
 });

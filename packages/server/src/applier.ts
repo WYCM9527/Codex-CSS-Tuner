@@ -52,6 +52,7 @@ export interface Batch {
   via: HandoffVia | 'mcp';
   prompt: string;
   pageUrl: string;
+  session?: string;
 }
 
 /** 第一次交给 Codex 前的文件内容，存在项目的数据目录里 */
@@ -132,6 +133,7 @@ export class Applier implements Disposable {
     const c = this.c;
     const recs = (ids ? ids.map((id) => c.journal.get(id)) : c.journal.pending())
       .filter((r): r is ChangeRecord => !!r && (r.status === 'pending' || r.status === 'handoff'))
+      .filter((r) => this.canHandoff(r))
       .sort((a, b) => a.createdAt - b.createdAt);
     if (!recs.length) {
       if (opts.via !== 'mcp') c.notify('info', t('ext.apply.none'));
@@ -153,7 +155,7 @@ export class Applier implements Disposable {
   async revert(id: string, opts: { batch?: string; via?: Batch['via']; dry?: boolean } = {}): Promise<Batch | null> {
     const c = this.c;
     const rec = c.journal.get(id);
-    if (!rec || (rec.status !== 'applied' && rec.status !== 'reverting')) return null;
+    if (!rec || (rec.status !== 'applied' && rec.status !== 'reverting') || !this.canHandoff(rec)) return null;
     const batch = this.makeBatch([rec], 'revert', opts);
     c.journal.update(id, { status: 'reverting', sentAt: Date.now(), note: undefined, batch: batch.id });
     if (!opts.dry) await this.deliver(batch);
@@ -162,14 +164,19 @@ export class Applier implements Disposable {
   }
 
   private makeBatch(recs: ChangeRecord[], mode: PromptMode, opts: { batch?: string; via?: Batch['via'] }): Batch {
+    const session = this.c.extension?.session;
+    const previous = session && recs[0].batch ? this.batch(recs[0].batch) : null;
+    const ids = recs.map((r) => r.id);
+    const reuse = previous?.session === session && previous?.mode === mode && previous.ids.length === ids.length && previous.ids.every((id) => ids.includes(id));
     const batch: Batch = {
-      id: opts.batch && /^[\w-]{3,24}$/.test(opts.batch) ? opts.batch : newBatchId(),
+      id: reuse ? previous.id : (!session && opts.batch && /^[\w-]{3,24}$/.test(opts.batch) ? opts.batch : newBatchId()),
       mode,
-      ids: recs.map((r) => r.id),
+      ids,
       at: Date.now(),
       via: opts.via ?? 'clipboard',
       prompt: this.c.handoffPrompt(recs, mode),
       pageUrl: recs[0].pageUrl,
+      ...(session ? { session } : {}),
     };
     this.remember(batch);
     return batch;
@@ -181,6 +188,10 @@ export class Applier implements Disposable {
    */
   private async deliver(b: Batch) {
     const c = this.c;
+    if (c.extension) {
+      await c.extension.deliver(b);
+      return;
+    }
     if (b.via === 'mcp') return;
     const prompt = `${b.prompt}\n\n${t('handoff.footer', { batch: b.id })}`;
     const copied = await copyText(prompt);
@@ -213,11 +224,17 @@ export class Applier implements Disposable {
 
   /** 存下改动所在文件现在的样子；改动没有落在某个文件上（找不到源码位置）时不存 */
   private async snapshot(rec: ChangeRecord): Promise<ChangeRecord['snapshot']> {
-    const file = 'file' in rec.write ? rec.write.file : rec.view.file;
+    const source = 'file' in rec.write ? rec.write.file : rec.view.file;
+    const file = source && this.c.project.pathGuard ? this.c.project.pathGuard(source) : source;
     const text = file ? readDisk(file) : null;
     if (!file || text === null) return undefined;
     await this.snapshots.save(rec.id, text);
     return { file, hash: hash(text) };
+  }
+
+  private canHandoff(rec: ChangeRecord): boolean {
+    const c = this.c;
+    return !c.extension || (!!c.session?.connected && !!c.page && c.samePage(rec.pageUrl, c.page.url));
   }
 
   /** 有在等 Codex 的改动时盯着项目里的文件变化、定时核对，都等完了就停 */
@@ -344,6 +361,10 @@ export class Applier implements Disposable {
     const touched = this.changedAt > (rec.sentAt ?? 0);
     const finish = (note?: string) => c.journal.update(rec.id, { status: back ? 'reverted' : 'applied', note });
     if (!expected || !Object.keys(expected).length) {
+      if (c.extension) {
+        if (settled && touched) c.journal.update(rec.id, { note: t('apply.unchecked') });
+        return false;
+      }
       // 页面上没有能比的值：文件改完一阵了就当作改好了，请用户自己看一眼
       if (!settled || !touched) return false;
       if (!back) await c.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
@@ -359,6 +380,7 @@ export class Applier implements Disposable {
           target: rec.preview,
           expected,
           source: src ? { path: src.path, line: src.line, column: src.column, index: rec.element.sourceIndex } : undefined,
+          html: rec.element.html,
         },
         8000,
       )

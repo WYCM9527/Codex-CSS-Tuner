@@ -8,6 +8,7 @@ export interface HandoffContext {
   project: Pick<ProjectResolver, 'label'>;
   /** Tailwind 项目：令牌写成「Tailwind 令牌 N」 */
   tailwind: boolean;
+  strictScope?: boolean;
 }
 
 function where(rec: ChangeRecord, project: HandoffContext['project']): string {
@@ -128,6 +129,6 @@ export function buildPrompt(recs: ChangeRecord[], ctx: HandoffContext, mode: Pro
   [...items.values()].forEach((item, i) => {
     lines.push('', t('handoff.element', { i: i + 1, ...item.head }), ...item.changes, ...item.context);
   });
-  lines.push('', t('handoff.requirements'), t('handoff.req.sync'), t('handoff.req.report'));
+  lines.push('', t('handoff.requirements'), t(ctx.strictScope ? 'handoff.req.scope' : 'handoff.req.sync'), t('handoff.req.report'));
   return lines.join('\n');
 }

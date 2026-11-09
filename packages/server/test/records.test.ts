@@ -222,6 +222,12 @@ describe('交给 Codex 的提示词', () => {
     expect(p).not.toContain('Tailwind');
   });
 
+  it.each(['apply', 'revert'] as const)('浏览器扩展的 %s 草稿只要求执行批次内的改动', (mode) => {
+    const prompt = buildPrompt([rec(ownClass)], { ...ctx, strictScope: true }, mode);
+    expect(prompt).toContain('Make only the listed changes. Preserve other props, copy, and source locations.');
+    expect(prompt).not.toContain('Consider whether other places');
+  });
+
   it('还原：箭头反过来，要求不变', () => {
     const rule: RuleRef = {
       sheet: { index: 0, devId: null, href: null },

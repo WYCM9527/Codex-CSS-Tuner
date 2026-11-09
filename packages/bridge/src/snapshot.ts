@@ -5,9 +5,9 @@ import { orderInfo } from './order';
 import { kindOf } from './page';
 import { originalReader } from './preview';
 import { propsInfo } from './props';
-import { callersOf, ownerName, sameSourceElements, sourceOf } from './source';
+import { callersOf, isPlainHtml, ownerName, sameSourceElements, sourceOf } from './source';
 import { staticSelector } from './specificity';
-import { textInfo } from './text';
+import { htmlPathOf, textInfo } from './text';
 import { isOwnNode, isOwnSheet, isTailwindSheet, labelOf, sheetDevId, textOf, uidOf, unescapeIdent } from './util';
 
 export function crumb(el: Element): Crumb {
@@ -166,9 +166,11 @@ export async function snapshot(el: Element, idx: RuleIndex = collectRules(isOwnS
   const source = await sourceOf(el);
   const peers = source ? await sameSourceElements(el) : [el];
   const rect = el.getBoundingClientRect();
+  const htmlPath = !source && isPlainHtml(el) ? htmlPathOf(el) : null;
 
   return {
     uid: uidOf(el),
+    ...(htmlPath ? { html: { path: htmlPath, tag: el.localName, id: el.id || null } } : {}),
     tag: el.tagName.toLowerCase(),
     id: el.id || null,
     classes: Array.from(el.classList),

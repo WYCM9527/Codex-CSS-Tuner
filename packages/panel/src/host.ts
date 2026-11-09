@@ -26,6 +26,7 @@ export interface Shell {
 }
 
 export interface Host {
+  extension?: { chat: string };
   send(msg: PanelToExt): void;
   subscribe(cb: (state: PanelState) => void): () => void;
   onPrompt(cb: (p: PromptRequest) => void): () => void;
