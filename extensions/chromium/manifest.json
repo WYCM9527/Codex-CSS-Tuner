@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CSS Tuner for Local Development",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Inspect and preview changes to a local web project, then hand them to your bound Codex chat.",
   "minimum_chrome_version": "116",
   "permissions": ["storage"],

@@ -7,7 +7,8 @@ const zh = /^zh\b/i.test(navigator.language);
 if (zh) {
   document.documentElement.lang = 'zh-CN';
   form.querySelector('label').textContent = '粘贴本机 CLI 输出的配对链接';
-  connect.textContent = '连接当前项目标签页';
+  document.getElementById('pairing-disclosure').textContent = 'CSS Tuner 使用当前本地标签页的地址、页面内容和编辑操作来预览改动，并与这台电脑上的本机程序交换这些数据。本机程序读取相关项目文件，并在本机保留编辑记录。是否发送草稿由你在 Codex 中决定。';
+  connect.textContent = '同意并连接此标签页';
   disconnect.textContent = '断开浏览器配对';
   status.textContent = '先打开本机开发页面，再连接。';
 }

@@ -3,6 +3,7 @@ body { margin: 0; padding: 14px; width: 300px; }
 h1 { margin: 0 0 10px; font-size: 18px; }
 form { display: grid; gap: 8px; }
 form[hidden] { display: none; }
+#pairing-disclosure { margin: 0; padding: 8px; border-inline-start: 2px solid currentColor; }
 textarea { resize: vertical; font: 12px/1.4 monospace; }
 button { padding: 6px; }
 p { margin: 10px 0 0; }

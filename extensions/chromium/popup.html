@@ -12,7 +12,8 @@
   <form>
     <label for="pairing">Pairing link from the companion CLI</label>
     <textarea id="pairing" rows="3" required spellcheck="false" autocomplete="off"></textarea>
-    <button type="submit">Connect this project tab</button>
+    <p id="pairing-disclosure">CSS Tuner uses this tab’s local page address, content, and editing interactions to preview changes. It shares this data with the companion on your computer, which reads relevant project files and keeps local edit history. You decide whether to send a draft to Codex.</p>
+    <button type="submit" aria-describedby="pairing-disclosure">Agree and connect this tab</button>
   </form>
   <p id="status" role="status">Open your local development page before connecting.</p>
   <button type="button" id="disconnect" hidden>Disconnect browser</button>

@@ -7,7 +7,7 @@ The Chrome extension shows the tuning panel on an HTTP development page on `loca
 1. Run `node scripts/build-chrome.mjs` and `node packages/server/build-extension.mjs` from the repository with its workspace dependencies installed.
 2. Load `dist/css-tuner-chrome` as an unpacked extension. Start your local development server and open the page in the browser where you installed CSS Tuner.
 3. Open the local Codex chat for your project and copy its deep link. The macOS shortcut is `⌘⌥L`.
-4. Run the companion while the project tab is active. Paste the `css-tuner://pair?...` link it prints into the CSS Tuner toolbar popup and choose **Connect this project tab**.
+4. Run the companion while the project tab is active. Paste the `css-tuner://pair?...` link into the CSS Tuner toolbar popup. Review how the extension uses data and choose **Agree and connect this tab** to start pairing.
 
    ```sh
    node dist/css-tuner-extension-companion/cli.mjs extension open http://127.0.0.1:5173/ \
