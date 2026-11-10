@@ -2,10 +2,9 @@
 const GUARD_MS = 4000;
 const GUARD_KEY = 'css-tuner:wrapped';
 
-/** 设备框页面的地址：width 为 null 时框跟着停靠的面板旁边剩下的地方走；path 是放进框里的页面 */
-export function frameUrl(frame: string, width: number | null, path: string): string {
-  const q = new URLSearchParams(width === null ? { u: path } : { w: String(Math.round(width)), u: path });
-  return `${frame}?${q}`;
+/** 设备框页面的地址：path 是放进框里的页面 */
+export function frameUrl(frame: string, path: string): string {
+  return `${frame}?${new URLSearchParams({ u: path })}`;
 }
 
 export function wrapAllowed(last: number, now: number): boolean {
@@ -26,6 +25,6 @@ export function wrapIntoFrame(frame: string, opts: { force?: boolean; stop?: boo
     if (!opts.force) return 'skipped';
   }
   if (opts.stop) window.stop();
-  location.replace(frameUrl(frame, null, location.pathname + location.search + location.hash));
+  location.replace(frameUrl(frame, location.pathname + location.search + location.hash));
   return 'wrapped';
 }

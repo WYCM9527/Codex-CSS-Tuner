@@ -284,19 +284,17 @@ export type BridgeEvent =
   | { t: 'editText'; uid: string; segment: number; value: string; phase: 'live' | 'commit' }
   /** 在页面上拖动选中元素的把手换位置：to 是放下处在兄弟组里的位置（按页面上现在看到的顺序，0 起） */
   | { t: 'reorder'; uid: string; to: number }
-  /** 页面宽度变了（拖动浏览器窗格、设备框换了宽度），停下来一会儿才发 */
+  /** 页面宽度变了（拖动浏览器窗格、停靠时拖面板的宽度），停下来一会儿才发 */
   | { t: 'resize'; w: number; h: number }
   | { t: 'log'; level: 'info' | 'warn' | 'error'; msg: string };
 
-/** 页面所在的环境：视口大小、浏览器的界面语言，以及是不是在设备框（模拟手机、平板宽度）里 */
+/** 页面所在的环境：视口大小、浏览器的界面语言，以及是不是在设备框页面里（面板停靠时页面放在面板旁边的 iframe 里） */
 export interface PageEnv {
   w: number;
   h: number;
   ua: string;
   lang: string;
   framed: boolean;
-  /** 在设备框页面里，但框没定宽度、跟着停靠的面板旁边剩下的地方走：算实际宽度 */
-  fit: boolean;
   /** 面板停靠时刚把页面放进设备框页面，它又自己跳回了顶层（不让放进 iframe）：面板这次改成浮在页面上 */
   bounced: boolean;
 }
@@ -384,11 +382,6 @@ export interface BridgeMethods {
   /** 页面跳到别的地址（面板上换地址） */
   navigate: { p: { url: string }; r: boolean };
   reload: { p: Record<string, never>; r: boolean };
-  /**
-   * 设备框：width 是要模拟的宽度，页面放进这么宽的框里显示（媒体查询按框的宽度算）；null 回到实际宽度。
-   * 进出设备框会整页跳转，页面重新连上以后才算换好
-   */
-  frame: { p: { width: number | null }; r: { framed: boolean; width: number | null } };
 }
 
 export type BridgeMethod = keyof BridgeMethods;
@@ -530,26 +523,6 @@ export interface Scales {
   borderWidth: ScaleStep[];
   /** 新建渐变的插值色彩空间：Tailwind 4 的渐变工具类都带 in oklab，预览照着写才和应用后一样 */
   gradientIn?: string;
-  /** 断点（按宽度从小到大）：Tailwind 是主题里的 screens，普通 CSS 项目用 md 768、lg 1024 */
-  breakpoints: Breakpoint[];
-}
-
-export interface Breakpoint {
-  name: string;
-  px: number;
-}
-
-/** 视口：实际宽度，或按手机、平板（md 起）、桌面（lg 起）的宽度显示页面 */
-export type ViewportPreset = 'actual' | 'mobile' | 'tablet' | 'desktop';
-
-export type ViewportBand = Exclude<ViewportPreset, 'actual'>;
-
-export interface ViewportView {
-  preset: ViewportPreset;
-  /** 每一档模拟的宽度；prefix 是这一档在 Tailwind 里的断点前缀（手机是不带前缀的基础样式，普通 CSS 项目都为 null） */
-  bands: Record<ViewportBand, { width: number; prefix: string | null }>;
-  /** 页面现在的宽度（设备框里是框的宽度），页面没连上时为 null */
-  width: number | null;
 }
 
 /** 未应用 → 交给 Codex 等它改（handoff）→ 页面上核对上了（applied）→ 交给 Codex 还原（reverting）→ 核对上原样（reverted） */
@@ -599,7 +572,8 @@ export interface PanelState {
   pickOn: boolean;
   /** 标尺开着 */
   measureOn: boolean;
-  viewport: ViewportView;
+  /** 面板停靠时页面的宽度（页面在面板旁边的 iframe 里按这个宽度排版）；面板浮动、页面没连上时为 null */
+  pageWidth: number | null;
   scope: Scope;
   selection: SelectionView | null;
   scales: Scales | null;
@@ -629,7 +603,6 @@ export type PanelToExt =
   | { t: 'openPage'; url: string }
   | { t: 'pick'; on: boolean }
   | { t: 'measure'; on: boolean }
-  | { t: 'setViewport'; preset: ViewportPreset }
   | { t: 'select'; uid: string }
   | { t: 'hover'; uid: string | null }
   | { t: 'edit'; edit: EditRequest }

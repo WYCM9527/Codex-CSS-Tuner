@@ -28,9 +28,8 @@ afterEach(() => {
 });
 
 describe('设备框页面的地址', () => {
-  it('跟着面板走的框不带宽度，定宽的框带取整后的宽度；原来的地址整个放进 u', () => {
-    expect(frameUrl(FRAME, null, '/a?b=1#c')).toBe(`${FRAME}?u=%2Fa%3Fb%3D1%23c`);
-    expect(frameUrl(FRAME, 390.4, '/')).toBe(`${FRAME}?w=390&u=%2F`);
+  it('原来的地址整个放进 u', () => {
+    expect(frameUrl(FRAME, '/a?b=1#c')).toBe(`${FRAME}?u=%2Fa%3Fb%3D1%23c`);
   });
 });
 

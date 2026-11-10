@@ -6,7 +6,10 @@
   - Layers no longer shows the element's position with Move up / Move down and a reset button, or the hint under the tree. To reorder, drag the element's row in Layers or the handle next to its tag on the page.
   - Fields Codex has to find in your code no longer have a star after the value. Hover the field to see why, below where the change goes. Dropdowns now show where the change goes too.
   - The hints about Enter and Esc at the end of the Content and Props sections are gone, and so is the note above text produced by code. That text's reset button now sits on the corner of its box.
-- *Snap to theme values* and the `snap` setting are gone. Dragging a number or pressing ↑ / ↓ changes it by one step (ten with Shift), and no scale shows under the field while you drag. A value that matches your theme still shows its token next to it.
+- The panel's toolbar is down to Pick Element and the ruler, plus the page's width while the panel is docked:
+  - The Viewport menu is gone: the panel no longer shows the page at phone, tablet or desktop width, or limits a change to one range of widths. Changes limited that way before this update are handed off without the range, and `status` and `list_changes` no longer mention the viewport. A docked page that was shown at one of those widths goes back to the width next to the panel.
+  - While the panel is docked, the toolbar shows how wide the page is now, for example `680px`. Drag the panel's edge to change it.
+  - *Snap to theme values* and the `snap` setting are gone. Dragging a number or pressing ↑ / ↓ changes it by one step (ten with Shift), and no scale shows under the field while you drag. A value that matches your theme still shows its token next to it.
 - Clearer Chinese names for the Display options: 整行, 弹性, 网格, 并排 and 隐藏 (whole line, flex, grid, side by side, hidden). In both languages, each option's tooltip says what it does, for example that flex works like auto layout in Figma.
 
 ## 0.12.0

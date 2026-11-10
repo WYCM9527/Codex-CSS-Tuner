@@ -26,7 +26,7 @@ Don't drive the panel yourself unless the user asks you to; the user makes the v
 When the user's message is a CSS Tuner prompt, has a CSS Tuner annotation, or mentions a CSS Tuner batch (for example "batch a1b2c3"):
 
 1. If the message already has the full instructions (the prompt CSS Tuner put into the composer), work from them. Otherwise call `get_handoff` with that `batch` (and `projectRoot`). If the user asks to write their CSS Tuner changes without a batch, call `get_handoff` without one: it returns the latest batch still waiting. Pass `includePending: true` only when the user wants the changes they haven't applied yet.
-2. Follow the instructions. They list each element, the old and new values, where CSS Tuner located the code, and whether a change only applies at one viewport width. Make the smallest edit that produces exactly the previewed result:
+2. Follow the instructions. They list each element, the old and new values, and where CSS Tuner located the code. Make the smallest edit that produces exactly the previewed result:
    - Change the class, rule, variable or prop named in the instructions rather than adding overrides elsewhere.
    - Keep the project's conventions (Tailwind scale tokens instead of arbitrary values when the instructions give a token, existing CSS files and variables).
    - When the instructions say the spot couldn't be located, search for the element using the page path, text and labels given.
@@ -38,7 +38,7 @@ Reverts work the same way: the instructions ask you to restore the original valu
 
 ## Other tools
 
-- `status`: whether the page is connected, the current page, viewport, and change counts. Use `waitForPageMs` after opening a page if you need it connected.
+- `status`: whether the page is connected, the current page, and change counts. Use `waitForPageMs` after opening a page if you need it connected.
 - `list_changes`: every change in the panel with its status and source location.
 - `close_page`: stop the project's CSS Tuner sites when the user is done.
 

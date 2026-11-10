@@ -10,7 +10,7 @@ import { pageFonts, pageInfo } from './page';
 import { disposeMeasure, initMeasure, measureOn, setMeasure, setMeasureSteps } from './measure';
 import { pickOn, setPick } from './pick';
 import { activeOrder, clearAll, clearPreview, hasOrderPreviews, preview, prune, reapplyOrders, reattachRules } from './preview';
-import { frameUrl, wrapIntoFrame } from './dock';
+import { wrapIntoFrame } from './dock';
 import { FLOAT_EVENT, PanelShell, savedPanelState, type ShellText } from './shell';
 import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
@@ -37,16 +37,10 @@ const CLOSED = 4410;
 
 /** 设备框页面（pages.ts）放在 window 上的接口 */
 interface FrameApi {
-  /** 框的宽度；null 是没定宽度，跟着停靠的面板旁边剩下的地方走 */
-  readonly width: number | null;
-  setWidth(w: number | null): void;
-  exit(): void;
   element: HTMLIFrameElement;
 }
 
 type Handlers = { [K in keyof BridgeMethods]: (p: BridgeMethods[K]['p']) => Promise<BridgeMethods[K]['r']> | BridgeMethods[K]['r'] };
-
-const frames = (n: number) => new Promise<void>((r) => (n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r))));
 
 class Bridge {
   private cfg: BootConfig;
@@ -73,7 +67,7 @@ class Bridge {
 
   constructor(
     cfg: BootConfig,
-    /** 在设备框页面里（框定了宽度模拟手机、平板、桌面，或者跟着停靠的面板旁边剩下的地方走） */
+    /** 在设备框页面里（面板停靠时，框跟着面板旁边剩下的地方走） */
     private readonly frame: FrameApi | null,
     private readonly shell: PanelShell | null,
     /** 停靠时刚放进设备框页面，页面又自己跳回了顶层 */
@@ -107,7 +101,7 @@ class Bridge {
         this.sendPage();
       }
     }, 500);
-    // 窗口宽度变了（或者设备框换了宽度）：带档位的改动要按新的档挂上或撤掉预览
+    // 窗口宽度变了（或者停靠时拖了面板的宽度）：面板上的页面宽度和选中元素上的值要重新读
     window.addEventListener('resize', this.onResize);
   }
 
@@ -399,7 +393,6 @@ class Bridge {
       ua: navigator.userAgent,
       lang: navigator.language,
       framed: !!this.frame,
-      fit: !!this.frame && this.frame.width === null,
       bounced: this.bounced,
     }),
     navigate: ({ url }) => {
@@ -413,25 +406,6 @@ class Bridge {
     reload: () => {
       setTimeout(() => location.reload(), 30);
       return true;
-    },
-    frame: async ({ width }) => {
-      const f = this.frame;
-      // 实际宽度：面板停靠时框跟着它旁边剩下的地方走，浮动时退出设备框
-      const docked = this.shell ? !this.shell.state().float : false;
-      if (f) {
-        if (width === null && !docked) {
-          setTimeout(() => f.exit(), 30);
-          return { framed: false, width: null };
-        }
-        f.setWidth(width);
-        await frames(2);
-        return { framed: true, width: f.width };
-      }
-      if (width === null && !docked) return { framed: false, width: null };
-      // 进设备框要整页重新加载：页面换成设备框页面，原来的地址放进框里
-      const target = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
-      setTimeout(() => location.assign(target), 30);
-      return { framed: true, width };
     },
     setPick: ({ on }) => {
       if (on) setMeasure(false);

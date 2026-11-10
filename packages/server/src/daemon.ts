@@ -266,7 +266,6 @@ export class Daemon {
         project: c.root,
         connection: c.state.connection,
         page,
-        viewport: c.state.viewport.preset,
         sites: c.ownSites().map((s) => this.siteSummary(s)),
         counts,
         notice: c.state.notice?.text ?? null,

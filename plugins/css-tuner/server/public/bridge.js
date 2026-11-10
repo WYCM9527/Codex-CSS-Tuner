@@ -4935,9 +4935,8 @@ ${fileName}`;
   // src/dock.ts
   var GUARD_MS = 4e3;
   var GUARD_KEY = "css-tuner:wrapped";
-  function frameUrl(frame2, width, path) {
-    const q = new URLSearchParams(width === null ? { u: path } : { w: String(Math.round(width)), u: path });
-    return `${frame2}?${q}`;
+  function frameUrl(frame2, path) {
+    return `${frame2}?${new URLSearchParams({ u: path })}`;
   }
   function wrapAllowed(last, now) {
     return now < last || now - last >= GUARD_MS;
@@ -4951,7 +4950,7 @@ ${fileName}`;
       if (!opts.force) return "skipped";
     }
     if (opts.stop) window.stop();
-    location.replace(frameUrl(frame2, null, location.pathname + location.search + location.hash));
+    location.replace(frameUrl(frame2, location.pathname + location.search + location.hash));
     return "wrapped";
   }
 
@@ -5415,7 +5414,6 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
   // src/index.ts
   var SUPERSEDED = 4409;
   var CLOSED = 4410;
-  var frames = (n) => new Promise((r) => n <= 0 ? r() : requestAnimationFrame(() => void frames(n - 1).then(r)));
   var Bridge = class {
     constructor(cfg, frame2, shell, bounced = false) {
       this.frame = frame2;
@@ -5733,7 +5731,6 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         ua: navigator.userAgent,
         lang: navigator.language,
         framed: !!this.frame,
-        fit: !!this.frame && this.frame.width === null,
         bounced: this.bounced
       }),
       navigate: ({ url }) => {
@@ -5746,23 +5743,6 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       reload: () => {
         setTimeout(() => location.reload(), 30);
         return true;
-      },
-      frame: async ({ width }) => {
-        const f = this.frame;
-        const docked = this.shell ? !this.shell.state().float : false;
-        if (f) {
-          if (width === null && !docked) {
-            setTimeout(() => f.exit(), 30);
-            return { framed: false, width: null };
-          }
-          f.setWidth(width);
-          await frames(2);
-          return { framed: true, width: f.width };
-        }
-        if (width === null && !docked) return { framed: false, width: null };
-        const target2 = frameUrl(this.cfg.frame, width, location.pathname + location.search + location.hash);
-        setTimeout(() => location.assign(target2), 30);
-        return { framed: true, width };
       },
       setPick: ({ on: on3 }) => {
         if (on3) setMeasure(false);

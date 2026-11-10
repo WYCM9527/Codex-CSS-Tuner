@@ -3,7 +3,6 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { WebSocket } from 'ws';
 import {
   aliasesOf,
-  DEFAULT_BREAKPOINTS,
   getLocale,
   groupLabel,
   isGradient,
@@ -17,10 +16,6 @@ import {
   STROKE_ORIGIN,
   t,
   toHex,
-  bandOf,
-  frameSettled,
-  presetOf,
-  viewportBands,
   type BridgeEvent,
   type EditRequest,
   type ElementSnapshot,
@@ -30,7 +25,6 @@ import {
   type Notice,
   type OrderUnit,
   type OrderView,
-  type PageEnv,
   type PageInfo,
   type PanelState,
   type PanelToExt,
@@ -44,14 +38,11 @@ import {
   type SelectionView,
   type Target,
   type TextView,
-  type ViewportBand,
-  type ViewportPreset,
 } from '@css-tuner/protocol';
 import { previewCompanions, tailwindScales, type RecipeInfo, type TwDesign } from '@css-tuner/engine';
 import { Applier, SnapshotStore, type Batch } from './applier';
 import { AssetService } from './assets';
 import { FontService } from './fonts';
-import { bandRange } from './band';
 import { literalCompletions } from './completions';
 import type { Disposable } from './events';
 import { History, pendingSet } from './history';
@@ -221,7 +212,7 @@ export class Controller implements Disposable {
       page: null,
       pickOn: false,
       measureOn: false,
-      viewport: { preset: 'actual', bands: viewportBands(DEFAULT_BREAKPOINTS, false), width: null },
+      pageWidth: null,
       scope: cfg.get('scope'),
       selection: null,
       scales: null,
@@ -357,9 +348,6 @@ export class Controller implements Disposable {
           return;
         case 'measure':
           await this.setMeasure(msg.on);
-          return;
-        case 'setViewport':
-          await this.setViewport(msg.preset);
           return;
         case 'pick':
           await this.setPick(msg.on);
@@ -561,6 +549,7 @@ export class Controller implements Disposable {
     this.state.page = null;
     this.state.selection = null;
     this.state.pickOn = this.state.measureOn = false;
+    this.state.pageWidth = null;
     this.push();
   }
 
@@ -575,7 +564,10 @@ export class Controller implements Disposable {
 
   private onChannel(s: ChannelState) {
     this.state.connection = s === 'idle' ? 'idle' : s;
-    if (s === 'lost') this.state.pickOn = this.state.measureOn = false;
+    if (s === 'lost') {
+      this.state.pickOn = this.state.measureOn = false;
+      this.state.pageWidth = null;
+    }
     this.push();
   }
 
@@ -619,10 +611,10 @@ export class Controller implements Disposable {
         this.helloCount++;
         const env = await this.session?.call('env', {}).catch(() => null);
         if (env) this.onBrowserLang?.(env.lang);
-        this.syncPreset(env ?? null);
+        this.state.pageWidth = env?.framed ? env.w : null;
         // 又停靠成功了：之前「不让放进 iframe」的提示不再对
         if (env?.bounced) this.notify('warn', t('ext.dock.bounced'));
-        else if (env?.fit && this.state.notice?.text === t('ext.dock.bounced')) this.state.notice = null;
+        else if (env?.framed && this.state.notice?.text === t('ext.dock.bounced')) this.state.notice = null;
         // 新文档：旧的选中元素已经不在了；换了页面就不再按源码位置找回
         const prev = this.page?.url;
         if (this.lastSelection && (!prev || !this.samePage(prev, ev.page.url))) this.lastSelection = null;
@@ -659,13 +651,11 @@ export class Controller implements Disposable {
         if (this.state.selection?.el.uid === ev.uid) await this.reorder(ev.uid, ev.to, 'commit');
         return;
       case 'resize':
-        // 拖动了浏览器窗格或面板、换了设备框宽度：换了档的话带档位的改动跟着挂上或撤掉，选中元素上的值重新读
-        if (this.verifyBand) return;
-        if (this.state.viewport.width !== ev.w) {
-          this.state.viewport = { ...this.state.viewport, width: ev.w };
+        // 拖动了浏览器窗格或面板：停靠时工具栏上的页面宽度跟着变，选中元素上的值重新读
+        if (this.state.pageWidth !== null && this.state.pageWidth !== ev.w) {
+          this.state.pageWidth = ev.w;
           this.push();
         }
-        await this.syncBandPreviews();
         await this.refreshSelection();
         return;
       case 'log':
@@ -682,127 +672,12 @@ export class Controller implements Disposable {
     if (this.page !== page) return;
     this.design = design;
     this.state.scales = scales;
-    this.state.viewport = { ...this.state.viewport, bands: viewportBands(scales.breakpoints, scales.mode === 'tailwind') };
     // 样式表变了（懒加载的 CSS、热更新），代码位置要按新的样式表和设计系统重新判断
     if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
     this.push();
     void this.session?.call('measureSteps', { steps: measureSteps(scales) }).catch(() => undefined);
-    // 断点在主题里改过时设备框的宽度跟着变
-    await this.applyViewport().catch((e) => this.log(t('ext.log.error', { text: (e as Error).message })));
     // 换了页面、样式表热更新过：在等 Codex 的改动可能已经生效了
     this.applier.soon();
-  }
-
-  /* ---------- 视口 ---------- */
-
-  /** 页面在设备框页面里（定了宽度，或者跟着停靠的面板旁边剩下的地方走）；hello 时从页面问来 */
-  private framed = false;
-
-  /**
-   * 选档：手机、平板、桌面把页面放进设备框（iframe 定宽，媒体查询按框的宽度算），实际宽度退出设备框。
-   * 进出设备框页面会整页重新加载，连回来以后接着按选的档显示
-   */
-  async setViewport(preset: ViewportPreset) {
-    if (preset !== 'actual' && !this.session?.connected) {
-      this.notify('warn', t('ext.pick.noPage'));
-      return;
-    }
-    this.state.viewport = { ...this.state.viewport, preset };
-    this.push();
-    await this.applyViewport();
-    await this.syncBandPreviews();
-    // 换了宽度，选中元素上的值和代码位置（只改这一档）都要重新算
-    await this.refreshSelection();
-  }
-
-  /** 核对别的档的改动时临时切到的档 */
-  private verifyBand: ViewportBand | null = null;
-  /** 页面上现在挂着哪一档的预览 */
-  private shownBand: ViewportBand | null = null;
-
-  /** 新改动管哪一档：选了档位就只改那一档，实际宽度时照原来的规则写 */
-  private editBand(): ViewportBand | null {
-    const p = this.state.viewport.preset;
-    return p === 'actual' ? null : p;
-  }
-
-  private bandKey(): string {
-    const b = this.editBand();
-    return b ? `@${b}` : '';
-  }
-
-  /** 档位在界面上的名字（手机、平板、桌面） */
-  bandName(band: ViewportBand): string {
-    return t(`panel.viewport.${band}`);
-  }
-
-  /** 带档位的改动只在页面宽度属于那一档时生效（预览、面板上显示的未应用值） */
-  visible(rec: ChangeRecord): boolean {
-    return !rec.band || rec.band.name === this.shownBand;
-  }
-
-  /** 页面现在的宽度属于哪一档（设备框里就是框的宽度） */
-  async bandNow(): Promise<ViewportBand | null> {
-    const s = this.session;
-    if (!s?.connected) return null;
-    const env = await s.call('env', {}).catch(() => null);
-    return env ? bandOf(env.w, this.state.viewport.bands) : null;
-  }
-
-  /** 页面宽度换了档：带档位的改动按新的档挂上或撤掉预览 */
-  private async syncBandPreviews() {
-    const band = await this.bandNow();
-    if (band === this.shownBand) return;
-    this.shownBand = band;
-    for (const rec of [...this.journal.previewing()].reverse()) {
-      if (!rec.band) continue;
-      if (rec.band.name === band) await this.showPreview(rec);
-      else await this.session?.call('clearPreview', { id: rec.previewId }).catch(() => undefined);
-    }
-  }
-
-  /**
-   * 核对别的档的改动：页面在设备框页面里时临时把框换成那一档的宽度，做完换回来。
-   * 不在里面（面板浮在页面上）换不了宽度（进设备框要整页重新加载），返回 null
-   */
-  async atBand<T>(band: ViewportBand, run: () => Promise<T>): Promise<T | null> {
-    if (!this.framed || !this.session?.connected) return null;
-    this.verifyBand = band;
-    try {
-      await this.applyViewport();
-      await this.syncBandPreviews();
-      return await run();
-    } finally {
-      this.verifyBand = null;
-      await this.applyViewport().catch(() => undefined);
-      await this.syncBandPreviews().catch(() => undefined);
-    }
-  }
-
-  /**
-   * 按选的档定设备框的宽度：已经在设备框页面里时只换框的宽度，不重新加载。
-   * 实际宽度时页面怎么摆由面板决定：停靠时框跟着面板旁边剩下的地方走，浮动时退出设备框
-   */
-  async applyViewport(): Promise<void> {
-    const s = this.session;
-    if (!s?.connected) return;
-    const preset = this.verifyBand ?? this.state.viewport.preset;
-    const width = preset === 'actual' ? null : this.state.viewport.bands[preset].width;
-    if (width === null && !this.framed) return;
-    const env = await s.call('env', {}).catch(() => null);
-    if (!env) return;
-    this.framed = env.framed;
-    if (frameSettled(width, env)) return;
-    const r = await s.call('frame', { width }, 6000);
-    this.framed = r.framed;
-  }
-
-  /** 页面连上时：设备框定了宽度就选上对应的档，否则是实际宽度（设备框可能是在页面上退出的） */
-  private syncPreset(env: PageEnv | null) {
-    this.framed = !!env?.framed;
-    const preset = presetOf(env, this.state.viewport.bands);
-    const width = env?.w ?? null;
-    if (preset !== this.state.viewport.preset || width !== this.state.viewport.width) this.state.viewport = { ...this.state.viewport, preset, width };
   }
 
   /** 设计系统还没加载好（或加载失败）时按项目里装的版本号 */
@@ -836,8 +711,7 @@ export class Controller implements Disposable {
 
   /** 先挂旧的：同一处交给 Codex 之后又改了的，后改的那条要盖在上面 */
   private async restorePreviews() {
-    this.shownBand = await this.bandNow();
-    for (const rec of [...this.journal.previewing()].reverse()) if (this.visible(rec)) await this.showPreview(rec);
+    for (const rec of [...this.journal.previewing()].reverse()) await this.showPreview(rec);
   }
 
   /** 把一条改动的预览挂到页面上：元素按源码位置找回来（换序按选中时的那一项，纯 HTML 按路径） */
@@ -1196,7 +1070,6 @@ export class Controller implements Disposable {
     const pending: Record<string, string> = {};
     const removed = new Set<string>();
     for (const rec of [...this.journal.pending()].reverse()) {
-      if (!this.visible(rec)) continue;
       for (const prop of rec.props) {
         const p = this.plans.get(prop);
         if (!p || !rec.key.startsWith(targetKey(p, el) + '|')) continue;
@@ -1212,7 +1085,7 @@ export class Controller implements Disposable {
   private pendingOn(el: ElementSnapshot): ChangeRecord[] {
     return this.journal.pending().filter((rec) => {
       const p = rec.kind === 'style' ? this.plans.get(rec.props[0]) : undefined;
-      return !!p && rec.key.startsWith(targetKey(p, el) + '|') && this.visible(rec);
+      return !!p && rec.key.startsWith(targetKey(p, el) + '|');
     });
   }
 
@@ -1310,10 +1183,9 @@ export class Controller implements Disposable {
     if (isGradient(req.value) && req.props.every((p) => /^border-(top|right|bottom|left)-color$/.test(p))) return this.doStrokeGradient(req);
     const el = sel.el;
     let undeleted = false;
-    const band = this.editBand();
     for (const [tk, g] of this.groupByTarget(el, req.props)) {
       const props = [...g.props].sort();
-      const key = `${tk}|${props.join(',')}${this.bandKey()}`;
+      const key = `${tk}|${props.join(',')}`;
       const existing = this.journal.findPending(key);
       const previewId = this.previewIdFor(key, existing);
       const decls = { ...(await this.companions(g.plan.write, props, req.token ?? null)), ...Object.fromEntries(props.map((p) => [p, req.value])) };
@@ -1376,7 +1248,6 @@ export class Controller implements Disposable {
           previewId,
           write,
           ...(detail ? { detail } : {}),
-          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
       const now = this.selectionOf(el);
@@ -1401,8 +1272,7 @@ export class Controller implements Disposable {
     if (!sel || !session || !this.page || !plan) return;
     const el = sel.el;
     const props = [...req.props].sort();
-    const band = this.editBand();
-    const key = `${targetKey(plan, el)}|${props.join(',')}${this.bandKey()}`;
+    const key = `${targetKey(plan, el)}|${props.join(',')}`;
     const existing = this.journal.findPending(key);
     const previewId = this.previewIdFor(key, existing);
     // 垫底的是元素里面看到的颜色：半透明的背景色叠在后面的底色上
@@ -1434,7 +1304,6 @@ export class Controller implements Disposable {
           preview: plan.preview,
           previewId,
           ...fields,
-          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
       const now = this.selectionOf(el);
@@ -1452,7 +1321,6 @@ export class Controller implements Disposable {
     const session = this.session;
     if (!sel || !session || !this.page) return;
     const el = sel.el;
-    const band = this.editBand();
     const declared = req.props.filter((p) => this.plans.get(p)?.view.declared);
     if (!declared.length) {
       this.notify('info', t('ext.remove.nothing'));
@@ -1471,7 +1339,7 @@ export class Controller implements Disposable {
         this.notify('warn', t('ext.remove.override'));
         continue;
       }
-      groups.push({ key: `${tk}|${props.join(',')}${this.bandKey()}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
+      groups.push({ key: `${tk}|${props.join(',')}`, plan: g.plan, props, ...(classes ? { classes } : {}) });
     }
     const props = groups.flatMap((g) => g.props);
     if (!props.length) return;
@@ -1505,7 +1373,6 @@ export class Controller implements Disposable {
           preview: g.preview,
           previewId,
           ...fields,
-          ...(band ? { band: bandRange(band, this.state.viewport.bands) } : {}),
         });
       }
     }
@@ -1773,7 +1640,7 @@ export class Controller implements Disposable {
     if (!rec) return;
     const copy = structuredClone(rec);
     this.journal.put(copy);
-    if (this.visible(copy)) await this.showPreview(copy);
+    await this.showPreview(copy);
   }
 
   /** 重新取一次选中元素的快照（预览变化后计算值会变） */

@@ -120,9 +120,8 @@ const STATUS_TEXT: Record<ChangeStatus, string> = {
 };
 
 function line(c: ChangeSummary): string {
-  const band = c.band ? ` [${c.band} only]` : '';
   const note = c.note ? ` — ${c.note}` : '';
-  return `- [${STATUS_TEXT[c.status]}] ${c.element} ${c.change}: ${c.from} → ${c.to}${band} (${c.where})${note}`;
+  return `- [${STATUS_TEXT[c.status]}] ${c.element} ${c.change}: ${c.from} → ${c.to} (${c.where})${note}`;
 }
 
 function text(t: string, data?: object, isError = false): ToolResult {
@@ -159,7 +158,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
       const counts = STATUSES.filter((s) => r.counts[s]).map((s) => `${r.counts[s]} ${STATUS_TEXT[s]}`);
       const lines = [
         `Project: ${r.project}`,
-        r.page ? `Page (${r.connection}): ${r.page.target}${r.page.title ? ` — "${r.page.title}"` : ''}; viewport ${r.viewport}` : `Page: ${r.connection === 'idle' ? 'not open' : r.connection}`,
+        r.page ? `Page (${r.connection}): ${r.page.target}${r.page.title ? ` — "${r.page.title}"` : ''}` : `Page: ${r.connection === 'idle' ? 'not open' : r.connection}`,
         ...r.sites.map((s) => `Site: ${s.url} → ${s.target ?? s.root} (${s.connected ? 'connected' : 'not connected'})`),
         `Changes: ${counts.length ? counts.join(', ') : 'none'}`,
         ...(r.notice ? [`Panel notice: ${r.notice}`] : []),

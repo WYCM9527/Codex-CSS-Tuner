@@ -133,7 +133,7 @@ describe('Hub：静态站点', () => {
     expect(page.body).toContain(`"token":"${site.rec.token}"`);
     expect((await get(site.port, '/__css_tuner__/panel/index.js')).body).toBe('console.log("panel")');
     expect((await get(site.port, '/__css_tuner__/panel/..%2f..%2fbridge.js')).status).toBe(404);
-    expect((await get(site.port, '/__css_tuner__/frame?w=390')).headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect((await get(site.port, '/__css_tuner__/frame?u=%2F')).headers['x-frame-options']).toBe('SAMEORIGIN');
   });
 
   it('health 不查来源，报版本和站点', async () => {

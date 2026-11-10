@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { t, type HandoffVia, type ViewportBand } from '@css-tuner/protocol';
+import { t, type HandoffVia } from '@css-tuner/protocol';
 import type { Controller } from './controller';
 import type { Disposable } from './events';
 import type { ChangeRecord } from './journal';
@@ -308,23 +308,8 @@ export class Applier implements Disposable {
     await this.reloadSheets();
     const recs = c.journal.waiting().filter((r) => c.samePage(r.pageUrl, page.url));
     if (!recs.length) return;
-    const shown = recs.some((r) => r.band) ? await c.bandNow() : null;
     let done = 0;
-    for (const rec of recs) if ((!rec.band || rec.band.name === shown) && (await this.check(rec, settled))) done++;
-    // 只改别的档的：文件改完一阵了再临时把设备框换成那一档的宽度核对，免得 Codex 改着改着页面宽度来回跳。
-    // 页面不在设备框里时换不了宽度，说一声要切到那一档才能核对
-    if (settled) {
-      const later = new Map<ViewportBand, ChangeRecord[]>();
-      for (const r of recs) if (r.band && r.band.name !== shown) later.set(r.band.name, [...(later.get(r.band.name) ?? []), r]);
-      for (const [band, list] of later) {
-        const ran = await c.atBand(band, async () => {
-          for (const rec of list) if (await this.check(rec, true)) done++;
-        });
-        if (ran === null) {
-          for (const rec of list) c.journal.update(rec.id, { note: t('apply.otherBand', { band: c.bandName(band) }) });
-        }
-      }
-    }
+    for (const rec of recs) if (await this.check(rec, settled)) done++;
     if (done) {
       c.log(t('apply.matchedLog', { n: done }));
       await c.refreshSelection();
@@ -369,7 +354,7 @@ export class Applier implements Disposable {
       finish();
       return true;
     }
-    if (!back && !r.attached && (r.found || rec.preview.kind === 'rule') && c.visible(rec)) {
+    if (!back && !r.attached && (r.found || rec.preview.kind === 'rule')) {
       // 同一处后来又改了的也重新挂一遍，盖在这条上面
       const above = c.journal.previewing().filter((x) => x.key === rec.key && x.createdAt > rec.createdAt);
       for (const x of [rec, ...above.reverse()]) await c.showPreview(x);

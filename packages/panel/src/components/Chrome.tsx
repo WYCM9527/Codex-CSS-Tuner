@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { bandOf, changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView, type ViewportPreset } from '@css-tuner/protocol';
+import { useEffect, useState } from 'react';
+import { changeName, t, type ChangeView, type Locale, type PanelState, type PanelToExt, type Scope, type SelectionView } from '@css-tuner/protocol';
 import type { Shell } from '../host';
 import { displayValue, fontValue, shortFile } from '../lib/format';
 import { boundary, nameOf } from '../lib/names';
@@ -43,89 +43,11 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
           <IconToggle on={state.measureOn} title={state.measureOn ? t('panel.measure.on') : t('panel.measure.off')} onClick={() => send({ t: 'measure', on: !state.measureOn })}>
             <Icon.ruler />
           </IconToggle>
-          <ViewportMenu state={state} send={send} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-const PRESETS: ViewportPreset[] = ['actual', 'mobile', 'tablet', 'desktop'];
-
-/** 视口：按手机、平板、桌面的宽度看页面；按钮上写着选的档，实际宽度时写着页面现在多宽、落在哪一档 */
-function ViewportMenu({ state, send }: { state: PanelState; send: Send }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-  const { preset, bands, width } = state.viewport;
-  const active = preset !== 'actual';
-  const name = (p: ViewportPreset) => t(`panel.viewport.${p}`);
-  const now = !active && width ? bandOf(width, bands) : null;
-  const title = active
-    ? t('panel.viewport.active', { name: name(preset), width: bands[preset].width })
-    : now
-      ? t('panel.viewport.actualNow', { width: width!, name: name(now) })
-      : t('panel.viewport.title');
-  return (
-    <div className="vp" ref={box}>
-      <button
-        className={`icon-btn vp-btn${active ? ' on' : now ? ' now' : ''}`}
-        title={title}
-        aria-label={title}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <Icon.viewport />
-        {active ? (
-          <span className="vp-label">
-            {name(preset)} {bands[preset].width}
-          </span>
-        ) : (
-          now && (
-            <span className="vp-label">
-              {width} · {name(now)}
+          {state.pageWidth !== null && (
+            <span className="page-width" title={t('panel.pageWidth', { width: state.pageWidth })}>
+              {state.pageWidth}px
             </span>
-          )
-        )}
-      </button>
-      {open && (
-        <div className="vp-menu" role="menu">
-          {PRESETS.map((p) => (
-            <button
-              key={p}
-              role="menuitemradio"
-              aria-checked={p === preset}
-              className={p === preset ? 'on' : ''}
-              onClick={() => {
-                setOpen(false);
-                if (p !== preset) send({ t: 'setViewport', preset: p });
-              }}
-            >
-              <span>{name(p)}</span>
-              {p !== 'actual' && (
-                <small>
-                  {bands[p].width}
-                  {bands[p].prefix && ` · ${bands[p].prefix}:`}
-                </small>
-              )}
-            </button>
-          ))}
-          <p className="vp-note">{t('panel.viewport.note')}</p>
+          )}
         </div>
       )}
     </div>

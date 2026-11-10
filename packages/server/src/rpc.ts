@@ -1,4 +1,4 @@
-import { changeName, type ChangeStatus, type Connection, type ViewportPreset } from '@css-tuner/protocol';
+import { changeName, type ChangeStatus, type Connection } from '@css-tuner/protocol';
 import type { Batch } from './applier';
 import type { ChangeRecord } from './journal';
 import { recordView } from './records';
@@ -16,8 +16,6 @@ export interface ChangeSummary {
   where: string;
   file?: string;
   line?: number;
-  /** 只改这一档（mobile / tablet / desktop） */
-  band?: string;
   note?: string;
   batch?: string;
 }
@@ -34,7 +32,6 @@ export function summarize(rec: ChangeRecord): ChangeSummary {
     where: v.target.label,
     ...(v.target.file ? { file: v.target.file } : {}),
     ...(v.target.line ? { line: v.target.line } : {}),
-    ...(rec.band ? { band: rec.band.name } : {}),
     ...(v.note ? { note: v.note } : {}),
     ...(rec.batch ? { batch: rec.batch } : {}),
   };
@@ -64,7 +61,6 @@ export interface StatusResult {
   project: string;
   connection: Connection;
   page: { url: string; target: string; title: string } | null;
-  viewport: ViewportPreset;
   sites: SiteSummary[];
   counts: Partial<Record<ChangeStatus, number>>;
   notice: string | null;
