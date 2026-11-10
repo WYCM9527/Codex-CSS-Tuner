@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fewer hints and markers in the panel:
+  - Layers no longer shows the element's position with Move up / Move down and a reset button, or the hint under the tree. To reorder, drag the element's row in Layers or the handle next to its tag on the page.
+
 ## 0.12.0
 
 - The panel no longer covers the page. By default the page moves over and is laid out in the space next to the panel, at the width that's left, so media queries follow that width. Drag the panel's edge and the page reflows; fold the panel into its pill and the page gets the whole window. While docked, the page runs in a frame next to the panel, so the address bar shows `/__css_tuner__/frame?u=…`.
