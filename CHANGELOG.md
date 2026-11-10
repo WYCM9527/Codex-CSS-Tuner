@@ -5,6 +5,7 @@
 - Fewer hints and markers in the panel:
   - Layers no longer shows the element's position with Move up / Move down and a reset button, or the hint under the tree. To reorder, drag the element's row in Layers or the handle next to its tag on the page.
   - Fields Codex has to find in your code no longer have a star after the value. Hover the field to see why, below where the change goes. Dropdowns now show where the change goes too.
+  - The hint about Enter and Esc at the end of the Content section is gone, and so is the note above text produced by code. That text's reset button now sits on the corner of its box.
 - Clearer Chinese names for the Display options: 整行, 弹性, 网格, 并排 and 隐藏 (whole line, flex, grid, side by side, hidden). In both languages, each option's tooltip says what it does, for example that flex works like auto layout in Figma.
 
 ## 0.12.0

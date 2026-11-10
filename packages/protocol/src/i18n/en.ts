@@ -365,8 +365,6 @@ export const en = {
   'insp.text.origin.prop': 'Comes from a component prop:',
   'insp.text.origin.message': 'Comes from a translation file:',
   'insp.text.origin.html': 'Written in the HTML file:',
-  'insp.text.origin.dynamic': 'This text is produced by code, so the change goes to Codex',
-  'insp.text.hint': 'Press Enter when you’re done, Esc to cancel. Your code only changes after you click “Apply All” and Codex makes the edit. You can also double-click text on the page to edit it there.',
   'insp.props': 'Component props',
   'insp.props.site': 'Open where it is used: {label}',
   'insp.props.same': '{n} copies on this page come from the same line of code and change together',
