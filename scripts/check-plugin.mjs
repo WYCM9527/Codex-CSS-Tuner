@@ -174,6 +174,8 @@ function checkPlugin(root, expectName) {
   if (!m.description) fail('plugin.json: missing description');
   const i = m.interface ?? {};
   for (const k of ['displayName', 'shortDescription', 'longDescription', 'developerName', 'category', 'composerIcon', 'logo']) if (!i[k]) fail(`plugin.json: interface.${k} is required`);
+  for (const [key, limit] of [['displayName', 30], ['shortDescription', 30], ['longDescription', 4000]])
+    if ((i[key] ?? '').length > limit) fail(`plugin.json: interface.${key} is longer than ${limit} characters`);
   if (i.category && !CATEGORIES.includes(i.category)) fail(`plugin.json: interface.category must be one of ${CATEGORIES.join(', ')}`);
   if (i.capabilities !== undefined) {
     if (!Array.isArray(i.capabilities) || i.capabilities.length > 20) fail('plugin.json: interface.capabilities must be a list of at most 20 strings');
@@ -181,7 +183,15 @@ function checkPlugin(root, expectName) {
   }
   if (i.defaultPrompt !== undefined) {
     if (!Array.isArray(i.defaultPrompt) || i.defaultPrompt.length > 3) fail('plugin.json: interface.defaultPrompt must have at most 3 entries');
-    for (const s of i.defaultPrompt ?? []) if (typeof s !== 'string' || s.length > 128) fail(`plugin.json: defaultPrompt entry longer than 128 characters: ${JSON.stringify(s)}`);
+    const seen = new Set();
+    for (const s of i.defaultPrompt ?? []) {
+      if (typeof s !== 'string' || !s.trim() || s.length > 128 || /[\r\n]/.test(s)) fail(`plugin.json: defaultPrompt must be nonblank, single-line and at most 128 characters: ${JSON.stringify(s)}`);
+      if (typeof s === 'string') {
+        const normalized = s.trim().replace(/\s+/g, ' ');
+        if (seen.has(normalized)) fail('plugin.json: defaultPrompt entries must be unique');
+        seen.add(normalized);
+      }
+    }
   }
   if (i.brandColor && !/^#[0-9a-fA-F]{6}$/.test(i.brandColor)) fail('plugin.json: interface.brandColor must be #RRGGBB');
   if ((m.description ?? '').length > 1024) fail('plugin.json: description is longer than 1024 characters');

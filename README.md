@@ -105,9 +105,9 @@ CSS Tuner 带本机 MCP 服务，属于“仅桌面端”插件（上架后带 D
 
 1. 在 [OpenAI Platform 的组织设置](https://platform.openai.com/settings/organization/general)里完成个人或企业身份验证，记下组织 ID。目录里显示的开发者名称取自这个身份，和清单里的 `developerName` 无关。提交的人要有 `api.apps.write` 权限（组织 Owner 自带）。
 2. 把组织 ID 发给 OpenAI 的对接人，申请加入本地 MCP 提交的白名单，等对方确认。
-3. `pnpm build && pnpm pack:submission`，得到 `dist/css-tuner-<版本>-submission.zip`。它和插件文件夹一样，只是去掉了截图：这条路线不接受 `interface.screenshots`。
-4. 在[提交门户](https://platform.openai.com/plugins)选 **Create plugin → Skills only**，上传这个 ZIP，处理自动检查的结果。
-5. 录一段演示视频，走一遍审核用例，把链接填进 **Review details**（或写进 `plugin.json` 的 `extensions.com.openai.review.demo_recording_url` 再打包上传），确认导入的用例后提交审核。通过后在门户里点 **Publish**。
+3. 先在本地开发安装中录制真实演示，展示选取元素、预览、交接、源码修改和页面核对，并检查视频中没有私人内容。把视频托管到审核员无需登录就能播放的地址，验证播放后写进 `plugin.json` 的 `extensions.com.openai.review.demo_recording_url`。
+4. `pnpm build && pnpm pack:submission`，得到 `dist/css-tuner-<版本>-submission.zip`。它和插件文件夹一样，只是去掉了截图：这条路线不接受 `interface.screenshots`。没有视频链接时脚本仍能生成预备包，但会警告；这样的包还未完成审核材料。
+5. 在[提交门户](https://platform.openai.com/plugins)选 **Create plugin → Skills only**，上传最终 ZIP，处理自动检查的结果，核对导入的文案、国家/地区、视频和用例，再运行保存版本的检查并提交审核。通过后在门户里点 **Publish**。
 
 已经写进清单的：网站、支持、隐私政策和使用条款的链接（`interface.*URL`，都要是 HTTPS 而且能打开）；5 个正向、3 个反向审核用例（`extensions.com.openai.review.test_cases`，用 Release 里的示例页），`check:plugin` 会检查数量、必填字段和工具名，改了工具或面板文案时要跟着改；发布说明和简体中文的标题、简介（`extensions.com.openai.publication`）。
 
