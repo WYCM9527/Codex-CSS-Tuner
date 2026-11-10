@@ -25,7 +25,6 @@ function flag(args: string[], name: string): string | undefined {
 function parseValue(key: keyof SettingsData, raw: string): SettingsData[keyof SettingsData] {
   const kind = typeof DEFAULT_SETTINGS[key];
   if (kind === 'number') return Number(raw);
-  if (kind === 'boolean') return raw === 'true' || raw === 'on' || raw === '1';
   if (key === 'assetsDir') return raw === 'null' || raw === '' ? null : resolve(raw);
   return raw;
 }

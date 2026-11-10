@@ -607,8 +607,6 @@ export interface PanelState {
   notice: Notice | null;
   defaultUrl: string;
   busy: boolean;
-  /** 数值吸附到刻度（按住 Alt 临时关闭） */
-  snap: boolean;
   /** 界面语言：默认跟随编辑器的显示语言，面板上切换过就用切换的 */
   locale: Locale;
   /** 上一步 / 下一步会撤销、重做的操作说明，没有可撤销、重做的为 null */
@@ -664,7 +662,6 @@ export type PanelToExt =
   /** 在编辑器里打开源码 */
   | { t: 'openSource'; file: string; line: number; column: number }
   | { t: 'setScope'; scope: Scope }
-  | { t: 'setSnap'; on: boolean }
   | { t: 'setLocale'; locale: Locale }
   | { t: 'clearDone' }
   | { t: 'dismissNotice' }

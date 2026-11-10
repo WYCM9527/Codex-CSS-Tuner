@@ -229,7 +229,6 @@ export class Controller implements Disposable {
       notice: null,
       defaultUrl: cfg.get('defaultUrl'),
       busy: false,
-      snap: cfg.get('snap'),
       locale: getLocale(),
       history: { undo: null, redo: null },
       fonts: null,
@@ -247,7 +246,6 @@ export class Controller implements Disposable {
       }),
       cfg.onChange((key) => {
         if (key === 'defaultUrl') this.state.defaultUrl = cfg.get('defaultUrl');
-        else if (key === 'snap') this.state.snap = cfg.get('snap');
         else if (key === 'scope') this.state.scope = cfg.get('scope');
         else if (key !== 'remBase') return;
         // 范围、rem 基准变了：选中元素的代码位置和刻度按新设置重新判断（已记下的改动不变）
@@ -388,11 +386,6 @@ export class Controller implements Disposable {
         case 'setScope':
           this.state.scope = msg.scope;
           if (this.state.selection) this.state.selection = this.buildSelection(this.state.selection.el);
-          this.push();
-          return;
-        case 'setSnap':
-          this.state.snap = msg.on;
-          this.settings.set('snap', msg.on);
           this.push();
           return;
         case 'setLocale':

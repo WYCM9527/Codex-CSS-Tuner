@@ -6,6 +6,7 @@
   - Layers no longer shows the element's position with Move up / Move down and a reset button, or the hint under the tree. To reorder, drag the element's row in Layers or the handle next to its tag on the page.
   - Fields Codex has to find in your code no longer have a star after the value. Hover the field to see why, below where the change goes. Dropdowns now show where the change goes too.
   - The hints about Enter and Esc at the end of the Content and Props sections are gone, and so is the note above text produced by code. That text's reset button now sits on the corner of its box.
+- *Snap to theme values* and the `snap` setting are gone. Dragging a number or pressing ↑ / ↓ changes it by one step (ten with Shift), and no scale shows under the field while you drag. A value that matches your theme still shows its token next to it.
 - Clearer Chinese names for the Display options: 整行, 弹性, 网格, 并排 and 隐藏 (whole line, flex, grid, side by side, hidden). In both languages, each option's tooltip says what it does, for example that flex works like auto layout in Figma.
 
 ## 0.12.0

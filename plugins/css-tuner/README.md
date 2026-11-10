@@ -11,7 +11,7 @@ It does one job: **adjust styles, text, order and props on the page, see the res
 ## Features
 
 - **Pick elements**: hover to highlight, click to select. The panel says what you picked in plain words, followed by the start of its text (for example *Heading “Welcome”*), and which file it's written in. The Layers section shows the elements around it, and every instance rendered by the same line of JSX or template is marked on the page.
-- **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, stroke, radius, shadow, effects and CSS variables. Drag or scrub numbers, pick colors, and snap to your theme's values and CSS variables; hold Alt for any value. Fill and stroke can also be a linear or radial gradient: set the angle, click the gradient bar to add a color stop, drag stops to move them, and pick each stop's color from your theme.
+- **Tuning panel**: layout (flex / grid), spacing, size, position, text, fill, stroke, radius, shadow, effects and CSS variables. Drag or scrub numbers and pick colors. Fill and stroke can also be a linear or radial gradient: set the angle, click the gradient bar to add a color stop, drag stops to move them, and pick each stop's color from your theme.
 - **Fonts**: the Font field at the top of the Text section opens a searchable list of your theme's fonts (Tailwind's `font-*`, or CSS variables that hold a font stack in plain CSS projects), fonts the page loads with `@font-face`, fonts installed on your computer and generic families. Each name is shown in its own typeface, and hovering one previews it on the page. To use a font that isn't listed, type its name or a whole font stack. When you pick a font that's only installed on your computer, the description says the page doesn't load it.
 - **A panel that doesn't cover the page**: by default the page moves over and is laid out in the space next to the panel, so nothing is hidden behind it. The viewport button shows how wide the page is now and whether that's the phone, tablet or desktop range. Dock the panel on the left or right, drag its edge to resize it (the page reflows as you drag), or fold it into a small pill to give the page the whole window. To keep the page at the full window width, switch the panel to float over the page. All of this is remembered per site.
 - **Add and remove properties**: an element with no fill, stroke or shadow gets one from the + on that section, and − takes it away again. Every value that comes from a declaration in your code has a × in its corner: the page drops it right away, and applying asks Codex to remove the declaration (in Tailwind, its class), so the element falls back to what it would be without it. Inherited values, initial values and framework presets have nothing to remove.
@@ -107,7 +107,7 @@ The plugin also has a command line for the same background service, in its `serv
 node <plugin folder>/server/cli.mjs open http://localhost:3000/ --root .   # print the address to open
 node <plugin folder>/server/cli.mjs status                                  # connection and change counts
 node <plugin folder>/server/cli.mjs changes                                 # list changes
-node <plugin folder>/server/cli.mjs config snap false                       # change a setting
+node <plugin folder>/server/cli.mjs config scope source                     # change a setting
 node <plugin folder>/server/cli.mjs stop                                    # stop the background service
 ```
 
@@ -120,7 +120,6 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 | `language` | `auto` | Language of the panel, its messages and the descriptions: `auto` follows the browser's language, or set `zh-CN` / `en`. The 中 / EN switch at the top of the panel changes this setting |
 | `defaultUrl` | `http://localhost:5173/` | Address to open when none is given |
 | `remBase` | `16` | Root font size used to convert between rem and px |
-| `snap` | `true` | Snap numbers to the theme's values and CSS variables (hold Alt for any value) |
 | `scope` | `instance` | Whether Tailwind changes apply to just the element you picked (`instance`, “This one” in the panel) or to the component itself (`source`, “All”) |
 | `editor` | `auto` | Editor for the panel's “open in code” buttons: `auto` tries Cursor, then VS Code. Or a command where `{file}`, `{line}` and `{column}` are replaced |
 | `assetsDir` | Downloads | Folder that *Save* and *Download All* write to |
@@ -139,7 +138,7 @@ Settings apply to all projects. Show them with `cli.mjs config` and change one w
 - **Next.js source locations** come from `/__nextjs_original-stack-frames`, an internal dev server endpoint used by the error overlay, which is not a public API. Both Turbopack (`next dev`) and webpack (`next dev --webpack`) dev modes are tested. Hot reload of server components can take a few seconds, and the check waits for it. In webpack mode, editing a CSS Module can make Next.js reload the whole page.
 - **Hot reload edge cases**: an element rendered before a hot reload and selected for the first time after it may point to an old line number. If a location looks wrong, reload the page.
 - **CSS Modules** class names are matched by the longest source class name contained in the hashed name, so projects with a custom `generateScopedName` may not map correctly.
-- **Tailwind 3 and 4 only**: the design system is loaded from your project's own `node_modules` to snap values and name tokens. In Tailwind 3 projects the theme is read from the `tailwind.config.*` named by `@config`, or the nearest one up to the project root. Codex decides how to write values that are off the theme scale. Tailwind 3's `prefix` option isn't supported.
+- **Tailwind 3 and 4 only**: the design system is loaded from your project's own `node_modules` to name tokens. In Tailwind 3 projects the theme is read from the `tailwind.config.*` named by `@config`, or the nearest one up to the project root. Codex decides how to write values that are off the theme scale. Tailwind 3's `prefix` option isn't supported.
 - **Gradient strokes are previewed with two background layers** (`background-clip: padding-box, border-box`), so rounded corners stay. When the element has no opaque fill, the description asks Codex for another way that keeps the corners and leaves the inside transparent. Gradient strokes are always solid. Conic gradients, images and multi-layer backgrounds are shown in the panel but can't be edited there; switching to a solid color or a gradient replaces them.
 - **Installed fonts** are listed by the system's font manager on macOS, PowerShell on Windows and fontconfig (`fc-list`) on Linux. If the list can't be read, the Font menu still offers theme, page and generic fonts.
 - **Undo and Redo only cover changes you haven't applied**: changes handed to Codex aren't in the history. To take one back, click *Revert* in the list.
