@@ -124,14 +124,24 @@ export async function rpc<M extends RpcMethod>(method: M, params: RpcMethods[M][
   }
 }
 
-/** 只有 open 可以启动扩展后台服务。其他命令只使用已经打开的会话。 */
+export function startExtensionDaemon(): Promise<DaemonInfo> {
+  return ensureDaemonAt(extensionDataDir(), 'CSS_TUNER_EXTENSION_DATA');
+}
+
+export async function stopExtensionDaemon(): Promise<boolean> {
+  const info = readInfo(extensionDataDir());
+  if (!info || !(await alive(info))) return false;
+  await shutdown(info);
+  return true;
+}
+
+/** 其他扩展会话命令只访问已经打开的会话。 */
 export async function extensionRpc<M extends ExtensionRpcMethod>(method: M, params: RpcMethods[M]['p']): Promise<RpcMethods[M]['r']> {
-  const data = extensionDataDir();
   if (method === 'extensionOpen') {
-    const info = await ensureDaemonAt(data, 'CSS_TUNER_EXTENSION_DATA');
+    const info = await startExtensionDaemon();
     return post(info, method, params);
   }
-  const info = readInfo(data);
-  if (!info || !(await alive(info))) throw new Error('CSS Tuner extension companion is not running. Run extension open first.');
+  const info = readInfo(extensionDataDir());
+  if (!info || !(await alive(info))) throw new Error('CSS Tuner extension companion is not running. Run extension start first.');
   return post(info, method, params);
 }

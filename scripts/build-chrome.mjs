@@ -33,7 +33,7 @@ await Promise.all([
       },
     }],
   }),
-  ...['manifest.json', 'background.js', 'dock.css', 'popup.html', 'popup.css', 'popup.js'].map((file) => cp(join(source, file), join(output, file))),
+  ...['manifest.json', 'background.js', 'connect.js', 'dock.css', 'popup.html', 'popup.css', 'popup.js'].map((file) => cp(join(source, file), join(output, file))),
   cp(join(source, 'icon.png'), join(output, 'icon.png')),
   cp(join(root, 'LICENSE'), join(output, 'LICENSE')),
 ]);

@@ -7,3 +7,7 @@ form[hidden] { display: none; }
 textarea { resize: vertical; font: 12px/1.4 monospace; }
 button { padding: 6px; }
 p { margin: 10px 0 0; }
+#project p, #review, #setup-review { overflow-wrap: anywhere; margin: 0 0 6px; }
+#review, #setup-review { white-space: pre-line; }
+#manual, #pairing-disclosure { margin-top: 8px; }
+body > button { margin-top: 8px; }

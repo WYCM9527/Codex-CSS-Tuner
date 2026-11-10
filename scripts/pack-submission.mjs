@@ -45,7 +45,7 @@ try {
   walk(root);
   if (entries > 5000) errors.push(`${entries} entries (at most 5000)`);
   if (total > 512 * 1024 * 1024) errors.push('larger than 512 MiB unpacked');
-  if (m.hooks || m.apps || existsSync(join(root, 'hooks.json')) || existsSync(join(root, '.app.json'))) errors.push("hooks and apps can't be submitted");
+  if (m.hooks || m.apps != null || m.extensions?.['com.openai']?.apps != null || existsSync(join(root, 'hooks.json')) || existsSync(join(root, '.app.json'))) errors.push("hooks and apps can't be submitted");
   if (!m.extensions?.['com.openai']?.review?.demo_recording_url) warnings.push('No review.demo_recording_url yet: add the video walkthrough link to plugin.json, or enter it in Review details before submitting.');
   if (errors.length) {
     for (const e of errors) console.error(`✗ ${e}`);

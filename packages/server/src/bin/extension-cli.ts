@@ -1,12 +1,17 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { extensionRpc } from '../client';
+import { extensionRpc, startExtensionDaemon, stopExtensionDaemon } from '../client';
+import { openUrl } from '../system';
+import { setupProject } from './extension-setup';
 
 const help = `CSS Tuner extension companion
 
 Usage:
-  node cli.mjs extension open <url> --root <dir> --chat <link> [--link]
+  node cli.mjs extension start
+  node cli.mjs extension stop
+  node cli.mjs extension setup <url> --root <dir> --chat <link>
+  node cli.mjs extension open <url> --root <dir> --chat <link> [--browser | --link]
   node cli.mjs extension status --session <id>
   node cli.mjs extension handoff --session <id> --batch <id> [--json]
   node cli.mjs extension verify --session <id> --batch <id> [--wait-ms <ms>]
@@ -21,10 +26,14 @@ const flagOptions = {
   'wait-ms': { type: 'string' },
   json: { type: 'boolean' },
   link: { type: 'boolean' },
+  browser: { type: 'boolean' },
 } as const;
 
 const commandFlags = {
-  open: ['root', 'chat', 'link'],
+  start: [],
+  stop: [],
+  setup: ['root', 'chat'],
+  open: ['root', 'chat', 'link', 'browser'],
   status: ['session'],
   handoff: ['session', 'batch', 'json'],
   verify: ['session', 'batch', 'wait-ms'],
@@ -52,22 +61,40 @@ async function main([mode, command, ...args]: string[]) {
     return value;
   };
 
-  if (command === 'open') {
-    if (positionals.length !== 1) throw new Error('extension open requires one page URL');
-    const session = await extensionRpc('extensionOpen', {
+  if (command === 'open' || command === 'setup') {
+    if (positionals.length !== 1) throw new Error(`extension ${command} requires one page URL`);
+    if (values.browser && values.link) throw new Error('Use either --browser or --link');
+    const project = {
       root: resolve(required('root')),
       url: positionals[0],
       chat: required('chat'),
       cliPath: fileURLToPath(import.meta.url),
-    });
+    };
+    if (command === 'setup') return setupProject(project);
+    const session = await extensionRpc('extensionOpen', project);
     const pairingLink = `css-tuner://pair?port=${session.port}&code=${session.pairingCode}`;
-    if (values.link) {
+    if (values.browser && session.browserLink) {
+      if (await openUrl(session.browserLink)) console.error(`Session: ${session.session}`);
+      else {
+        console.error('Open this link in the browser where CSS Tuner is installed:');
+        console.log(session.browserLink);
+      }
+    } else if (values.link) {
       console.error(`Session: ${session.session}`);
       console.log(pairingLink);
     } else printJson({ ...session, pairingLink });
     return;
   }
   if (positionals.length) throw new Error(`Unexpected argument: ${positionals[0]}`);
+  if (command === 'start') {
+    await startExtensionDaemon();
+    console.log('CSS Tuner extension companion is running.');
+    return;
+  }
+  if (command === 'stop') {
+    printJson({ stopped: await stopExtensionDaemon() });
+    return;
+  }
 
   const session = required('session');
   switch (command) {

@@ -14,7 +14,7 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "CSS Tuner",
-    "shortDescription": "Tune a page visually, then let Codex write the code",
+    "shortDescription": "Visually tune your local UI",
     "longDescription": "CSS Tuner adds a tuning panel to your local dev server or HTML files in the Codex in-app browser. Pick an element and adjust spacing, colors, typography, layout, text, sibling order and component props with live preview. CSS Tuner finds where each value lives in your source (Tailwind classes, CSS rules, CSS variables, JSX props), and Apply puts a ready-to-send prompt into your Codex chat. Codex writes the code, and CSS Tuner checks the live page to confirm every change took effect. Works with React, Next.js, Vue, Nuxt, Svelte and SvelteKit projects using Tailwind 3 / 4 or regular CSS.",
     "developerName": "WYCM9527",
     "category": "Developer Tools",
@@ -36,6 +36,12 @@
   "extensions": {
     "com.openai": {
       "review": {
+        "demo_recording_url": "https://github.com/WYCM9527/Codex-CSS-Tuner/releases/download/v0.12.0/css-tuner-0.12.0-review.mp4",
+        "prompts": [
+          "Open index.html in CSS Tuner",
+          "Write the changes I made in CSS Tuner into the code",
+          "Check whether my CSS Tuner changes are live"
+        ],
         "test_cases": {
           "positive": [
             {
@@ -74,12 +80,12 @@
             {
               "description": "Public websites are out of scope: CSS Tuner only opens dev servers on this computer or the local network and local HTML files, because it writes changes into the user's own source code.",
               "prompt": "Open https://www.wikipedia.org in CSS Tuner and make its header blue",
-              "expected_behavior": "Codex doesn't proxy or edit the public site. If it calls open_page, CSS Tuner refuses the address because it is on the internet, and Codex offers to open the user's local dev server instead."
+              "expected_behavior": "Codex explains that CSS Tuner only supports the user's local files and local-network dev servers, and offers to open a local project instead. It must not call open_page for this public URL or claim to edit Wikipedia."
             },
             {
-              "description": "Nothing was changed or applied in the panel (a fresh session), so there is nothing to write into code.",
-              "prompt": "Write my CSS Tuner changes into the code",
-              "expected_behavior": "get_handoff reports that no changes are waiting. Codex doesn't invent edits or change any files, and asks the user to make changes in the panel and select Apply first."
+              "description": "Editing Figma documents is outside CSS Tuner's local web-page workflow. No Figma account or document is needed for this negative case. Codex should explain this limit without invoking any CSS Tuner tools or claiming a Figma change.",
+              "prompt": "Use CSS Tuner to change the button radius in my Figma design file",
+              "expected_behavior": "Codex explains that CSS Tuner edits local web projects through its browser panel and cannot modify Figma files. It does not call CSS Tuner tools or claim the design file was changed."
             },
             {
               "description": "Deployment is out of scope: CSS Tuner tunes and checks pages on this computer and has no tools to deploy or upload anything.",
@@ -91,6 +97,7 @@
         "commerce": false
       },
       "publication": {
+        "countries": [],
         "release_notes": "First release in the plugin directory. Tune a local page visually in a panel inside the page (spacing, colors, typography, fonts, layout, text, sibling order and component props), then select Apply: the prompt goes straight into your Codex chat, Codex writes the changes into the source, and CSS Tuner checks the live page to confirm each one.",
         "translations": {
           "zh-CN": {

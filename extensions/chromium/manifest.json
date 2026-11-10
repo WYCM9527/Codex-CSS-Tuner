@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CSS Tuner for Local Development",
-  "version": "0.13.1",
+  "version": "0.13.4",
   "description": "Inspect and preview changes to a local web project, then hand them to your bound Codex chat.",
   "minimum_chrome_version": "116",
   "permissions": ["storage"],
@@ -20,6 +20,11 @@
       "matches": ["http://127.0.0.1/*", "http://localhost/*"],
       "css": ["dock.css"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://127.0.0.1/_css_tuner/connect"],
+      "js": ["connect.js"],
       "run_at": "document_idle"
     }
   ],

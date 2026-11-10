@@ -91,6 +91,7 @@ export interface ExtensionOpenResult {
   url: string;
   port: number;
   pairingCode: string;
+  browserLink?: string;
   expiresAt: number;
   chat: string;
 }
@@ -115,7 +116,7 @@ export interface RpcMethods {
   close: { p: { root?: string; all?: boolean }; r: { closed: string[] } };
   settings: { p: { set?: Partial<SettingsData> }; r: SettingsData };
   shutdown: { p: Record<string, never>; r: boolean };
-  extensionOpen: { p: { root: string; url: string; chat: string; cliPath: string }; r: ExtensionOpenResult };
+  extensionOpen: { p: { root: string; url: string; chat: string; cliPath: string; direct?: boolean }; r: ExtensionOpenResult };
   extensionStatus: { p: { session: string }; r: ExtensionStatusResult };
   extensionHandoff: { p: { session: string; batch: string }; r: HandoffResult };
   extensionVerify: { p: { session: string; batch: string; waitMs?: number }; r: VerifyResult & { batch: string } };

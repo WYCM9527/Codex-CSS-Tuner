@@ -2,10 +2,11 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
+import { bindingTokens, EXTENSION_ORIGIN, type Binding } from './extension-bindings';
 import { CLOSED, SUPERSEDED } from './session';
 
 const HOST = '127.0.0.1';
-const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
+export const EXTENSION_CONNECT_PATH = '/_css_tuner/connect';
 const PAIRING_TTL = 5 * 60 * 1000;
 const AUTH_TIMEOUT = 5000;
 const MAX_PAIRING_BODY = 1024;
@@ -18,7 +19,10 @@ type Role = 'bridge' | 'panel';
 export interface ExtensionTransportOptions {
   /** Canonical origin of the page authorized by the local CLI. */
   pageOrigin: string;
+  pageUrl?: string;
   chat?: string;
+  root?: string;
+  remember?(extension: string): { binding: Binding; port: number };
   onBridge(ws: WebSocket): void;
   onPanel(ws: WebSocket): void;
 }
@@ -33,6 +37,28 @@ function matches(value: unknown, expected: string): boolean {
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
+}
+
+function connectPage(res: ServerResponse, zh: boolean): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  }).end(`<!doctype html>
+<html lang="${zh ? 'zh-CN' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS Tuner</title><style>
+:root{color-scheme:light dark;font:16px/1.55 system-ui}body{margin:0;padding:8vh 20px}main{margin:auto;max-width:38rem}h1{line-height:1.2}code{overflow-wrap:anywhere}button{font:inherit;padding:.55rem 1rem;cursor:pointer}button:disabled{cursor:default}
+</style></head><body><main>
+<h1>${zh ? '连接 CSS Tuner' : 'Connect CSS Tuner'}</h1>
+<p>${zh ? '即将打开的本地预览' : 'Local preview to open'}<br><code id="css-tuner-target"></code></p>
+<p id="css-tuner-project" hidden>${zh ? '项目目录' : 'Project folder'}<br><code id="css-tuner-root"></code></p>
+<p id="css-tuner-conversation" hidden>${zh ? 'Codex 对话' : 'Codex chat'}<br><code id="css-tuner-chat"></code></p>
+<p id="css-tuner-disclosure">${zh ? 'CSS Tuner 使用本地页面的地址、内容和编辑操作来预览改动。本机程序读取相关源码并保留本地编辑记录。草稿由你在 Codex 中决定是否发送。' : 'CSS Tuner uses the local page address, content and editing interactions to preview changes. Its companion reads relevant source files and keeps edit history on this computer. You decide whether to send the draft in Codex.'}</p>
+<p id="css-tuner-remember" hidden>${zh ? '同意后会保存此绑定。下次可在扩展菜单中连接此项目，也可以在那里忘记绑定。' : 'This saves the binding. Use the extension menu to connect to this project next time or forget the binding.'}</p>
+<button id="css-tuner-connect" aria-describedby="css-tuner-disclosure" disabled>${zh ? '同意并打开预览' : 'Agree and open preview'}</button>
+<p id="css-tuner-connect-status" role="status">${zh ? '请在已安装新版 CSS Tuner 扩展的浏览器中打开此链接。' : 'Open this link in a browser with the updated CSS Tuner extension installed.'}</p>
+</main></body></html>`);
 }
 
 /** Consume transport messages before handing application frames to PageSession or Controller. */
@@ -92,6 +118,7 @@ export class ExtensionTransport {
   static async listen(options: ExtensionTransportOptions): Promise<ExtensionTransport> {
     const url = new URL(options.pageOrigin);
     if (url.origin !== options.pageOrigin || !['http:', 'https:'].includes(url.protocol)) throw new Error('Expected a canonical HTTP(S) page origin');
+    if (options.pageUrl && new URL(options.pageUrl).origin !== options.pageOrigin) throw new Error('The preview must match its authorized origin');
     const transport = new ExtensionTransport(options);
     const { server } = transport;
     await new Promise<void>((resolve, reject) => {
@@ -115,11 +142,20 @@ export class ExtensionTransport {
     return this.pairing !== null;
   }
 
+  activate(binding: Binding): void {
+    this.pairing = { origin: binding.extension, tokens: bindingTokens(binding, this.sessionId) };
+  }
+
   private async request(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.headers.host !== `${HOST}:${this.port}`) return json(res, 403, { error: 'Forbidden host' });
     if (this.closing) return json(res, 503, { error: 'Session closed' });
     try {
+      if (req.method === 'GET' && req.url === EXTENSION_CONNECT_PATH && this.options.pageUrl) {
+        if (this.pairing || Date.now() >= this.pairingExpiresAt) return json(res, 410, { error: 'Pairing link unavailable' });
+        return connectPage(res, /^zh\b/i.test(req.headers['accept-language'] ?? ''));
+      }
       if (req.url === '/pair') return await this.pair(req, res);
+      if (req.url === `${EXTENSION_CONNECT_PATH}/details` && this.options.pageUrl) return await this.pair(req, res, this.options.pageUrl);
       json(res, 404, { error: 'Not found' });
     } catch {
       if (res.headersSent) res.destroy();
@@ -127,7 +163,7 @@ export class ExtensionTransport {
     }
   }
 
-  private async pair(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async pair(req: IncomingMessage, res: ServerResponse, previewUrl?: string): Promise<void> {
     const origin = req.headers.origin;
     if (!origin || !EXTENSION_ORIGIN.test(origin) || (this.pairing && this.pairing.origin !== origin)) {
       return json(res, 403, { error: 'Forbidden extension origin' });
@@ -152,7 +188,7 @@ export class ExtensionTransport {
       }
       chunks.push(chunk);
     }
-    let body: { code?: unknown; pageOrigin?: unknown } | null;
+    let body: { code?: unknown; pageOrigin?: unknown; pageUrl?: unknown; remember?: unknown } | null;
     try {
       body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     } catch {
@@ -161,12 +197,18 @@ export class ExtensionTransport {
     // Check after reading the request so concurrent attempts cannot both consume the code.
     if (this.closing) return json(res, 503, { error: 'Session closed' });
     if (this.pairing || Date.now() >= this.pairingExpiresAt) return json(res, 410, { error: 'Pairing code unavailable' });
-    if (body?.pageOrigin !== this.options.pageOrigin || !matches(body.code, this.pairingCode)) {
+    if (!matches(body?.code, this.pairingCode)) return json(res, 403, { error: 'Pairing not authorized' });
+    if (previewUrl) return json(res, 200, { url: previewUrl, root: this.options.root, chat: this.options.chat, canRemember: this.options.remember ? true : undefined });
+    if (body?.pageOrigin !== this.options.pageOrigin || (body.pageUrl !== undefined && body.pageUrl !== this.options.pageUrl)) {
       return json(res, 403, { error: 'Pairing not authorized' });
     }
-    const tokens = { bridge: secret(), panel: secret() };
+    const saved = body.remember === true ? this.options.remember?.(origin) : undefined;
+    const tokens = saved ? bindingTokens(saved.binding, this.sessionId) : { bridge: secret(), panel: secret() };
     this.pairing = { origin, tokens };
-    json(res, 200, { sessionId: this.sessionId, bridgeToken: tokens.bridge, panelToken: tokens.panel, ...(this.options.chat ? { chat: this.options.chat } : {}) });
+    json(res, 200, {
+      sessionId: this.sessionId, bridgeToken: tokens.bridge, panelToken: tokens.panel, chat: this.options.chat,
+      binding: saved ? { id: saved.binding.id, key: saved.binding.key, port: saved.port, root: saved.binding.root } : undefined,
+    });
   }
 
   private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {

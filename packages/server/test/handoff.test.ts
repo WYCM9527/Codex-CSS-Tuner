@@ -17,7 +17,7 @@ vi.mock('../src/system', async (importActual) => ({
   openCodexLink: vi.fn(async () => true),
 }));
 
-const THREAD = '00000000-0000-4000-8000-000000000001';
+const THREAD = '01a1b013-4440-7813-be03-085b9caeea30';
 
 const record: Omit<ChangeRecord, 'id' | 'createdAt' | 'status'> = {
   kind: 'style',

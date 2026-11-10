@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: November 9, 2026 · [简体中文](#隐私政策)
+Last updated: November 10, 2026 · [简体中文](#隐私政策)
 
 CSS Tuner is an open-source project published by WYCM9527 ("we"). It includes a Codex plugin and a Chrome extension with a macOS companion. This policy explains what each version handles, where the data goes, and how long it is kept.
 
@@ -38,7 +38,7 @@ CSS Tuner returns change descriptions to Codex through its MCP tools: the elemen
 
 ## Chrome extension preview
 
-The Chrome extension can inspect HTTP pages on `localhost` and `127.0.0.1`. Before pairing the active tab with the separately installed macOS companion, the extension shows what data it uses and asks you to agree. It uses the paired page's URL, element structure, page text, styles, and editing interactions to preview changes and identify the relevant source code. It exchanges page and edit data with the companion over authenticated connections on `127.0.0.1`. Pairing credentials are kept in extension session storage. The companion reads source in the project selected in the CLI and stores batch history and snapshots in `~/.css-tuner-extension` or the folder set by `CSS_TUNER_EXTENSION_DATA`.
+The Chrome extension can inspect HTTP pages on `localhost` and `127.0.0.1`. Before pairing the active tab with the separately installed macOS companion, the extension shows what data it uses and asks you to agree. It uses the paired page's URL, element structure, page text, styles, and editing interactions to preview changes and identify the relevant source code. It exchanges page and edit data with the companion over authenticated connections on `127.0.0.1`. For setup from the toolbar, a temporary loopback listener checks the local development origin and a one-time request credential. Project details are shared with the extension after you approve the request in the terminal. Active connection credentials are kept in extension session storage. When you agree to save a project binding, the exact local development origin, project folder, target Codex chat, and a reconnect credential are saved in extension-owned storage in this browser profile and in the companion’s local data folder. Use the toolbar to disconnect a tab or forget the saved binding. The companion reads source in the project selected in the CLI and stores batch history and snapshots in `~/.css-tuner-extension` or the folder set by `CSS_TUNER_EXTENSION_DATA`.
 
 After you confirm Apply or Revert, the companion opens the bound local Codex chat with a draft containing the change and source references. You decide when to submit it in Codex. The extension and companion have no publisher-operated service or analytics. To remove extension data, uninstall the extension, close the companion session, and delete its local data folder.
 
@@ -70,7 +70,7 @@ Open an issue at <https://github.com/WYCM9527/Codex-CSS-Tuner/issues>.
 
 # 隐私政策
 
-最后更新：2026 年 11 月 9 日
+最后更新：2026 年 11 月 10 日
 
 CSS Tuner 是 WYCM9527（下称“我们”）发布的开源项目，包括 Codex 插件、Chrome 扩展及其 macOS 本机程序。本政策说明各版本处理哪些数据、数据去向和保留多久。
 
@@ -108,7 +108,7 @@ CSS Tuner 通过 MCP 工具把改动说明返回给 Codex：涉及的元素、�
 
 ## Chrome 扩展预览版
 
-Chrome 扩展的访问范围是 `localhost` 和 `127.0.0.1` 上的 HTTP 页面。将当前标签页与单独安装的 macOS 本机程序配对前，扩展会说明数据用途并请你确认同意。扩展使用已配对页面的 URL、元素结构、页面文字、样式和编辑操作来预览改动和定位源码。扩展通过 `127.0.0.1` 上的鉴权连接与本机程序交换页面和编辑数据，配对凭据保存在扩展的会话存储中。本机程序读取 CLI 选定的项目源码，并把批次和快照保存在 `~/.css-tuner-extension` 或 `CSS_TUNER_EXTENSION_DATA` 指定的目录中。
+Chrome 扩展的访问范围是 `localhost` 和 `127.0.0.1` 上的 HTTP 页面。将当前标签页与单独安装的 macOS 本机程序配对前，扩展会说明数据用途并请你确认同意。扩展使用已配对页面的 URL、元素结构、页面文字、样式和编辑操作来预览改动和定位源码。扩展通过 `127.0.0.1` 上的鉴权连接与本机程序交换页面和编辑数据，当前连接的凭据保存在扩展的会话存储中。通过工具栏设置时，临时回环服务会核对本地开发来源及一次性请求凭据。你在终端批准请求后，本机程序才向扩展提供项目详情。经你同意保存绑定后，准确的本地开发来源、项目目录、目标 Codex 对话和重连凭据会保存在此浏览器配置的扩展专用存储及本机程序的数据目录中。你可以在扩展菜单断开标签页或忘记已保存的绑定。本机程序读取 CLI 选定的项目源码，并把批次和快照保存在 `~/.css-tuner-extension` 或 `CSS_TUNER_EXTENSION_DATA` 指定的目录中。
 
 用户确认应用或还原后，本机程序在已绑定的本地 Codex 对话中填入带改动和源码位置的草稿，由用户在 Codex 里决定是否发送。扩展和本机程序都没有发布者运营的服务器或统计服务。用户可以卸载扩展、关闭本机会话并删除对应的数据目录来清理数据。
 

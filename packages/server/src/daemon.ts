@@ -6,6 +6,7 @@ import { getLocale, setLocale, t, type ChangeStatus } from '@css-tuner/protocol'
 import { disposeCompletions } from './completions';
 import { Controller } from './controller';
 import { isAlive, readInfo } from './daemon-info';
+import { BINDING_PATH, bindingProof, EXTENSION_ORIGIN } from './extension-bindings';
 import { ExtensionSessions } from './extension-sessions';
 import { Hub, type Site } from './hub';
 import { bundleDir, dataDir, extensionDataDir, projectDir } from './paths';
@@ -123,7 +124,21 @@ export class Daemon {
       this.log('another CSS Tuner service is running');
       return false;
     }
-    const port = await this.listenRpc();
+    const portFile = join(this.data, 'extension-port');
+    let requested = 0;
+    if (this.extensionSessions) {
+      try {
+        requested = Number(readFileSync(portFile, 'utf8'));
+        if (!Number.isInteger(requested) || requested < 1 || requested > 65535) throw new Error('Invalid saved CSS Tuner companion port.');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+    const port = await this.listenRpc(requested);
+    if (this.extensionSessions) {
+      if (!requested) writeFileSync(portFile, String(port), { mode: 0o600 });
+      this.extensionSessions.browserPort = port;
+    }
     const info: DaemonInfo = { pid: process.pid, port, token: this.token, version: VERSION, startedAt: Date.now() };
     writeFileSync(join(this.data, 'daemon.json'), JSON.stringify(info), { mode: 0o600 });
     this.log(`CSS Tuner ${VERSION} service on 127.0.0.1:${port} (pid ${process.pid}, data ${this.data})`);
@@ -135,12 +150,12 @@ export class Daemon {
     return true;
   }
 
-  private listenRpc(): Promise<number> {
+  private listenRpc(port: number): Promise<number> {
     const server = createServer((req, res) => void this.serveRpc(req, res));
     this.rpcServer = server;
     return new Promise((resolve, reject) => {
       server.once('error', reject);
-      server.listen(0, '127.0.0.1', () => {
+      server.listen(port, '127.0.0.1', () => {
         const addr = server.address();
         resolve(addr && typeof addr === 'object' ? addr.port : 0);
       });
@@ -154,6 +169,7 @@ export class Daemon {
       res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
     };
     if (req.headers.host !== `127.0.0.1:${port}`) return reply(403, { ok: false, error: 'forbidden host' });
+    if (req.url === BINDING_PATH && this.extensionSessions) return this.serveBinding(req, res, this.extensionSessions);
     if (req.method !== 'POST' || req.url !== '/rpc') return reply(404, { ok: false, error: 'not found' });
     if (this.stopping) return reply(503, { ok: false, error: 'stopping' });
     const auth = String(req.headers.authorization ?? '');
@@ -171,6 +187,47 @@ export class Daemon {
       reply(200, { ok: true, result });
     } catch (e) {
       reply(200, { ok: false, error: (e as Error).message });
+    }
+  }
+
+  private async serveBinding(req: IncomingMessage, res: ServerResponse, sessions: ExtensionSessions) {
+    const reply = (status: number, body: unknown) => {
+      res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
+    };
+    const origin = req.headers.origin;
+    if (!origin || !EXTENSION_ORIGIN.test(origin)) return reply(403, { error: 'Forbidden extension origin' });
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' }).end();
+      return;
+    }
+    if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json') return reply(405, { error: 'Use a JSON POST' });
+    if (this.stopping) return reply(503, { error: 'The companion is stopping' });
+    let input: unknown;
+    try {
+      input = JSON.parse(await readBody(req, 2048));
+    } catch {
+      if (!res.destroyed) reply(400, { error: 'Invalid binding request' });
+      return;
+    }
+    const grant = sessions.bindings.authorize(origin, input);
+    if (!grant) return reply(403, { error: 'Binding not authorized' });
+    const { binding, action, nonce } = grant;
+    const signed = (result: unknown) => {
+      const payload = JSON.stringify(result);
+      reply(200, { payload, proof: bindingProof(binding.key, ['response', nonce, payload]) });
+    };
+    try {
+      this.lastCall = Date.now();
+      if (action === 'forget') {
+        await sessions.forget(binding);
+        signed({ ok: true });
+      } else {
+        signed({ ok: true, ...await sessions.reconnect(binding) });
+      }
+    } catch (error) {
+      signed({ ok: false, error: (error as Error).message });
     }
   }
 
@@ -349,7 +406,7 @@ export class Daemon {
 
   private checkIdle() {
     const now = Date.now();
-    if (this.hub.active() > 0 || this.extensionSessions?.active) return;
+    if (this.hub.active() > 0 || this.extensionSessions?.active || this.extensionSessions?.bindings.saved) return;
     const recent = Math.max(this.lastCall, ...[...this.controllers.values()].map((c) => c.lastActive));
     if (now - recent > IDLE_MS) {
       this.log('idle, exiting');

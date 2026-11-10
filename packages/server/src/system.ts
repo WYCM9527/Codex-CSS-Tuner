@@ -95,7 +95,7 @@ export async function reveal(path: string): Promise<boolean> {
   return launch('xdg-open', [dir ? path : dirname(path)]);
 }
 
-function openUrl(url: string): Promise<boolean> {
+export function openUrl(url: string): Promise<boolean> {
   if (MAC) return run('open', [url]);
   if (WIN) return launch('cmd.exe', ['/c', 'start', '', url]);
   return launch('xdg-open', [url]);

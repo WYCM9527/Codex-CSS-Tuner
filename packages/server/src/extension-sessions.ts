@@ -1,11 +1,12 @@
 import { realpathSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { getLocale } from '@css-tuner/protocol';
 import type { Batch } from './applier';
+import { ExtensionBindings, type Binding } from './extension-bindings';
 import { Controller } from './controller';
-import { ExtensionTransport } from './extension-transport';
+import { EXTENSION_CONNECT_PATH, ExtensionTransport } from './extension-transport';
 import { Site, type Hub } from './hub';
-import { projectDir } from './paths';
+import { bundleDir, projectDir } from './paths';
 import { summarize, type RpcMethods } from './rpc';
 import type { Settings } from './settings';
 import { codexLink, openCodexLink, THREAD_ID } from './system';
@@ -17,6 +18,7 @@ interface ActiveSession {
   url: URL;
   chat: string;
   expires: NodeJS.Timeout;
+  bindingId?: string;
 }
 
 function localPage(raw: string): URL {
@@ -52,19 +54,24 @@ export function extensionDraft(batch: Pick<Batch, 'id' | 'prompt'>, session: str
 }
 
 export class ExtensionSessions {
+  readonly bindings: ExtensionBindings;
+  browserPort = 0;
   private readonly sessions = new Map<string, ActiveSession>();
   private readonly roots = new Set<string>();
   private disposed = false;
 
-  constructor(private readonly deps: { data: string; hub: Hub; settings: Settings; log: (message: string) => void }) {}
+  constructor(private readonly deps: { data: string; hub: Hub; settings: Settings; log: (message: string) => void }) {
+    this.bindings = new ExtensionBindings(deps.data);
+  }
 
-  async open({ root: input, url: raw, chat: link, cliPath }: RpcMethods['extensionOpen']['p']): Promise<RpcMethods['extensionOpen']['r']> {
+  async open({ root: input, url: raw, chat: link, cliPath, direct }: RpcMethods['extensionOpen']['p'], saved?: Binding): Promise<RpcMethods['extensionOpen']['r']> {
     const url = localPage(raw);
     const thread = existingChat(link);
     const chat = `codex://threads/${thread}`;
     if (process.platform !== 'darwin') throw new Error('This preview requires Codex desktop on macOS.');
     if (!isAbsolute(cliPath)) throw new Error('Expected the absolute path to the companion CLI.');
     const root = realpathSync(input);
+    if (saved && root !== saved.root) throw new Error('The authorized project folder has moved. Set up the project again.');
     if (!statSync(root).isDirectory()) throw new Error('The project root must be a directory.');
     if (this.disposed || this.roots.has(root)) throw new Error('Close the current extension session for this project before opening another.');
     this.roots.add(root);
@@ -73,11 +80,19 @@ export class ExtensionSessions {
       let active: ActiveSession | undefined;
       transport = await ExtensionTransport.listen({
         pageOrigin: url.origin,
+        pageUrl: url.href,
         chat,
+        root,
+        remember: this.browserPort && !saved ? (extension) => {
+          const binding = this.bindings.save(extension, { root, url: url.href, chat });
+          active!.bindingId = binding.id;
+          return { binding, port: this.browserPort };
+        } : undefined,
         onBridge: (ws) => active?.site.session.attach(ws),
         onPanel: (ws) => active?.controller.attachPanel(ws),
       });
       if (this.disposed) throw new Error('The companion is stopping.');
+      if (saved && !this.bindings.has(saved)) throw new Error('The saved binding was removed.');
       const session = transport.sessionId;
       const site = new Site({ key: session, kind: 'proxy', project: root, target: url.origin, port: transport.port, token: '' }, this.deps.log, url.origin);
       const controller = new Controller({
@@ -105,14 +120,36 @@ export class ExtensionSessions {
         if (!transport?.paired) void this.close(session);
       }, Math.max(0, transport.pairingExpiresAt - Date.now()));
       expires.unref();
-      active = { transport, controller, site, url, chat, expires };
+      active = { transport, controller, site, url, chat, expires, bindingId: saved?.id };
+      if (saved) transport.activate(saved);
       this.sessions.set(session, active);
-      return { session, url: url.href, port: transport.port, pairingCode: transport.pairingCode, expiresAt: transport.pairingExpiresAt, chat };
+      const browserLink = direct || saved ? undefined : `http://127.0.0.1:${transport.port}${EXTENSION_CONNECT_PATH}#${transport.pairingCode}`;
+      return { session, url: url.href, port: transport.port, pairingCode: transport.pairingCode, expiresAt: transport.pairingExpiresAt, chat, browserLink };
     } catch (error) {
       this.roots.delete(root);
       await transport?.close();
       throw error;
     }
+  }
+
+  async reconnect(binding: Binding) {
+    if (realpathSync(binding.root) !== binding.root || !statSync(binding.root).isDirectory()) {
+      throw new Error('The authorized project folder has moved. Set up the project again.');
+    }
+    const current = this.byBinding(binding.id);
+    if (current) return { sessionId: current.transport.sessionId, port: current.transport.port, chat: current.chat };
+    const { session, port, chat } = await this.open({ ...binding, cliPath: join(bundleDir(), 'cli.mjs') }, binding);
+    return { sessionId: session, port, chat };
+  }
+
+  async forget(binding: Binding) {
+    this.bindings.remove(binding);
+    const current = this.byBinding(binding.id);
+    if (current) await this.close(current.transport.sessionId);
+  }
+
+  private byBinding(id: string) {
+    return [...this.sessions.values()].find((active) => active.bindingId === id);
   }
 
   private requireSession(session: string): ActiveSession {
