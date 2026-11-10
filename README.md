@@ -97,7 +97,7 @@ Cursor 版 CSS Tuner 的桥接也可能在同一个页面里（在 Cursor 的内
 
 1. 改 `plugins/css-tuner/.codex-plugin/plugin.json` 和 `packages/server/package.json` 的 `version`（两处要一致，`check:plugin` 会查），在 `CHANGELOG.md` 里写更新内容，`pnpm build` 后一起提交。
 2. 推送同名标签（如 `v0.11.0`），`Release` 工作流会检查版本号、测试、确认构建产物是最新的，创建 GitHub Release，附上插件文件夹的 zip 和示例页 `css-tuner-demo.zip`（审核用例按 `releases/latest/download/css-tuner-demo.zip` 引用它）。
-3. 用户通过 `codex plugin marketplace add WYCM9527/Codex-CSS-Tuner` 拿到的是默认分支上的插件（`--ref <标签>` 固定在某个版本）；`codex plugin marketplace upgrade codex-css-tuner` 刷新之后，再 `codex plugin add css-tuner@codex-css-tuner` 装上新版本。
+3. 用户添加 `WYCM9527/Codex-CSS-Tuner` 这个插件市场（Codex 应用里的“添加插件市场”，或 `codex plugin marketplace add`）拿到的是默认分支上的插件，“Git 引用”或 `--ref <标签>` 固定在某个版本；在设置的“市场”里点“升级”或运行 `codex plugin marketplace upgrade codex-css-tuner`，已经装上的插件会跟着换成新版本，不用再装一次。
 
 ## 提交到 OpenAI 插件目录
 

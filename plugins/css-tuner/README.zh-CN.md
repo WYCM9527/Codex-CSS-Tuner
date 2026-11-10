@@ -60,20 +60,25 @@
 
 ## 安装
 
-把这个仓库添加为插件市场，再安装插件：
+在 Codex 应用里点几下就能装好：
+
+1. 点左边栏的“插件”图标，再点页面右上角的“添加”，选“添加插件市场”。
+2. “来源”填 `WYCM9527/Codex-CSS-Tuner`，“Git 引用”和“稀疏路径”留空，点“添加市场”。
+3. 切到插件页的“个人”标签，点 CSS Tuner 右边的“+”。
+
+用终端的话，运行下面两条命令效果一样；也可以把它们发给 Codex，让它替你运行：
 
 ```sh
 codex plugin marketplace add WYCM9527/Codex-CSS-Tuner
 codex plugin add css-tuner@codex-css-tuner
 ```
 
-这样装的是默认分支上的版本，想固定在某个发布版本就加上 `--ref v0.11.1`。用本地克隆的话把路径传进去：`codex plugin marketplace add /path/to/Codex-CSS-Tuner`。装好后开一个新的 Codex 对话（插件没出现就重启一下 Codex 应用）。项目里不需要装任何东西。
+这样装的是默认分支上的版本。想固定在某个发布版本，就在“Git 引用”里填它的标签，比如 `v0.13.0`（命令行加 `--ref v0.13.0`）。用本地克隆的话，“来源”填克隆的路径（命令行：`codex plugin marketplace add /path/to/Codex-CSS-Tuner`）。装好后开一个新的 Codex 对话（插件没出现就重启一下 Codex 应用）。项目里不需要装任何东西。
 
-更新时先刷新插件市场，再装一次：
+更新时在插件页右上角点齿轮图标（“管理”），切到“市场”，在 CSS Tuner 这一行点“升级”，已经装上的插件会跟着换成新版本。命令行是：
 
 ```sh
 codex plugin marketplace upgrade codex-css-tuner
-codex plugin add css-tuner@codex-css-tuner
 ```
 
 ## 快速开始

@@ -60,20 +60,25 @@ The page must run in development mode: locating an element's source relies on Re
 
 ## Install
 
-Add this repository as a plugin marketplace, then install the plugin:
+In the Codex app it takes a few clicks:
+
+1. Click **Plugins** in the left sidebar, then **Add** at the top right of the page, and choose **Add a marketplace**.
+2. Enter `WYCM9527/Codex-CSS-Tuner` as the **Source**, leave **Git ref** and **Sparse paths** empty, and click **Add marketplace**.
+3. On the **Personal** tab of the plugins page, click **+** next to CSS Tuner.
+
+From a terminal, these two commands do the same. You can also send them to Codex and let it run them:
 
 ```sh
 codex plugin marketplace add WYCM9527/Codex-CSS-Tuner
 codex plugin add css-tuner@codex-css-tuner
 ```
 
-This follows the default branch; add `--ref v0.11.1` to stay on a release. From a local clone, pass its path instead: `codex plugin marketplace add /path/to/Codex-CSS-Tuner`. Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
+This follows the default branch. To stay on a release, enter its tag as the **Git ref**, such as `v0.13.0` (`--ref v0.13.0` on the command line). From a local clone, use its path as the **Source** (`codex plugin marketplace add /path/to/Codex-CSS-Tuner`). Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
 
-To update, refresh the marketplace and install again:
+To update, click the gear icon (**Manage**) at the top right of the plugins page, switch to **Marketplace** and click **Upgrade** on the CSS Tuner row. The installed plugin moves to the new version. From a terminal:
 
 ```sh
 codex plugin marketplace upgrade codex-css-tuner
-codex plugin add css-tuner@codex-css-tuner
 ```
 
 ## Quick start
