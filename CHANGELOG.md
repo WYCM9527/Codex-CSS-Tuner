@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0
 
 - Fewer hints and markers in the panel:
   - Layers no longer shows the element's position with Move up / Move down and a reset button, or the hint under the tree. To reorder, drag the element's row in Layers or the handle next to its tag on the page.
