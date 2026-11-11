@@ -88,6 +88,8 @@ codex plugin marketplace upgrade codex-css-tuner
 3. Drag the values in the panel; the page updates as you go, and each change appears in the list at the top of the panel, where Undo and Redo step back and forth through them. To change text, edit it in the Content section or double-click it on the page. To move an element among its siblings, drag the handle next to its tag on the page or its row in Layers. To change the props of its component, use the Component props section.
 4. Click **Apply All** (or **Apply** on one change). The description of the batch appears in the Codex composer; check it and send. Once Codex has changed the code and the page has updated, the change in the list turns **Applied**. Afterwards, **Revert** any single change.
 
+Step 1 doesn't need those exact words, because Codex decides for itself whether to use CSS Tuner. It does when you mention CSS Tuner or say you want to adjust the styling (for example **open this project's preview, I want to tweak the spacing and colors**). If you only ask it to **open this project's preview**, it usually opens the page in the in-app browser without the panel. The surest way is to type `@` in the composer, pick CSS Tuner under **Plugins**, and then say what you want (type `css` after the `@` to filter the list).
+
 For plain HTML, ask Codex to open an HTML file or folder in CSS Tuner, and it serves the files itself. To try it without a project of your own, download the [demo page](https://github.com/WYCM9527/Codex-CSS-Tuner/releases/latest/download/css-tuner-demo.zip), unzip it, start a Codex chat in that folder and ask Codex to **open index.html in CSS Tuner**.
 
 ## Tools
