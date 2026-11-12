@@ -74,7 +74,7 @@ codex plugin marketplace add WYCM9527/Codex-CSS-Tuner
 codex plugin add css-tuner@codex-css-tuner
 ```
 
-这样装的是默认分支上的版本。想固定在某个发布版本，就在“Git 引用”里填它的标签，比如 `v0.13.0`（命令行加 `--ref v0.13.0`）。用本地克隆的话，“来源”填克隆的路径（命令行：`codex plugin marketplace add /path/to/Codex-CSS-Tuner`）。装好后开一个新的 Codex 对话（插件没出现就重启一下 Codex 应用）。项目里不需要装任何东西。
+这样装的是默认分支上的版本。想固定在某个发布版本，就在“Git 引用”里填它的标签，比如 `v0.14.0`（命令行加 `--ref v0.14.0`）。用本地克隆的话，“来源”填克隆的路径（命令行：`codex plugin marketplace add /path/to/Codex-CSS-Tuner`）。装好后开一个新的 Codex 对话（插件没出现就重启一下 Codex 应用）。项目里不需要装任何东西。
 
 更新时在插件页右上角点齿轮图标（“管理”），切到“市场”，在 CSS Tuner 这一行点“升级”，已经装上的插件会跟着换成新版本。命令行是：
 

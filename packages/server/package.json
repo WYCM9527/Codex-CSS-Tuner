@@ -1,6 +1,6 @@
 {
   "name": "@css-tuner/server",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "CSS Tuner for Codex: MCP server, background service and local proxy of the css-tuner plugin.",
   "private": true,
   "license": "MIT",

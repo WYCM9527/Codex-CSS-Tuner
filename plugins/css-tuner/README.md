@@ -74,7 +74,7 @@ codex plugin marketplace add WYCM9527/Codex-CSS-Tuner
 codex plugin add css-tuner@codex-css-tuner
 ```
 
-This follows the default branch. To stay on a release, enter its tag as the **Git ref**, such as `v0.13.0` (`--ref v0.13.0` on the command line). From a local clone, use its path as the **Source** (`codex plugin marketplace add /path/to/Codex-CSS-Tuner`). Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
+This follows the default branch. To stay on a release, enter its tag as the **Git ref**, such as `v0.14.0` (`--ref v0.14.0` on the command line). From a local clone, use its path as the **Source** (`codex plugin marketplace add /path/to/Codex-CSS-Tuner`). Then start a new Codex conversation (restart the Codex app if the plugin doesn't show up). Nothing needs to be installed in your project.
 
 To update, click the gear icon (**Manage**) at the top right of the plugins page, switch to **Marketplace** and click **Upgrade** on the CSS Tuner row. The installed plugin moves to the new version. From a terminal:
 

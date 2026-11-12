@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
 
 - Pick Element stays on. Click it once and keep picking: the element under the pointer gets a dashed outline, a click selects it, and clicking another element switches to it. Click the button again to stop; Esc no longer stops picking. While you pick, clicks don't reach the page. Picking is still on after the page reloads, goes to another address or moves to another tab.
 - The selected element is no longer outlined all the time. Move the pointer off it and back to see its outline, source location and reorder handle, with the other elements rendered by the same code marked on the page. The colored margin and padding areas are gone.

@@ -1,6 +1,6 @@
 {
   "name": "css-tuner",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Tune a running web page visually (styles, text, element order, component props) in a panel inside the page, then let Codex write the changes into your source code and check them on the page.",
   "author": {
     "name": "WYCM9527",
