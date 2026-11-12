@@ -17,7 +17,7 @@ The tools come from the `css-tuner` MCP server: `open_page`, `status`, `get_hand
    - CSS Tuner refuses public websites: it only opens dev servers on this computer or the local network. If the user asks to tune a site on the internet, explain that CSS Tuner changes their own local project, and offer to open its dev server instead.
 2. Call `open_page` with `projectRoot` (absolute path) and `url`. It returns a local address such as `http://localhost:15173/pricing`: the same site through a local proxy that adds the panel. Hot reload keeps working.
 3. Open that address in the in-app browser with the Browser plugin (`control-in-app-browser`). If you cannot control the browser, give the user the link and ask them to open it in the Codex in-app browser. When CSS Tuner can't reach the Codex app (for example in the Codex CLI), Apply copies the full prompt to the clipboard instead.
-4. Tell the user briefly how to use it: pick an element in the panel (or on the page), tune it, then press **Apply** or **Apply All** and send the message that appears in the composer.
+4. Tell the user briefly how to use it: click **Pick Element** in the panel and click an element on the page, tune it, then press **Apply** or **Apply All** and send the message that appears in the composer. Picking stays on until they click the button again (it then reads **Stop Picking**): clicking another element switches to it, and the page doesn't respond to clicks meanwhile.
 
 Don't drive the panel yourself unless the user asks you to; the user makes the visual decisions.
 
@@ -47,5 +47,6 @@ Reverts work the same way: the instructions ask you to restore the original valu
 - `open_page` warns that the dev server isn't responding: start it, the page retries by itself.
 - `verify` says the page isn't connected: the CSS Tuner page was closed or navigated away. Open the URL from `open_page` again.
 - The panel says CSS Tuner is in use in another tab: only one tab per site is connected; the user can click the notice to switch.
+- Links and buttons on the page don't respond: Pick Element or the ruler is on, and while either is on, clicks don't reach the page. The user clicks **Stop Picking** in the panel (Esc turns the ruler off), or folds the panel away, which turns both off.
 - The address bar shows `/__css_tuner__/frame?u=…`: that's normal. While the panel is docked, the page runs in a frame next to it and is laid out at the width that's left. If the page misbehaves in the frame, the user can switch the panel to float over the page with the button at the top of the panel.
 - Nothing appeared in the composer after Apply: the full prompt is on the clipboard too. Ask the user to paste it, or call `get_handoff` directly.

@@ -31,7 +31,15 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
           {connected ? t('panel.reload') : t('panel.open')}
         </button>
         <LocaleSwitch state={state} send={send} />
-        {shell && <ShellButtons shell={shell} />}
+        {shell && (
+          <ShellButtons
+            shell={shell}
+            beforeCollapse={() => {
+              if (state.pickOn) send({ t: 'pick', on: false });
+              if (state.measureOn) send({ t: 'measure', on: false });
+            }}
+          />
+        )}
       </form>
       {connected && (
         <div className="tool-row">
@@ -54,8 +62,11 @@ export function Toolbar({ state, send, shell }: { state: PanelState; send: Send;
   );
 }
 
-/** 页内面板：停靠在旁边还是浮在页面上（换的时候页面会重新加载）、换到页面另一边、收起成角落里的小按钮 */
-function ShellButtons({ shell }: { shell: Shell }) {
+/**
+ * 页内面板：停靠在旁边还是浮在页面上（换的时候页面会重新加载）、换到页面另一边、收起成角落里的小按钮。
+ * 收起前先关掉自由选择和标尺：收起后看不见按钮，页面上的点击却还被拦着
+ */
+function ShellButtons({ shell, beforeCollapse }: { shell: Shell; beforeCollapse: () => void }) {
   const [side, setSide] = useState(shell.side);
   const [floating, setFloating] = useState(shell.floating);
   const other = side === 'right' ? 'left' : 'right';
@@ -87,7 +98,16 @@ function ShellButtons({ shell }: { shell: Shell }) {
       >
         <Icon.dock side={other} />
       </button>
-      <button type="button" className="icon-btn" title={t('panel.shell.collapse')} aria-label={t('panel.shell.collapse')} onClick={() => shell.collapse()}>
+      <button
+        type="button"
+        className="icon-btn"
+        title={t('panel.shell.collapse')}
+        aria-label={t('panel.shell.collapse')}
+        onClick={() => {
+          beforeCollapse();
+          shell.collapse();
+        }}
+      >
         <Icon.collapse />
       </button>
     </>

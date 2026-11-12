@@ -10,9 +10,9 @@ var __cssTunerBridge = (() => {
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
-      for (let key3 of __getOwnPropNames(from))
-        if (!__hasOwnProp.call(to, key3) && key3 !== except)
-          __defProp(to, key3, { get: () => from[key3], enumerable: !(desc = __getOwnPropDesc(from, key3)) || desc.enumerable });
+      for (let key2 of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key2) && key2 !== except)
+          __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
     }
     return to;
   };
@@ -34,16 +34,16 @@ var __cssTunerBridge = (() => {
   }
   function metadata(input) {
     if (!input) return void 0;
-    const out = {};
+    const out2 = {};
     let n = 0;
     for (const [k, v] of Object.entries(input)) {
       if (n >= 6 || !/^[A-Za-z][A-Za-z0-9 _-]{0,63}$/.test(k)) continue;
-      if (typeof v === "string") out[k] = v.slice(0, 256);
-      else if (typeof v === "number" ? Number.isFinite(v) : typeof v === "boolean" || v === null) out[k] = v;
+      if (typeof v === "string") out2[k] = v.slice(0, 256);
+      else if (typeof v === "number" ? Number.isFinite(v) : typeof v === "boolean" || v === null) out2[k] = v;
       else continue;
       n++;
     }
-    return n && new TextEncoder().encode(JSON.stringify(out)).length <= 2048 ? out : void 0;
+    return n && new TextEncoder().encode(JSON.stringify(out2)).length <= 2048 ? out2 : void 0;
   }
   function annotationAvailable() {
     return typeof api()?.request === "function";
@@ -334,7 +334,7 @@ var __cssTunerBridge = (() => {
 
   // ../protocol/src/selectors.ts
   function splitTopLevel(s, sep = ",") {
-    const out = [];
+    const out2 = [];
     let depth = 0;
     let quote = null;
     let last = 0;
@@ -352,12 +352,12 @@ var __cssTunerBridge = (() => {
       else if (ch === "(" || ch === "[") depth++;
       else if (ch === ")" || ch === "]") depth--;
       else if (ch === sep && depth === 0) {
-        out.push(s.slice(last, i).trim());
+        out2.push(s.slice(last, i).trim());
         last = i + 1;
       }
     }
-    out.push(s.slice(last).trim());
-    return out.filter(Boolean);
+    out2.push(s.slice(last).trim());
+    return out2.filter(Boolean);
   }
   function resolveNested(parent, sel) {
     if (!parent) return sel;
@@ -414,27 +414,27 @@ var __cssTunerBridge = (() => {
   }
   function stopPositions(stops) {
     const n = stops.length;
-    const out = stops.map((s) => s.pos);
+    const out2 = stops.map((s) => s.pos);
     if (!n) return [];
-    if (out[0] === null) out[0] = 0;
-    if (out[n - 1] === null) out[n - 1] = 100;
+    if (out2[0] === null) out2[0] = 0;
+    if (out2[n - 1] === null) out2[n - 1] = 100;
     let max = -Infinity;
     for (let i = 0; i < n; i++) {
-      const p = out[i];
+      const p = out2[i];
       if (p === null) continue;
-      if (p < max) out[i] = max;
+      if (p < max) out2[i] = max;
       else max = p;
     }
     for (let i = 1; i < n; i++) {
-      if (out[i] !== null) continue;
+      if (out2[i] !== null) continue;
       let j = i;
-      while (out[j] === null) j++;
-      const a = out[i - 1];
-      const b = out[j];
-      for (let k = i; k < j; k++) out[k] = a + (b - a) * (k - i + 1) / (j - i + 1);
+      while (out2[j] === null) j++;
+      const a = out2[i - 1];
+      const b = out2[j];
+      for (let k = i; k < j; k++) out2[k] = a + (b - a) * (k - i + 1) / (j - i + 1);
       i = j;
     }
-    return out;
+    return out2;
   }
   var toDeg = (n, unit) => {
     const u = unit.toLowerCase();
@@ -505,7 +505,7 @@ var __cssTunerBridge = (() => {
 
   // ../protocol/src/assets.ts
   function parseSrcset(srcset) {
-    const out = [];
+    const out2 = [];
     const n = srcset.length;
     let i = 0;
     while (i < n) {
@@ -538,9 +538,9 @@ var __cssTunerBridge = (() => {
         if (m[2].toLowerCase() === "w") c.w = Number(m[1]);
         else c.x = Number(m[1]);
       }
-      out.push(c);
+      out2.push(c);
     }
-    return out;
+    return out2;
   }
   function largestCandidate(list) {
     if (!list.length) return null;
@@ -570,7 +570,7 @@ var __cssTunerBridge = (() => {
     return t2;
   }
   function splitTop(s) {
-    const out = [];
+    const out2 = [];
     let depth = 0;
     let quote = "";
     let start = 0;
@@ -585,12 +585,12 @@ var __cssTunerBridge = (() => {
       else if (ch === "(") depth++;
       else if (ch === ")") depth--;
       else if (ch === "," && depth === 0) {
-        out.push(s.slice(start, i));
+        out2.push(s.slice(start, i));
         start = i + 1;
       }
     }
-    out.push(s.slice(start));
-    return out.map((x) => x.trim()).filter(Boolean);
+    out2.push(s.slice(start));
+    return out2.map((x) => x.trim()).filter(Boolean);
   }
   var RES_UNITS = { x: 1, dppx: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
   function setEntry(s) {
@@ -613,8 +613,8 @@ var __cssTunerBridge = (() => {
     return { url, x: m ? Number(m[1]) * RES_UNITS[m[2].toLowerCase()] : 1 };
   }
   function cssImageUrls(value) {
-    const out = [];
-    if (!value || value === "none") return out;
+    const out2 = [];
+    if (!value || value === "none") return out2;
     let i = 0;
     while (i < value.length) {
       const rest = value.slice(i, i + 20);
@@ -623,20 +623,20 @@ var __cssTunerBridge = (() => {
         const open = i + set[0].length - 1;
         const end = closeParen(value, open);
         const best = largestCandidate(splitTop(value.slice(open + 1, end)).map(setEntry).filter((c) => !!c));
-        if (best) out.push(best.url);
+        if (best) out2.push(best.url);
         i = end + 1;
         continue;
       }
       if (/^url\(/i.test(rest) && (i === 0 || !/[\w-]/.test(value[i - 1]))) {
         const end = closeParen(value, i + 3);
         const url = unquote(value.slice(i + 4, end));
-        if (url) out.push(url);
+        if (url) out2.push(url);
         i = end + 1;
         continue;
       }
       i++;
     }
-    return out;
+    return out2;
   }
   function unwrapOptimizer(url) {
     let u;
@@ -927,12 +927,12 @@ var __cssTunerBridge = (() => {
     return url.startsWith("webpack-internal:///") && !url.includes("/node_modules/");
   }
   function webpackCssSources(css) {
-    const out = /* @__PURE__ */ new Set();
+    const out2 = /* @__PURE__ */ new Set();
     for (const m of css.matchAll(/!\*{3} css (.+?) \*{3}!/g)) {
       const file = m[1].slice(m[1].lastIndexOf("!") + 1).split("?")[0];
-      if (/\.css$/i.test(file) && !file.includes("/node_modules/")) out.add(file);
+      if (/\.css$/i.test(file) && !file.includes("/node_modules/")) out2.add(file);
     }
-    return [...out];
+    return [...out2];
   }
   function projectRootOf(dist) {
     const std = /^(.*)\/\.next(?:\/dev)?$/.exec(dist);
@@ -941,12 +941,12 @@ var __cssTunerBridge = (() => {
     return parts2.slice(0, parts2.length - (parts2[parts2.length - 1] === "dev" ? 2 : 1)).join("/");
   }
   function joinPath(root2, rel) {
-    const out = root2.split("/");
+    const out2 = root2.split("/");
     for (const seg of rel.split("/")) {
-      if (seg === "..") out.pop();
-      else if (seg && seg !== ".") out.push(seg);
+      if (seg === "..") out2.pop();
+      else if (seg && seg !== ".") out2.push(seg);
     }
-    return out.join("/");
+    return out2.join("/");
   }
 
   // src/sourcemap.ts
@@ -998,14 +998,14 @@ var __cssTunerBridge = (() => {
     if (isIndexMap(map)) {
       const l0 = line2 - 1;
       const c0 = col - 1;
-      let hit2 = null;
+      let hit = null;
       for (const s of map.sections) {
-        if (s.offset.line < l0 || s.offset.line === l0 && s.offset.column <= c0) hit2 = s;
+        if (s.offset.line < l0 || s.offset.line === l0 && s.offset.column <= c0) hit = s;
         else break;
       }
-      if (!hit2) return null;
-      const dl = l0 - hit2.offset.line;
-      return originalPosition(hit2.map, dl + 1, (dl === 0 ? c0 - hit2.offset.column : c0) + 1);
+      if (!hit) return null;
+      const dl = l0 - hit.offset.line;
+      return originalPosition(hit.map, dl + 1, (dl === 0 ? c0 - hit.offset.column : c0) + 1);
     }
     let decoded = decodedOf.get(map);
     if (!decoded) {
@@ -1131,15 +1131,15 @@ var __cssTunerBridge = (() => {
     let learned = false;
     await Promise.all(
       hrefs.map(async (href) => {
-        const key3 = stripQuery(href);
-        linkSources.set(key3, null);
+        const key2 = stripQuery(href);
+        linkSources.set(key2, null);
         try {
           const text = await (await fetch(href)).text();
           const ref = extractMapUrl(text);
           if (!ref) {
             const files2 = webpackCssSources(text);
             if (files2.length === 1) {
-              linkSources.set(key3, files2[0].replace(/^\.\//, "/"));
+              linkSources.set(key2, files2[0].replace(/^\.\//, "/"));
               learned = true;
             }
             return;
@@ -1147,7 +1147,7 @@ var __cssTunerBridge = (() => {
           const json = ref.startsWith("data:") ? decodeDataUrl(ref) : await (await fetch(new URL(ref, href))).text();
           const files = [...new Set(sourcesOf(JSON.parse(json)).map(filePathOf))];
           if (files.length === 1 && files[0] && /\.css$/i.test(files[0])) {
-            linkSources.set(key3, files[0]);
+            linkSources.set(key2, files[0]);
             learned = true;
           }
         } catch {
@@ -1241,43 +1241,43 @@ var __cssTunerBridge = (() => {
     const ext = url?.startsWith("data:") ? extForMime(dataUrlMime(url)) : null;
     return ext ? `${kind}.${ext}` : kind;
   }
-  function isPlaceholder(img, shown) {
-    return !shown || shown.startsWith("data:") && shown.length < 4096 || img.complete && img.naturalWidth <= 2;
+  function isPlaceholder(img, shown2) {
+    return !shown2 || shown2.startsWith("data:") && shown2.length < 4096 || img.complete && img.naturalWidth <= 2;
   }
   function imageHit(img) {
-    let shown = img.currentSrc || img.src || "";
+    let shown2 = img.currentSrc || img.src || "";
     const sets = [];
     const pic = img.parentElement?.tagName === "PICTURE" ? img.parentElement : null;
     if (pic) for (const s of Array.from(pic.querySelectorAll(":scope > source[srcset]"))) sets.push(resolveSet(s.getAttribute("srcset") ?? ""));
-    const own = img.getAttribute("srcset");
-    if (own) sets.push(resolveSet(own));
-    let set = sets.find((c) => c.some((x) => x.url === shown)) ?? (own ? sets[sets.length - 1] : null);
-    if (isPlaceholder(img, shown)) {
+    const own2 = img.getAttribute("srcset");
+    if (own2) sets.push(resolveSet(own2));
+    let set = sets.find((c) => c.some((x) => x.url === shown2)) ?? (own2 ? sets[sets.length - 1] : null);
+    if (isPlaceholder(img, shown2)) {
       const lazySet = LAZY_SET.map((a) => img.getAttribute(a)).find(Boolean);
       const lazySrc = abs(LAZY_SRC.map((a) => img.getAttribute(a)).find(Boolean));
       if (lazySet) set = resolveSet(lazySet);
       else if (lazySrc) set = null;
-      if (lazySet || lazySrc) shown = lazySrc ?? largestCandidate(set ?? [])?.url ?? shown;
+      if (lazySet || lazySrc) shown2 = lazySrc ?? largestCandidate(set ?? [])?.url ?? shown2;
     }
     const pick2 = set ? largestCandidate(set) : null;
-    const best = pick2?.url ?? shown;
+    const best = pick2?.url ?? shown2;
     if (!best) return null;
     const url = unwrapOptimizer(best) ?? best;
-    return { kind: "image", url, shown: shown || null, name: nameFor(url, "image"), el: img, pick: pick2 ?? void 0, shownPick: set?.find((c) => c.url === shown) };
+    return { kind: "image", url, shown: shown2 || null, name: nameFor(url, "image"), el: img, pick: pick2 ?? void 0, shownPick: set?.find((c) => c.url === shown2) };
   }
   function videoHits(v) {
-    const out = [];
+    const out2 = [];
     const src = v.currentSrc || v.src || abs(v.querySelector("source[src]")?.getAttribute("src")) || "";
     if (v.srcObject || src) {
       const streaming = !!v.srcObject || /\.(m3u8|mpd)(?:[?#]|$)/i.test(src);
-      out.push({ kind: "video", url: src || null, shown: src || null, name: nameFor(src || null, "video"), el: v, streaming: streaming || void 0 });
+      out2.push({ kind: "video", url: src || null, shown: src || null, name: nameFor(src || null, "video"), el: v, streaming: streaming || void 0 });
     }
     const poster = abs(v.getAttribute("poster"));
     if (poster) {
       const url = unwrapOptimizer(poster) ?? poster;
-      out.push({ kind: "poster", url, shown: poster, name: nameFor(url, "poster"), el: v });
+      out2.push({ kind: "poster", url, shown: poster, name: nameFor(url, "poster"), el: v });
     }
-    return out;
+    return out2;
   }
   function cssHits(el, cs) {
     const urls = cssImageUrls(cs.backgroundImage);
@@ -1287,9 +1287,9 @@ var __cssTunerBridge = (() => {
       urls.push(...cssImageUrls(ps.backgroundImage), ...cssImageUrls(ps.content));
     }
     return urls.map((u) => {
-      const shown = abs(u) ?? u;
-      const url = unwrapOptimizer(shown) ?? shown;
-      return { kind: "background", url, shown, name: nameFor(url, "background"), el };
+      const shown2 = abs(u) ?? u;
+      const url = unwrapOptimizer(shown2) ?? shown2;
+      return { kind: "background", url, shown: shown2, name: nameFor(url, "background"), el };
     });
   }
   var ICON_CLASS = /^(?:lucide|fa|bi|ri|ti|mdi|heroicons?|icon|iconify|ph)-[\w-]+$/i;
@@ -1356,10 +1356,10 @@ var __cssTunerBridge = (() => {
   function collect(root2, budgetMs) {
     const deadline = performance.now() + budgetMs;
     const byKey = /* @__PURE__ */ new Map();
-    const add2 = (f, key3) => {
-      const had = byKey.get(key3);
+    const add2 = (f, key2) => {
+      const had = byKey.get(key2);
       if (had) had.count++;
-      else byKey.set(key3, { ...f, key: key3, count: 1 });
+      else byKey.set(key2, { ...f, key: key2, count: 1 });
     };
     const start = svgRoot(root2) ?? root2;
     const stack = [[start, initialClip(start)]];
@@ -1482,11 +1482,11 @@ var __cssTunerBridge = (() => {
       const frame2 = v.readyState >= 2 ? thumbOf(v, v.videoWidth, v.videoHeight) : null;
       return { ...base, name, streaming: streaming || void 0, width: v.videoWidth || null, height: v.videoHeight || null, bytes, thumb: frame2 };
     }
-    const shown = h.shown ?? h.url;
-    const im = await loadImage(shown);
+    const shown2 = h.shown ?? h.url;
+    const im = await loadImage(shown2);
     let width = im?.naturalWidth ?? null;
     let height = im?.naturalHeight ?? null;
-    if (h.url !== shown) {
+    if (h.url !== shown2) {
       if (h.pick?.w && width && height) {
         height = Math.round(h.pick.w * height / width);
         width = h.pick.w;
@@ -1499,7 +1499,7 @@ var __cssTunerBridge = (() => {
       }
     }
     let thumb = im ? thumbOf(im, im.naturalWidth, im.naturalHeight) : null;
-    if (!thumb && !shown.startsWith("blob:")) thumb = shown.startsWith("data:") && shown.length > 24e3 ? null : shown;
+    if (!thumb && !shown2.startsWith("blob:")) thumb = shown2.startsWith("data:") && shown2.length > 24e3 ? null : shown2;
     return { ...base, width, height, bytes: resourceBytes(h.url), thumb };
   }
   async function listAssets(root2) {
@@ -1574,10 +1574,10 @@ var __cssTunerBridge = (() => {
     });
   }
   function idRefs(attr, value) {
-    const out = [];
-    if (attr === "href" && value.startsWith("#")) out.push(value.slice(1));
-    for (const m of value.matchAll(/url\(\s*["']?#([^"')\s]+)["']?\s*\)/g)) out.push(m[1]);
-    return out;
+    const out2 = [];
+    if (attr === "href" && value.startsWith("#")) out2.push(value.slice(1));
+    for (const m of value.matchAll(/url\(\s*["']?#([^"')\s]+)["']?\s*\)/g)) out2.push(m[1]);
+    return out2;
   }
   function ownValue(e, p) {
     return e.getAttribute(p) || e.style?.getPropertyValue(p) || "";
@@ -1596,8 +1596,8 @@ var __cssTunerBridge = (() => {
       for (const p of props) {
         const v = cs.getPropertyValue(p);
         if (!v) continue;
-        const own = ownValue(e, p);
-        const keep = mode === "ref" ? own.includes("var(") : parent ? !!own || v !== parent.getPropertyValue(p) : p === "color" || v !== INITIAL[p];
+        const own2 = ownValue(e, p);
+        const keep = mode === "ref" ? own2.includes("var(") : parent ? !!own2 || v !== parent.getPropertyValue(p) : p === "color" || v !== INITIAL[p];
         if (keep) c.style.setProperty(p, srgbColor(localUrl(v, location.href)));
       }
       for (const p of OWN) {
@@ -1620,7 +1620,7 @@ var __cssTunerBridge = (() => {
     if (copy.id) have.add(copy.id);
     const defs = document.createElementNS(SVG_NS, "defs");
     const queue = [copy];
-    for (let guard2 = 0; queue.length && guard2 < 300; guard2++) {
+    for (let guard3 = 0; queue.length && guard3 < 300; guard3++) {
       const node = queue.shift();
       for (const e of [node, ...Array.from(node.querySelectorAll("*"))]) {
         for (const at of Array.from(e.attributes)) {
@@ -1656,7 +1656,7 @@ var __cssTunerBridge = (() => {
     const w = window;
     let hook = w[KEY];
     if (hook?.__cssTunerTap) return;
-    const own = !hook || hook.__cssTuner?.own === true;
+    const own2 = !hook || hook.__cssTuner?.own === true;
     if (!hook) {
       let next = 1;
       const renderers = /* @__PURE__ */ new Map();
@@ -1677,7 +1677,7 @@ var __cssTunerBridge = (() => {
       };
       w[KEY] = hook;
     }
-    const tap = { renderers: new Map(hook.renderers ?? []), own, onCommit: null };
+    const tap = { renderers: new Map(hook.renderers ?? []), own: own2, onCommit: null };
     const inject = hook.inject;
     if (typeof inject === "function") {
       hook.inject = function(internals) {
@@ -1765,9 +1765,9 @@ var __cssTunerBridge = (() => {
   var framesCache = /* @__PURE__ */ new Map();
   function framesOf(stack) {
     if (!stack) return [];
-    let out = framesCache.get(stack);
-    if (out) return out;
-    out = [];
+    let out2 = framesCache.get(stack);
+    if (out2) return out2;
+    out2 = [];
     let first = true;
     for (const raw of stack.split("\n")) {
       const t2 = raw.trim();
@@ -1780,11 +1780,11 @@ var __cssTunerBridge = (() => {
       const m = FRAME_RE.exec(t2);
       if (!m || !maybeUser(m[2])) continue;
       noteServerFrame(m[2]);
-      out.push({ url: m[2], line: +m[3], col: +m[4] });
+      out2.push({ url: m[2], line: +m[3], col: +m[4] });
     }
     if (framesCache.size > 5e3) framesCache.clear();
-    framesCache.set(stack, out);
-    return out;
+    framesCache.set(stack, out2);
+    return out2;
   }
   var scannedAt = 0;
   function scanForNextDist() {
@@ -1863,17 +1863,17 @@ var __cssTunerBridge = (() => {
     batchTimer = null;
     for (let i = 0; i < items.length; i += 200) {
       const part2 = items.slice(i, i + 200);
-      let out = [];
+      let out2 = [];
       try {
         const r = await fetch("/__nextjs_original-stack-frames", {
           method: "POST",
           body: JSON.stringify({ frames: part2.map((p) => p.frame), isServer: false, isEdgeServer: false, isAppDirectory: true })
         });
-        if (r.ok) out = await r.json();
+        if (r.ok) out2 = await r.json();
       } catch {
       }
       part2.forEach((p, k) => {
-        const f = out[k]?.status === "fulfilled" ? out[k].value?.originalStackFrame : null;
+        const f = out2[k]?.status === "fulfilled" ? out2[k].value?.originalStackFrame : null;
         p.done(f && f.file && f.line1 ? f : null);
       });
     }
@@ -1888,12 +1888,12 @@ var __cssTunerBridge = (() => {
   }
   var resolved = /* @__PURE__ */ new Map();
   function resolveFrame(fr) {
-    const key3 = `${fr.url}:${fr.line}:${fr.col}`;
-    let p = resolved.get(key3);
+    const key2 = `${fr.url}:${fr.line}:${fr.col}`;
+    let p = resolved.get(key2);
     if (!p) {
       const next = nextFileOf(fr.url);
       p = next ? viaNext(next, fr).then((r) => r ?? (next !== fr.url && !SERVER_URL.test(fr.url) && !fr.url.includes("?") ? viaMap(fr) : null)) : viaMap(fr);
-      resolved.set(key3, p);
+      resolved.set(key2, p);
     }
     return p;
   }
@@ -1922,8 +1922,8 @@ var __cssTunerBridge = (() => {
   var modulePathOf = /* @__PURE__ */ new Map();
   function moduleUrlOf(fileName) {
     const known2 = modulePathOf.get(fileName);
-    const hit2 = known2 && loadedModules.get(known2);
-    if (hit2) return hit2;
+    const hit = known2 && loadedModules.get(known2);
+    if (hit) return hit;
     let best = null;
     let len = 0;
     for (const path of loadedModules.keys()) {
@@ -1950,13 +1950,13 @@ var __cssTunerBridge = (() => {
   function lineShiftFor(fileName) {
     watchModules();
     const url = moduleUrlOf(fileName);
-    const key3 = `${url}
+    const key2 = `${url}
 ${fileName}`;
-    let p = lineShifts.get(key3);
+    let p = lineShifts.get(key2);
     if (!p) {
       if (lineShifts.size > 500) lineShifts.clear();
       p = lineShiftOf(url, fileName).catch(() => 0);
-      lineShifts.set(key3, p);
+      lineShifts.set(key2, p);
     }
     return p;
   }
@@ -1998,24 +1998,24 @@ ${fileName}`;
   async function frameChain(el, depth) {
     const first = await pick(el);
     if (!first) return [];
-    const out = [{ loc: toLoc(first), callee: null, node: first.node }];
+    const out2 = [{ loc: toLoc(first), callee: null, node: first.node }];
     let n = ownerOf(first.node);
-    for (let guard2 = 0; n && out.length <= depth && guard2 < 16; guard2++) {
+    for (let guard3 = 0; n && out2.length <= depth && guard3 < 16; guard3++) {
       const p = await ownFrame(n, 0);
-      if (p) out.push({ loc: toLoc(p), callee: nameOf(n), node: n });
+      if (p) out2.push({ loc: toLoc(p), callee: nameOf(n), node: n });
       n = ownerOf(n);
     }
-    return out;
+    return out2;
   }
   async function propsChain(el, depth = 3) {
     const chain2 = await frameChain(el, depth);
-    const out = [];
+    const out2 = [];
     chain2.forEach((c, i) => {
       if (i === 0 && !c.loc.viaOwner) return;
       const props = c.node.memoizedProps ?? c.node.props;
-      if (props && typeof props === "object") out.push({ depth: i, props });
+      if (props && typeof props === "object") out2.push({ depth: i, props });
     });
-    return out;
+    return out2;
   }
   var reactLocator = {
     owns: (el) => !!fiberOf(el),
@@ -2064,16 +2064,16 @@ ${fileName}`;
     chain: async (el, depth) => {
       const first = place(metaOf(el));
       if (!first) return [];
-      const out = [{ loc: first.loc, callee: null }];
+      const out2 = [{ loc: first.loc, callee: null }];
       let file = first.layer.file;
       let inner = first.layer;
-      for (let p = first.outer; p && out.length <= depth; inner = p, p = p.parent) {
+      for (let p = first.outer; p && out2.length <= depth; inner = p, p = p.parent) {
         if (p.type !== "component" || inner.file !== file) continue;
         if (isLibFile(p.file)) break;
-        out.push({ loc: toLoc2(p), callee: p.componentTag ?? componentOf(file) });
+        out2.push({ loc: toLoc2(p), callee: p.componentTag ?? componentOf(file) });
         file = p.file;
       }
-      return out;
+      return out2;
     },
     ownerName: (el) => {
       const loc = metaOf(el)?.loc;
@@ -2248,7 +2248,7 @@ ${fileName}`;
   }
   function elementVNodeOf(el) {
     let v = vnodeOf(el);
-    for (let guard2 = 0; v && v.shapeFlag & COMPONENT && guard2 < 20; guard2++) {
+    for (let guard3 = 0; v && v.shapeFlag & COMPONENT && guard3 < 20; guard3++) {
       let sub = v.component?.subTree ?? null;
       if (sub?.type === FRAGMENT && sub.patchFlag & DEV_ROOT_FRAGMENT) sub = kids(sub).find((c) => c.el === el) ?? null;
       if (!sub || sub.el !== el) return null;
@@ -2264,14 +2264,14 @@ ${fileName}`;
     return true;
   }
   function entriesOf(children) {
-    const out = [];
+    const out2 = [];
     for (const c of children) {
-      const last = out[out.length - 1];
+      const last = out2[out2.length - 1];
       if ((c.attrs.has("v-else-if") || c.attrs.has("v-else")) && last && "branches" in last) last.branches.push(c);
-      else if (c.attrs.has("v-if")) out.push({ branches: [c] });
-      else out.push({ node: c });
+      else if (c.attrs.has("v-if")) out2.push({ branches: [c] });
+      else out2.push({ node: c });
     }
-    return out;
+    return out2;
   }
   var WRAPPER_ATTR = /^(?:v-if|v-else-if|v-else|v-for|v-slot(?::.*)?|#.*)$/;
   function isWrapper(t2) {
@@ -2313,16 +2313,16 @@ ${fileName}`;
     return same.length === 1 ? same[0] : null;
   }
   function siblingsOf(...lists) {
-    const out = { entries: [], bases: [] };
+    const out2 = { entries: [], bases: [] };
     for (const list of lists) {
       let base = 0;
       for (const e of entriesOf(list)) {
-        out.entries.push(e);
-        out.bases.push(base);
+        out2.entries.push(e);
+        out2.bases.push(base);
         if ("branches" in e) base += e.branches.length;
       }
     }
-    return out;
+    return out2;
   }
   var isFor = (e) => !!e && "node" in e && e.node.attrs.has("v-for");
   function fits(e, v, base) {
@@ -2379,8 +2379,8 @@ ${fileName}`;
     if (isWrapper(t2)) return alignList(t2.children, v.type === FRAGMENT ? kids(v) : [v], a, owner);
     if (t2.tag === "slot") {
       if (v.type !== FRAGMENT) return false;
-      const own = kids(v).filter(counts);
-      return own.length > 0 && own.every((c) => c.ctx === owner) ? alignList(t2.children, own, a, owner) : true;
+      const own2 = kids(v).filter(counts);
+      return own2.length > 0 && own2.every((c) => c.ctx === owner) ? alignList(t2.children, own2, a, owner) : true;
     }
     if (!sameTag(t2, v)) return false;
     if (v.shapeFlag & COMPONENT) {
@@ -2428,8 +2428,8 @@ ${fileName}`;
       return;
     }
     if (v.type === FRAGMENT && typeof v.key === "string" && v.key.startsWith("_")) {
-      const own = kids(v).filter(counts);
-      if (own.length && own.every((c) => c.ctx === owner)) {
+      const own2 = kids(v).filter(counts);
+      if (own2.length && own2.every((c) => c.ctx === owner)) {
         frags.push({ name: v.key.slice(1), v });
         return;
       }
@@ -2441,12 +2441,12 @@ ${fileName}`;
     for (const c of kids(v)) collectSlots(c, owner, frags, direct, depth + 1);
   }
   function staticRoots(v) {
-    const out = [];
+    const out2 = [];
     for (let n = v.el; n; n = n.nextSibling) {
-      if (n instanceof Element && !isOwnNode(n)) out.push(n);
+      if (n instanceof Element && !isOwnNode(n)) out2.push(n);
       if (n === v.anchor) break;
     }
-    return out;
+    return out2;
   }
   function mapStatic(el, t2, a) {
     if (el.localName !== t2.tag && el.localName !== t2.tag.toLowerCase()) return false;
@@ -2493,19 +2493,19 @@ ${fileName}`;
     const file = inst.type.__file;
     if (!file) return Promise.resolve(null);
     const render = inst.render ?? null;
-    let hit2 = templates.get(file);
-    if (!hit2 || hit2.render !== render) {
-      hit2 = { render, p: fetchTemplate(file) };
-      templates.set(file, hit2);
+    let hit = templates.get(file);
+    if (!hit || hit.render !== render) {
+      hit = { render, p: fetchTemplate(file) };
+      templates.set(file, hit);
     }
-    return hit2.p;
+    return hit.p;
   }
   var alignedCache = /* @__PURE__ */ new WeakMap();
   async function alignedFor(inst, fresh = false) {
     if (!inst.subTree || inst.isUnmounted) return null;
     const render = inst.render ?? null;
-    const hit2 = alignedCache.get(inst);
-    if (hit2 && hit2.subTree === inst.subTree && hit2.render === render && !(fresh && performance.now() - hit2.at > 200)) return hit2;
+    const hit = alignedCache.get(inst);
+    if (hit && hit.subTree === inst.subTree && hit.render === render && !(fresh && performance.now() - hit.at > 200)) return hit;
     const tpl = await templateOf(inst);
     if (!tpl || !inst.subTree) return null;
     const a = { tpl, subTree: inst.subTree, render, at: performance.now(), els: /* @__PURE__ */ new Map(), comps: /* @__PURE__ */ new Map() };
@@ -2566,10 +2566,10 @@ ${fileName}`;
     const t2 = inst.type;
     return t2.__name || t2.name || (t2.__file ? t2.__file.replace(/^.*[\\/]/, "").replace(/\.vue$/, "") : null);
   }
-  function toLoc3(hit2) {
-    const { file, src } = hit2.a.tpl;
-    const { line: line2, column } = lineColAt(src, hit2.t.start);
-    return { url: file, path: file, file, line: line2, column, component: nameOf2(hit2.inst), viaOwner: !!hit2.viaOwner };
+  function toLoc3(hit) {
+    const { file, src } = hit.a.tpl;
+    const { line: line2, column } = lineColAt(src, hit.t.start);
+    return { url: file, path: file, file, line: line2, column, component: nameOf2(hit.inst), viaOwner: !!hit.viaOwner };
   }
   function rootElementOf(inst) {
     if (inst.type.inheritAttrs === false) return null;
@@ -2583,25 +2583,25 @@ ${fileName}`;
   var vueLocator = {
     owns: (el) => !!vnodeOf(el) || !!el.closest("[data-v-app]"),
     sourceOf: async (el) => {
-      const hit2 = await locate(el);
-      return hit2 ? toLoc3(hit2) : null;
+      const hit = await locate(el);
+      return hit ? toLoc3(hit) : null;
     },
     /** 只有组件根元素往外走：元素的类名只可能来自它自己的标签和（透传的）调用处 */
     chain: async (el, depth) => {
       const first = await locate(el);
       if (!first) return [];
-      const out = [{ loc: toLoc3(first), callee: null }];
+      const out2 = [{ loc: toLoc3(first), callee: null }];
       let inst = first.inst;
-      while (out.length <= depth && rootElementOf(inst) === el) {
+      while (out2.length <= depth && rootElementOf(inst) === el) {
         const parent = inst.vnode.ctx;
         if (!parent || !isAppComponent(parent)) break;
         const pa = await alignedFor(parent);
         const t2 = pa?.comps.get(inst);
         if (!pa || !t2) break;
-        out.push({ loc: toLoc3({ inst: parent, a: pa, t: t2 }), callee: nameOf2(inst) });
+        out2.push({ loc: toLoc3({ inst: parent, a: pa, t: t2 }), callee: nameOf2(inst) });
         inst = parent;
       }
-      return out;
+      return out2;
     },
     ownerName: (el) => nameOf2(elementVNodeOf(el)?.ctx),
     warm: (nodes) => {
@@ -2662,11 +2662,11 @@ ${fileName}`;
   }
   async function callersOf(el, peers2, depth = 3) {
     const chain2 = (await chainOf(el, depth)).slice(1);
-    const out = [];
+    const out2 = [];
     for (const [i, c] of chain2.entries()) {
-      out.push({ source: c.loc, component: c.callee, same: (await sameChain(el, peers2, i + 1)).length });
+      out2.push({ source: c.loc, component: c.callee, same: (await sameChain(el, peers2, i + 1)).length });
     }
-    return out;
+    return out2;
   }
   function allElements() {
     return Array.from(document.body.querySelectorAll("*"));
@@ -2707,16 +2707,16 @@ ${fileName}`;
   var EDITING_ATTR = "data-css-tuner-editing";
   var MAX_SEGMENTS = 8;
   function textNodesOf(el) {
-    const out = [];
+    const out2 = [];
     for (const n of Array.from(el.childNodes)) {
       if (n.nodeType === Node.TEXT_NODE) {
-        if (n.data.trim()) out.push(n);
+        if (n.data.trim()) out2.push(n);
       } else if (n instanceof Element && n.hasAttribute(EDITING_ATTR)) {
         const t2 = editing?.node ?? Array.from(n.childNodes).find((c) => c.nodeType === Node.TEXT_NODE);
-        if (t2) out.push(t2);
+        if (t2) out2.push(t2);
       }
     }
-    return out;
+    return out2;
   }
   var held = /* @__PURE__ */ new Map();
   var entries = /* @__PURE__ */ new Map();
@@ -2861,19 +2861,19 @@ ${fileName}`;
     return typeof kids2 === "string" || typeof kids2 === "number" ? 0 : null;
   }
   function matching(chain2, text) {
-    const out = [];
+    const out2 = [];
     for (const { depth, props } of chain2) {
       for (const [name, v] of Object.entries(props)) {
         if (name === "children") {
-          if (v === text) out.push({ depth, name, child: 0 });
+          if (v === text) out2.push({ depth, name, child: 0 });
           else if (Array.isArray(v)) {
             const i = v.indexOf(text);
-            if (i >= 0) out.push({ depth, name, child: i });
+            if (i >= 0) out2.push({ depth, name, child: i });
           }
-        } else if (v === text) out.push({ depth, name });
+        } else if (v === text) out2.push({ depth, name });
       }
     }
-    return out.slice(0, 6);
+    return out2.slice(0, 6);
   }
   function htmlPathOf(el) {
     const path = [];
@@ -3257,15 +3257,15 @@ ${fileName}`;
     const seen = /* @__PURE__ */ new Map();
     for (const r of rules) {
       r.layerRank = r.layer == null ? Infinity : layerOrder.get(r.layer) ?? 0;
-      const key3 = `${r.sheetIndex}|${r.fullSelector}|${r.conditions.join("|")}`;
-      r.ordinal = seen.get(key3) ?? 0;
-      seen.set(key3, r.ordinal + 1);
+      const key2 = `${r.sheetIndex}|${r.fullSelector}|${r.conditions.join("|")}`;
+      r.ordinal = seen.get(key2) ?? 0;
+      seen.set(key2, r.ordinal + 1);
     }
     return { rules, layerOrder };
   }
   var INTERACTIVE = /:(hover|active|focus|focus-visible|focus-within)(?![\w-])/;
   function matchRules(el, idx) {
-    const out = [];
+    const out2 = [];
     for (const fr of idx.rules) {
       if (!fr.active) continue;
       let best = null;
@@ -3282,9 +3282,9 @@ ${fileName}`;
           if (!best || compareSpec(s, best) > 0) best = s;
         }
       }
-      if (best) out.push({ fr, spec: best });
+      if (best) out2.push({ fr, spec: best });
     }
-    return out;
+    return out2;
   }
   function namesOf(fr) {
     if (!fr.names) {
@@ -3328,18 +3328,18 @@ ${fileName}`;
   }
   function pickWinner(el, matched, prop, reader = plainReader) {
     let best = null;
-    const consider = (w, key3) => {
+    const consider = (w, key2) => {
       if (!best) {
-        best = { w, key: key3 };
+        best = { w, key: key2 };
         return;
       }
-      for (let i = 0; i < key3.length; i++) {
-        if (key3[i] !== best.key[i]) {
-          if (key3[i] > best.key[i]) best = { w, key: key3 };
+      for (let i = 0; i < key2.length; i++) {
+        if (key2[i] !== best.key[i]) {
+          if (key2[i] > best.key[i]) best = { w, key: key2 };
           return;
         }
       }
-      best = { w, key: key3 };
+      best = { w, key: key2 };
     };
     for (const m of matched) {
       const d = readDecl(m.fr, prop, reader);
@@ -3386,13 +3386,13 @@ ${fileName}`;
   }
   var onSameRow = (a, b) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) / 2;
   function flowOffsets(boxes, order, axis) {
-    const out = boxes.map(() => [0, 0]);
+    const out2 = boxes.map(() => [0, 0]);
     const linear = boxes.every((b, k) => k === 0 || onSameRow(boxes[k - 1], b) === (axis === "x"));
     if (!linear) {
       order.forEach((i, k) => {
-        out[i] = [boxes[k].left - boxes[i].left, boxes[k].top - boxes[i].top];
+        out2[i] = [boxes[k].left - boxes[i].left, boxes[k].top - boxes[i].top];
       });
-      return out;
+      return out2;
     }
     const lead = (b) => axis === "y" ? b.top : b.left;
     const size = (b) => axis === "y" ? b.height : b.width;
@@ -3400,11 +3400,11 @@ ${fileName}`;
     for (let k = 0; k < boxes.length; k++) {
       const i = order[k];
       const d = pos - lead(boxes[i]);
-      out[i] = axis === "x" ? [d, 0] : [0, d];
+      out2[i] = axis === "x" ? [d, 0] : [0, d];
       pos += size(boxes[i]);
       if (k + 1 < boxes.length) pos += lead(boxes[k + 1]) - (lead(boxes[k]) + size(boxes[k]));
     }
-    return out;
+    return out2;
   }
 
   // src/sig.ts
@@ -3470,13 +3470,13 @@ ${fileName}`;
   }
   var hostOf = (f, p) => f.stateNode === p || f.stateNode?.containerInfo === p;
   function pathOf(kid, p) {
-    const out = [];
+    const out2 = [];
     let f = fiberOf(kid);
-    for (let guard2 = 0; f && guard2 < 200; guard2++) {
-      out.push(f);
+    for (let guard3 = 0; f && guard3 < 200; guard3++) {
+      out2.push(f);
       const up = f.return;
       if (!up) return null;
-      if (hostOf(up, p)) return out.reverse();
+      if (hostOf(up, p)) return out2.reverse();
       f = up;
     }
     return null;
@@ -3484,22 +3484,22 @@ ${fileName}`;
   var sameFiber = (a, b) => a === b || a.alternate === b;
   var FRAGMENT2 = 7;
   async function unitSource(f, home) {
-    let own = await fiberSource(f);
-    if (!own && typeof f.type !== "string") {
+    let own2 = await fiberSource(f);
+    if (!own2 && typeof f.type !== "string") {
       for (let c = f.child; c; c = c.child) {
         if (typeof c.type === "string") {
-          own = await fiberSource(c);
+          own2 = await fiberSource(c);
           break;
         }
       }
     }
-    if (!own || !home || own.path === home) return own;
+    if (!own2 || !home || own2.path === home) return own2;
     let n = ownerOf(f);
     for (let i = 0; n && i < 8; i++, n = ownerOf(n)) {
       const s = await fiberSource(n);
       if (s?.path === home) return s;
     }
-    return own;
+    return own2;
   }
   async function reactUnits(p, kids2) {
     const paths = [];
@@ -3513,25 +3513,25 @@ ${fileName}`;
       if (!paths.every((x) => x.path.length > depth + 1 && sameFiber(x.path[depth], f))) break;
       depth++;
     }
-    const out = [];
+    const out2 = [];
     for (const { kid, path } of paths) {
       const f = path[Math.min(depth, path.length - 1)];
-      let u = out.find((x) => sameFiber(x.fiber, f));
+      let u = out2.find((x) => sameFiber(x.fiber, f));
       if (!u) {
         u = { els: [], source: null, name: "", fiber: f };
-        out.push(u);
+        out2.push(u);
       }
       u.els.push(kid);
     }
     const host2 = fiberOf(p);
     const home = host2 ? (await fiberSource(host2))?.path ?? null : null;
     await Promise.all(
-      out.map(async (u) => {
+      out2.map(async (u) => {
         u.source = await unitSource(u.fiber, home);
         u.name = typeof u.fiber.type === "string" ? u.fiber.type : nameOf(u.fiber) ?? "";
       })
     );
-    return out;
+    return out2;
   }
   var keyOf = (u) => u.source ? locKey(u.source) : null;
   var plain2 = ({ els, source, name }) => ({ els, source, name });
@@ -3598,7 +3598,7 @@ ${fileName}`;
     }
     const index = indexIn(units, el);
     if (units.length < 2 || index < 0) return void 0;
-    const out = units.map((u) => {
+    const out2 = units.map((u) => {
       const text = textOf(u.els[0]);
       return {
         uids: u.els.map(uidOf),
@@ -3609,23 +3609,23 @@ ${fileName}`;
         sig: u.els.map(sigOf).join(" + ")
       };
     });
-    return { units: out, index, ...layoutOf(p, units), mapped, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null };
+    return { units: out2, index, ...layoutOf(p, units), mapped, htmlPath: isPlainHtml(el) ? htmlPathOf(el) : null };
   }
   var unitSig = (u) => u.els.map(sigOf).join(" + ");
   var unitShort = (u) => u.els.map(shortOf).join(" + ");
   async function groupsIn(p, n, mapped) {
-    const block3 = await groupOf(p, null);
-    if (!mapped) return block3.length === n ? [block3] : [];
-    const out = [];
+    const block2 = await groupOf(p, null);
+    if (!mapped) return block2.length === n ? [block2] : [];
+    const out2 = [];
     const direct = await groupOf(p, mapped);
-    if (direct.length === n) out.push(direct);
-    const keys = new Set(block3.filter((u) => u.els.length > 1 && u.source).map((u) => locKey(u.source)));
+    if (direct.length === n) out2.push(direct);
+    const keys = new Set(block2.filter((u) => u.els.length > 1 && u.source).map((u) => locKey(u.source)));
     keys.delete(mapped);
     for (const k of keys) {
       const g = await groupOf(p, k);
-      if (g.length === n) out.push(g);
+      if (g.length === n) out2.push(g);
     }
-    return out;
+    return out2;
   }
   async function matchIn(p, want, mapped) {
     if (!p?.isConnected) return null;
@@ -3645,7 +3645,7 @@ ${fileName}`;
     return null;
   }
   var styled = (e) => e instanceof HTMLElement || e instanceof SVGElement;
-  function layOut(p, units, order, out) {
+  function layOut(p, units, order, out2) {
     const { layout, axis } = layoutOf(p, units);
     if (layout !== "flow") {
       const slot = /* @__PURE__ */ new Map();
@@ -3656,13 +3656,13 @@ ${fileName}`;
         if (isOwnNode(kid)) continue;
         const i = slot.get(kid);
         if (i === void 0) {
-          if (styled(kid)) out.set(kid, { order: String(n) });
+          if (styled(kid)) out2.set(kid, { order: String(n) });
           n++;
           continue;
         }
         if (kid !== units[i].els[0]) continue;
         for (const e of units[order[k++]].els) {
-          if (styled(e)) out.set(e, { order: String(n) });
+          if (styled(e)) out2.set(e, { order: String(n) });
           n++;
         }
       }
@@ -3671,7 +3671,7 @@ ${fileName}`;
     const boxes = units.map(boxOf);
     if (boxes.some((b) => !b)) return;
     flowOffsets(boxes, order, axis).forEach(([dx, dy], i) => {
-      for (const e of units[i].els) if (styled(e) && (dx || dy)) out.set(e, shift(e, dx, dy));
+      for (const e of units[i].els) if (styled(e) && (dx || dy)) out2.set(e, shift(e, dx, dy));
     });
   }
   function shift(e, dx, dy) {
@@ -3766,7 +3766,7 @@ ${fileName}`;
     const mounted = (f) => rootOf(f).tag === 3;
     let a = fiber;
     let b = alternate;
-    for (let guard2 = 0; guard2 < 1e4; guard2++) {
+    for (let guard3 = 0; guard3 < 1e4; guard3++) {
       const parentA = a.return;
       if (!parentA) break;
       const parentB = parentA.alternate;
@@ -3835,15 +3835,15 @@ ${fileName}`;
       if (n.child) stack.push(n.child);
     }
     const want = locKey(source);
-    const out = [];
+    const out2 = [];
     for (const n of candidates) {
-      if (n === cur2) out.push(n);
+      if (n === cur2) out2.push(n);
       else {
         const s = await fiberSource(n);
-        if (s && locKey(s) === want) out.push(n);
+        if (s && locKey(s) === want) out2.push(n);
       }
     }
-    return out.length ? out : [cur2];
+    return out2.length ? out2 : [cur2];
   }
   var REACT_ELEMENTS = /* @__PURE__ */ new Set([/* @__PURE__ */ Symbol.for("react.element"), /* @__PURE__ */ Symbol.for("react.transitional.element"), /* @__PURE__ */ Symbol.for("react.portal")]);
   function summaryOf(v) {
@@ -3950,10 +3950,10 @@ ${fileName}`;
       }
       for (const inst of e.instances) {
         const cur2 = currentFiber(inst.fiber);
-        const key3 = [...groups.keys()].find((k) => samePair(k, cur2)) ?? cur2;
-        const g = groups.get(key3) ?? /* @__PURE__ */ new Map();
+        const key2 = [...groups.keys()].find((k) => samePair(k, cur2)) ?? cur2;
+        const g = groups.get(key2) ?? /* @__PURE__ */ new Map();
         g.set(e.target.name, e.value);
-        groups.set(key3, g);
+        groups.set(key2, g);
       }
     }
     for (const [cur2, want] of groups) {
@@ -4131,10 +4131,10 @@ ${fileName}`;
       if (r && r.style && (r.selectorText === ref.selector || ref.selector === "&" && !r.selectorText)) return r.style;
     }
     const idx = collectRules(isOwnSheet);
-    const hit2 = idx.rules.find(
+    const hit = idx.rules.find(
       (fr) => fr.selector === ref.selector && fr.conditions.join("|") === ref.conditions.join("|") && sheetMatches(fr.topSheet, ref.sheet)
     );
-    return hit2 ? hit2.style : null;
+    return hit ? hit.style : null;
   }
   async function holdersFor(target2) {
     if (target2.kind === "inline") {
@@ -4320,21 +4320,15 @@ ${fileName}`;
       }
     }
     const cs = getComputedStyle(el);
-    const out = Object.fromEntries(props.map((p) => [p, cs.getPropertyValue(p).trim()]));
+    const out2 = Object.fromEntries(props.map((p) => [p, cs.getPropertyValue(p).trim()]));
     for (const [style, text] of saved2) style.cssText = text;
-    return out;
+    return out2;
   }
 
   // src/overlay.ts
   var STYLE = `
 :host { all: initial; }
-.box { position: fixed; pointer-events: none; box-sizing: border-box; border-style: solid; border-width: 0; }
-.m { border-color: transparent;
-  background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.3) 0 1px, rgba(255, 255, 255, 0.45) 1px 2px, transparent 2px 6px) border-box;
-  mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0); mask-composite: exclude; }
-.bd { border-color: rgba(128, 128, 128, 0.6); }
-.p { border-color: rgba(128, 128, 128, 0.36); }
-.c { background: rgba(128, 128, 128, 0.14); }
+.box { position: fixed; pointer-events: none; box-sizing: border-box; }
 .sel-outline { outline: 1.5px solid #fff; box-shadow: 0 0 0 2.5px #111; }
 .hov-outline { outline: 1px dashed #fff; box-shadow: 0 0 0 1px #111; }
 .peer { outline: 1px dotted #fff; box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.55); }
@@ -4360,8 +4354,8 @@ ${fileName}`;
 `;
   var host = null;
   var root = null;
-  var hoverLayer = null;
-  var selLayer = null;
+  var hoverBox = null;
+  var selBox = null;
   var tag = null;
   var peerBox = null;
   var grip = null;
@@ -4371,6 +4365,8 @@ ${fileName}`;
   var parts = { mline: [], mcap: [], mlabel: [], mguide: [] };
   var measureFn = null;
   var hoverEl = null;
+  var hoverFromPanel = false;
+  var muted = null;
   var selEl = null;
   var selNote = "";
   var peers = [];
@@ -4385,10 +4381,6 @@ ${fileName}`;
     parent.appendChild(d);
     return d;
   }
-  function makeLayer(outlineCls) {
-    const r = root;
-    return { m: div("box m", r), bd: div("box bd", r), p: div("box p", r), c: div("box c", r), outline: div(`box ${outlineCls}`, r) };
-  }
   function ensure() {
     if (host && host.isConnected) return;
     if (!document.documentElement) return;
@@ -4400,8 +4392,8 @@ ${fileName}`;
     style.textContent = STYLE;
     root.appendChild(style);
     peerBox = div("peers", root);
-    hoverLayer = makeLayer("hov-outline");
-    selLayer = makeLayer("sel-outline");
+    hoverBox = div("box hov-outline hidden", root);
+    selBox = div("box sel-outline hidden", root);
     measureBox = div("measure", root);
     parts = { mline: [], mcap: [], mlabel: [], mguide: [] };
     tag = div("tag hidden", root);
@@ -4439,16 +4431,6 @@ ${fileName}`;
     g.addEventListener("pointercancel", () => endDrag(false));
     g.addEventListener("lostpointercapture", () => endDrag(false));
     for (const t2 of ["click", "dblclick", "mousedown", "mouseup", "contextmenu"]) g.addEventListener(t2, stop);
-    window.addEventListener(
-      "keydown",
-      (e) => {
-        if (!drag || e.key !== "Escape") return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        endDrag(false);
-      },
-      true
-    );
   }
   function moveDrag(e) {
     if (!drag || e.pointerId !== drag.pointer || !model || !line || !ghost) return;
@@ -4475,34 +4457,21 @@ ${fileName}`;
     if (commit && model && to !== index) model.drop(to);
     kick();
   }
-  function place2(d, x, y, w, h, borders) {
+  function place2(d, x, y, w, h) {
     d.style.left = `${x}px`;
     d.style.top = `${y}px`;
     d.style.width = `${Math.max(0, w)}px`;
     d.style.height = `${Math.max(0, h)}px`;
-    if (borders) d.style.borderWidth = borders.map((b) => `${Math.max(0, b)}px`).join(" ");
     d.classList.remove("hidden");
   }
-  function hideLayer(l) {
-    if (!l) return;
-    for (const d of Object.values(l)) d.classList.add("hidden");
-  }
-  function drawLayer(l, el, tint) {
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    const n = (v) => parseFloat(v) || 0;
-    const mt = n(cs.marginTop), mr = n(cs.marginRight), mb = n(cs.marginBottom), ml = n(cs.marginLeft);
-    const bt = n(cs.borderTopWidth), br = n(cs.borderRightWidth), bb = n(cs.borderBottomWidth), bl = n(cs.borderLeftWidth);
-    const pt = n(cs.paddingTop), pr = n(cs.paddingRight), pb = n(cs.paddingBottom), pl = n(cs.paddingLeft);
-    place2(l.outline, r.left, r.top, r.width, r.height);
-    if (!tint) {
-      for (const d of [l.m, l.bd, l.p, l.c]) d.classList.add("hidden");
+  function outline(d, el) {
+    if (!d) return;
+    if (!el) {
+      d.classList.add("hidden");
       return;
     }
-    place2(l.m, r.left - Math.max(0, ml), r.top - Math.max(0, mt), r.width + Math.max(0, ml) + Math.max(0, mr), r.height + Math.max(0, mt) + Math.max(0, mb), [mt, mr, mb, ml]);
-    place2(l.bd, r.left, r.top, r.width, r.height, [bt, br, bb, bl]);
-    place2(l.p, r.left + bl, r.top + bt, r.width - bl - br, r.height - bt - bb, [pt, pr, pb, pl]);
-    place2(l.c, r.left + bl + pl, r.top + bt + pt, r.width - bl - br - pl - pr, r.height - bt - bb - pt - pb);
+    const r = el.getBoundingClientRect();
+    place2(d, r.left, r.top, r.width, r.height);
   }
   function drawTag(el, note, withGrip) {
     if (!tag) return;
@@ -4523,9 +4492,9 @@ ${fileName}`;
     tag.style.left = `${withGrip ? left + 20 : left}px`;
     tag.style.top = `${top}px`;
   }
-  function drawPeers() {
+  function drawPeers(on) {
     if (!peerBox) return;
-    const need = selEl ? peers.filter((p) => p !== selEl && p.isConnected).slice(0, 80) : [];
+    const need = on && selEl ? peers.filter((p) => p !== selEl && p.isConnected).slice(0, 80) : [];
     while (peerBox.childElementCount < need.length) div("box peer", peerBox);
     const kids2 = Array.from(peerBox.children);
     kids2.forEach((k, i) => {
@@ -4584,28 +4553,39 @@ ${fileName}`;
     });
     hideParts("mguide", guides.length);
   }
+  function shown(s) {
+    const fresh = (el) => s.fromPanel || el !== s.muted;
+    const hover = s.hover && s.hover !== s.sel && fresh(s.hover) ? s.hover : null;
+    if (!s.sel) return { hover, sel: null };
+    if (s.measuring) return { hover, sel: "outline" };
+    return { hover, sel: s.hover === s.sel && fresh(s.sel) ? "full" : null };
+  }
+  function holdZone(tag2, grip2, el, pad = 4) {
+    return {
+      left: Math.min(tag2.left, grip2.left, el.right) - pad,
+      right: Math.max(tag2.right, grip2.right, el.left) + pad,
+      top: Math.min(tag2.top, grip2.top, el.bottom) - pad,
+      bottom: Math.max(tag2.bottom, grip2.bottom, el.top) + pad
+    };
+  }
   function frame() {
     raf = 0;
     ensure();
     if (!root) return;
     const m = measureFn?.() ?? null;
-    if (hoverEl && hoverEl.isConnected && hoverEl !== selEl) drawLayer(hoverLayer, hoverEl, !m);
-    else hideLayer(hoverLayer);
+    const sel = selEl && selEl.isConnected ? selEl : null;
+    const show2 = shown({ sel, hover: hoverEl && hoverEl.isConnected ? hoverEl : null, muted, fromPanel: hoverFromPanel, measuring: !!m });
+    outline(hoverBox, show2.hover);
+    outline(selBox, show2.sel ? sel : null);
     drawMeasure(m);
-    if (selEl && selEl.isConnected) {
-      drawLayer(selLayer, selEl, !m && (!hoverEl || hoverEl === selEl));
-      if (m) {
-        tag?.classList.add("hidden");
-        grip?.classList.add("hidden");
-      } else drawTag(selEl, selNote, !!model && !gripOff);
-    } else {
-      hideLayer(selLayer);
+    if (sel && show2.sel === "full") drawTag(sel, selNote, !!model && !gripOff);
+    else if (show2.hover && !m) drawTag(show2.hover, "", false);
+    else {
+      tag?.classList.add("hidden");
       grip?.classList.add("hidden");
-      if (hoverEl && hoverEl.isConnected) drawTag(hoverEl, "", false);
-      else tag?.classList.add("hidden");
     }
-    drawPeers();
-    if (hoverEl && hoverEl.isConnected || selEl && selEl.isConnected || m) raf = requestAnimationFrame(frame);
+    drawPeers(show2.sel === "full");
+    if (show2.hover || show2.sel || m) raf = requestAnimationFrame(frame);
   }
   function kick() {
     if (!raf) raf = requestAnimationFrame(frame);
@@ -4618,9 +4598,28 @@ ${fileName}`;
       }, 100);
     }
   }
-  function setHover(el) {
+  function setHover(el, fromPanel = false) {
+    if (el !== muted) muted = null;
     hoverEl = el;
+    hoverFromPanel = fromPanel;
     kick();
+  }
+  function mute(el) {
+    muted = el;
+    kick();
+  }
+  function holds(x, y) {
+    if (!selEl || !tag || !grip || grip.classList.contains("hidden")) return false;
+    const z = holdZone(tag.getBoundingClientRect(), grip.getBoundingClientRect(), selEl.getBoundingClientRect());
+    return x >= z.left && x <= z.right && y >= z.top && y <= z.bottom;
+  }
+  function dragging() {
+    return !!drag;
+  }
+  function cancelDrag() {
+    if (!drag) return false;
+    endDrag(false);
+    return true;
   }
   function setSelected(el, note = "", same = []) {
     if (el !== selEl) setDragModel(null);
@@ -4645,6 +4644,9 @@ ${fileName}`;
   function setMeasureDraw(fn) {
     measureFn = fn;
     kick();
+  }
+  function isOverlay(node) {
+    return !!host && node === host;
   }
 
   // src/page.ts
@@ -4673,7 +4675,7 @@ ${fileName}`;
     const root2 = document.documentElement;
     const cs = getComputedStyle(root2);
     const seen = /* @__PURE__ */ new Set();
-    const out = [];
+    const out2 = [];
     for (const fr of idx.rules) {
       if (!fr.active) continue;
       let matches = false;
@@ -4689,11 +4691,11 @@ ${fileName}`;
         seen.add(name);
         const value = cs.getPropertyValue(name).trim();
         if (!value) continue;
-        out.push({ name, value, kind: kindOf(value) });
-        if (out.length >= limit) return out;
+        out2.push({ name, value, kind: kindOf(value) });
+        if (out2.length >= limit) return out2;
       }
     }
-    return out;
+    return out2;
   }
   function pageFonts() {
     const names = /* @__PURE__ */ new Map();
@@ -4712,71 +4714,6 @@ ${fileName}`;
       sheets: sheetsInfo(),
       rootVars: rootVars()
     };
-  }
-
-  // src/pick.ts
-  var on = false;
-  var cursorStyle = null;
-  var onPick = null;
-  var onExit = null;
-  function targetOf(e) {
-    const path = e.composedPath();
-    for (const n of path) {
-      if (n instanceof Element && !isOwnNode(n)) return n;
-    }
-    return null;
-  }
-  function block(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-  }
-  function move(e) {
-    const el = targetOf(e);
-    setHover(el && el !== document.documentElement && el !== document.body ? el : null);
-  }
-  function click(e) {
-    block(e);
-    const el = targetOf(e);
-    if (!el || el === document.documentElement) return;
-    const cb = onPick;
-    setPick(false);
-    cb?.(el);
-  }
-  function key(e) {
-    if (e.key === "Escape") {
-      block(e);
-      setPick(false);
-    }
-  }
-  var passthrough = ["pointerdown", "mousedown", "pointerup", "mouseup", "dblclick", "contextmenu", "auxclick"];
-  function setPick(v, pick2, exit) {
-    if (pick2) onPick = pick2;
-    if (exit) onExit = exit;
-    if (v === on) return;
-    on = v;
-    if (on) {
-      window.addEventListener("pointermove", move, true);
-      window.addEventListener("click", click, true);
-      window.addEventListener("keydown", key, true);
-      for (const t2 of passthrough) window.addEventListener(t2, block, true);
-      cursorStyle = document.createElement("style");
-      cursorStyle.setAttribute(OWN_ATTR, "");
-      cursorStyle.textContent = "html, html * { cursor: crosshair !important; }";
-      (document.head || document.documentElement).appendChild(cursorStyle);
-    } else {
-      window.removeEventListener("pointermove", move, true);
-      window.removeEventListener("click", click, true);
-      window.removeEventListener("keydown", key, true);
-      for (const t2 of passthrough) window.removeEventListener(t2, block, true);
-      cursorStyle?.remove();
-      cursorStyle = null;
-      setHover(null);
-      onExit?.();
-    }
-  }
-  function pickOn() {
-    return on;
   }
 
   // src/measure.ts
@@ -4827,109 +4764,169 @@ ${fileName}`;
     const step = steps2.find((s) => Math.abs(s.px - px) < 0.05);
     return step ? `${n} \xB7 ${step.label}` : n;
   }
-  var hooks = null;
-  var on2 = false;
-  var alt = false;
+  var anchor = () => null;
   var target = null;
   var steps = [];
-  var cursorStyle2 = null;
-  function hit(e) {
-    for (const n of e.composedPath()) {
-      if (n instanceof Element && !isOwnNode(n)) return n === document.documentElement || n === document.body ? null : n;
-    }
-    return null;
-  }
   function draw() {
-    const a = hooks?.anchor();
+    const a = anchor();
     const b = target;
     if (!a || !b || a === b || !b.isConnected) return null;
     const m = measure(a.getBoundingClientRect(), b.getBoundingClientRect());
     return { spans: m.spans.map((s) => ({ ...s, label: spanLabel(s.to - s.from, steps) })), guides: m.guides };
   }
-  function aim(e) {
-    target = hit(e);
-    setHover(target);
-    setMeasureDraw(draw);
+  function initMeasure(a) {
+    anchor = a;
   }
-  function block2(e) {
+  function disposeMeasure() {
+    measureTo(null);
+    anchor = () => null;
+  }
+  function measureTo(el) {
+    target = el;
+    setMeasureDraw(el ? draw : null);
+  }
+  function setMeasureSteps(s) {
+    steps = s;
+  }
+
+  // src/pick.ts
+  var hooks = null;
+  var picking = false;
+  var measuring = false;
+  var engaged = false;
+  var altOnly = false;
+  var aimed = null;
+  var cursorStyle = null;
+  function own(e) {
+    return e.target instanceof Node && isOwnNode(e.target);
+  }
+  function targetOf(e) {
+    for (const n of e.composedPath()) {
+      if (n instanceof Element && !isOwnNode(n)) return n;
+    }
+    return null;
+  }
+  function hoverable(el) {
+    return el === document.documentElement || el === document.body ? null : el;
+  }
+  function block(e) {
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
   }
-  function click2(e) {
-    block2(e);
-    const el = hit(e);
-    if (el) hooks?.pick(el);
+  function aim(el, altKey) {
+    aimed = el;
+    setHover(el);
+    measureTo(measuring || altKey ? el : null);
   }
-  function key2(e) {
-    if (e.key !== "Escape") return;
-    block2(e);
-    setMeasure(false);
-  }
-  function altMove(e) {
-    if (on2) return;
-    if (!e.altKey || pickOn() || !hooks?.anchor()) {
-      if (alt) stopAlt();
-      return;
+  function move(e) {
+    if (!engaged) {
+      if (!e.altKey || !hooks?.anchor()) {
+        if (altOnly) stopAlt();
+        return;
+      }
+      altOnly = true;
     }
-    alt = true;
-    aim(e);
-  }
-  function altKeyUp(e) {
-    if (alt && (e.key === "Alt" || !e.altKey)) stopAlt();
+    if (dragging() || holds(e.clientX, e.clientY)) return;
+    aim(hoverable(targetOf(e)), e.altKey);
   }
   function stopAlt() {
-    alt = false;
-    target = null;
-    setHover(null);
-    setMeasureDraw(null);
+    altOnly = false;
+    aim(null, false);
   }
-  var passthrough2 = ["pointerdown", "mousedown", "pointerup", "mouseup", "dblclick", "contextmenu", "auxclick"];
-  function initMeasure(h) {
-    hooks = h;
-    window.addEventListener("pointermove", altMove, { capture: true, passive: true });
-    window.addEventListener("keyup", altKeyUp, true);
-    window.addEventListener("blur", stopAlt);
+  function altUp() {
+    if (altOnly) stopAlt();
+    else if (!measuring) measureTo(null);
   }
-  function disposeMeasure() {
+  function keyUp(e) {
+    if (e.key === "Alt" || !e.altKey) altUp();
+  }
+  function out(e) {
+    if (dragging() || !(engaged || altOnly)) return;
+    const to = e.relatedTarget;
+    if (to && !(to instanceof Element && to.shadowRoot && isOwnNode(to) && !isOverlay(to))) return;
+    if (altOnly) stopAlt();
+    else aim(null, false);
+  }
+  function click(e) {
+    if (own(e)) return;
+    block(e);
+    const el = holds(e.clientX, e.clientY) ? hooks?.anchor() : targetOf(e);
+    if (!el || el === document.documentElement) return;
+    aim(hoverable(el), e.altKey);
+    hooks?.pick(el);
+  }
+  function dblclick(e) {
+    if (own(e)) return;
+    block(e);
+    if (picking && !measuring) hooks?.edit(e.clientX, e.clientY);
+  }
+  function key(e) {
+    if (e.key !== "Escape" || own(e)) return;
+    block(e);
+    if (cancelDrag() || !measuring) return;
     setMeasure(false);
-    if (alt) stopAlt();
-    window.removeEventListener("pointermove", altMove, true);
-    window.removeEventListener("keyup", altKeyUp, true);
-    window.removeEventListener("blur", stopAlt);
-    hooks = null;
+    hooks?.measureOff();
   }
-  function setMeasure(v) {
-    if (v === on2) return;
-    on2 = v;
-    if (alt) stopAlt();
-    if (on2) {
-      window.addEventListener("pointermove", aim, true);
-      window.addEventListener("click", click2, true);
-      window.addEventListener("keydown", key2, true);
-      for (const t2 of passthrough2) window.addEventListener(t2, block2, true);
-      cursorStyle2 = document.createElement("style");
-      cursorStyle2.setAttribute(OWN_ATTR, "");
-      cursorStyle2.textContent = "html, html * { cursor: crosshair !important; }";
-      (document.head || document.documentElement).appendChild(cursorStyle2);
+  function guard2(e) {
+    if (!own(e)) block(e);
+  }
+  var passthrough = ["pointerdown", "mousedown", "pointerup", "mouseup", "contextmenu", "auxclick"];
+  function engage() {
+    const v = picking || measuring;
+    if (v === engaged) return;
+    engaged = v;
+    if (v) {
+      altOnly = false;
+      window.addEventListener("click", click, true);
+      window.addEventListener("dblclick", dblclick, true);
+      window.addEventListener("keydown", key, true);
+      for (const t2 of passthrough) window.addEventListener(t2, guard2, true);
+      cursorStyle = document.createElement("style");
+      cursorStyle.setAttribute(OWN_ATTR, "");
+      cursorStyle.textContent = `html, html *:not([${OWN_ATTR}]) { cursor: crosshair !important; }`;
+      (document.head || document.documentElement).appendChild(cursorStyle);
     } else {
-      window.removeEventListener("pointermove", aim, true);
-      window.removeEventListener("click", click2, true);
-      window.removeEventListener("keydown", key2, true);
-      for (const t2 of passthrough2) window.removeEventListener(t2, block2, true);
-      cursorStyle2?.remove();
-      cursorStyle2 = null;
-      target = null;
-      setHover(null);
-      setMeasureDraw(null);
-      hooks?.exit();
+      window.removeEventListener("click", click, true);
+      window.removeEventListener("dblclick", dblclick, true);
+      window.removeEventListener("keydown", key, true);
+      for (const t2 of passthrough) window.removeEventListener(t2, guard2, true);
+      cursorStyle?.remove();
+      cursorStyle = null;
+      aim(null, false);
     }
   }
-  function measureOn() {
-    return on2;
+  function initPick(h) {
+    hooks = h;
+    window.addEventListener("pointermove", move, { capture: true, passive: true });
+    window.addEventListener("pointerout", out, { capture: true, passive: true });
+    window.addEventListener("keyup", keyUp, true);
+    window.addEventListener("blur", altUp);
   }
-  function setMeasureSteps(s) {
-    steps = s;
+  function disposePick() {
+    setPick(false);
+    setMeasure(false);
+    if (altOnly) stopAlt();
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("pointerout", out, true);
+    window.removeEventListener("keyup", keyUp, true);
+    window.removeEventListener("blur", altUp);
+    hooks = null;
+  }
+  function setPick(v) {
+    picking = v;
+    engage();
+  }
+  function pickOn() {
+    return picking;
+  }
+  function setMeasure(v) {
+    measuring = v;
+    engage();
+    measureTo(v ? aimed : null);
+  }
+  function measureOn() {
+    return measuring;
   }
 
   // src/dock.ts
@@ -5095,10 +5092,10 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     dock(side) {
       this.update({ side });
     }
-    setFloat(on3) {
-      if (on3 === this.st.float) return;
-      this.update({ float: on3 });
-      dispatchEvent(new CustomEvent(FLOAT_EVENT, { detail: { float: on3 } }));
+    setFloat(on) {
+      if (on === this.st.float) return;
+      this.update({ float: on });
+      dispatchEvent(new CustomEvent(FLOAT_EVENT, { detail: { float: on } }));
     }
     /** 面板退下时（同一个站点在另一个标签页里用着）只留一个提示，点了以后接回来 */
     notice(text, onClick) {
@@ -5360,17 +5357,17 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     }
     const a = target2.anchor;
     let p = parentOf2(target2) ?? (a ? (await findBySource(a.path, a.line, a.column, a.index))?.parentElement : null) ?? (await refind())?.parentElement ?? null;
-    let hit2 = await matchIn(p, want, target2.mapped);
-    if (!hit2) {
+    let hit = await matchIn(p, want, target2.mapped);
+    if (!hit) {
       const found = await findGroup(want, target2.mapped);
       if (found) {
         p = found.p;
-        hit2 = found.units;
+        hit = found.units;
       }
     }
-    if (hit2) clearPreview(id);
-    const shown = hit2 ?? (p?.isConnected ? await groupOf(p, target2.mapped) : []);
-    return { ok: !!hit2, actual: { order: shown.map(unitShort).join(" \xB7 ") }, attached: !!hit2 || hasPreview(id), found: !!p };
+    if (hit) clearPreview(id);
+    const shown2 = hit ?? (p?.isConnected ? await groupOf(p, target2.mapped) : []);
+    return { ok: !!hit, actual: { order: shown2.map(unitShort).join(" \xB7 ") }, attached: !!hit || hasPreview(id), found: !!p };
   }
   async function probeText(id, target2, expected, refind) {
     const want = expected.trim();
@@ -5433,14 +5430,22 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       this.watch();
       this.connect();
       window.addEventListener("dblclick", this.onDblClick, true);
-      initMeasure({
-        anchor: () => this.selected?.isConnected ? this.selected : null,
-        pick: (el) => void this.select(el),
-        exit: () => {
-          setGripHidden(false);
+      const anchor2 = () => this.selected?.isConnected ? this.selected : null;
+      initMeasure(anchor2);
+      initPick({
+        anchor: anchor2,
+        pick: (el) => {
+          finish(true);
+          mute(el);
+          if (el !== this.selected) void this.select(el);
+        },
+        edit: (x, y) => void this.editAt(x, y),
+        measureOff: () => {
+          this.syncGrip();
           this.send({ t: "measure", on: false });
         }
       });
+      this.syncGrip();
       this.urlTimer = window.setInterval(() => {
         if (location.href !== this.lastHref) {
           this.lastHref = location.href;
@@ -5484,6 +5489,8 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       window.removeEventListener("dblclick", this.onDblClick, true);
       window.removeEventListener("resize", this.onResize);
       this.quiet();
+      disposePick();
+      disposeMeasure();
       try {
         this.ws?.close();
       } catch {
@@ -5492,12 +5499,11 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       this.shell?.remove();
       delete window.__CSS_TUNER_BRIDGE__;
     }
-    /** 撤掉页面上的一切：预览、选中、选取和测量 */
+    /** 撤掉页面上的一切：预览、选中、选取和测量。监听和量的起点留着，被顶替后接回来还要用 */
     quiet() {
       finish(false);
       setPick(false);
       setMeasure(false);
-      disposeMeasure();
       clearAll();
       setSelected(null);
       this.selected = null;
@@ -5702,22 +5708,31 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       }
       return this.emitSelection();
     }
-    /** 选中元素里面的文字双击就地编辑；文字不在选中元素自己身上时先改选文字所在的元素 */
-    onDblClick = (e) => {
-      if (pickOn() || measureOn() || isEditingText() || !this.selected || !this.connected()) return;
-      const hit2 = textAt(e.clientX, e.clientY, this.selected);
-      const el = hit2?.node.parentElement;
-      if (!hit2 || !el || isOwnNode(el) || el.isContentEditable || el.closest("input, textarea, select")) return;
-      const segment = textNodesOf(el).indexOf(hit2.node);
-      if (segment < 0) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
+    /** 选中元素里面 (x, y) 处的文字就地编辑；文字不在选中元素自己身上时先改选文字所在的元素。那里没有能改的文字返回 false */
+    editAt(x, y) {
+      if (isEditingText() || !this.selected || !this.connected()) return false;
+      const hit = textAt(x, y, this.selected);
+      const el = hit?.node.parentElement;
+      if (!hit || !el || isOwnNode(el) || el.isContentEditable || el.closest("input, textarea, select")) return false;
+      const segment = textNodesOf(el).indexOf(hit.node);
+      if (segment < 0) return false;
       void (async () => {
         if (el !== this.selected) await this.select(el);
         const uid = uidOf(el);
-        beginEdit(hit2.node, hit2.offset, (value, phase) => this.send({ t: "editText", uid, segment, value, phase }));
+        beginEdit(hit.node, hit.offset, (value, phase) => this.send({ t: "editText", uid, segment, value, phase }));
       })();
+      return true;
+    }
+    /** 自由选择里的双击由 pick.ts 拦下来转给 editAt */
+    onDblClick = (e) => {
+      if (pickOn() || measureOn() || !this.editAt(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
     };
+    /** 把手只在自由选择里露出来；标尺开着时点击留给改选中 */
+    syncGrip() {
+      setGripHidden(!pickOn() || measureOn());
+    }
     handlers = {
       ping: () => "pong",
       pageInfo: async () => {
@@ -5744,24 +5759,15 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         setTimeout(() => location.reload(), 30);
         return true;
       },
-      setPick: ({ on: on3 }) => {
-        if (on3) setMeasure(false);
-        setPick(
-          on3,
-          (el) => void this.select(el),
-          () => {
-            setGripHidden(false);
-            this.send({ t: "pick", on: false });
-          }
-        );
-        setGripHidden(pickOn());
+      setPick: ({ on }) => {
+        setPick(on);
+        this.syncGrip();
         this.send({ t: "pick", on: pickOn() });
         return pickOn();
       },
-      setMeasure: ({ on: on3 }) => {
-        if (on3) setPick(false);
-        setMeasure(on3);
-        setGripHidden(measureOn());
+      setMeasure: ({ on }) => {
+        setMeasure(on);
+        this.syncGrip();
         this.send({ t: "measure", on: measureOn() });
         return measureOn();
       },
@@ -5798,7 +5804,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       },
       hover: ({ uid }) => {
         const el = uid ? elOf(uid) : null;
-        setHover(el);
+        setHover(el, true);
         return !!el;
       },
       probe: ({ id, target: target2, expected, source }) => probe(id, target2, expected, () => source ? findBySource(source.path, source.line, source.column, source.index) : this.refind()),
@@ -5835,20 +5841,20 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       await sleep(120);
     }
   }
-  function sheetUrls(sheet, out = /* @__PURE__ */ new Set(), depth = 0) {
-    if (!sheet || depth > 8) return out;
-    if (sheet.href) out.add(sheet.href.split("?")[0]);
+  function sheetUrls(sheet, out2 = /* @__PURE__ */ new Set(), depth = 0) {
+    if (!sheet || depth > 8) return out2;
+    if (sheet.href) out2.add(sheet.href.split("?")[0]);
     let rules;
     try {
       rules = sheet.cssRules;
     } catch {
-      return out;
+      return out2;
     }
     for (const r of Array.from(rules)) {
-      if (r instanceof CSSImportRule) sheetUrls(r.styleSheet, out, depth + 1);
+      if (r instanceof CSSImportRule) sheetUrls(r.styleSheet, out2, depth + 1);
       else if (!(r instanceof CSSLayerStatementRule)) break;
     }
-    return out;
+    return out2;
   }
   function reloadSheets(hrefs) {
     const links = Array.from(document.querySelectorAll('link[rel~="stylesheet"]'));

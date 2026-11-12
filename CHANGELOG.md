@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Pick Element stays on. Click it once and keep picking: the element under the pointer gets a dashed outline, a click selects it, and clicking another element switches to it. Click the button again to stop; Esc no longer stops picking. While you pick, clicks don't reach the page. Picking is still on after the page reloads, goes to another address or moves to another tab.
+- The selected element is no longer outlined all the time. Move the pointer off it and back to see its outline, source location and reorder handle, with the other elements rendered by the same code marked on the page. The colored margin and padding areas are gone.
+- While picking, double-clicking any text on the page edits it in place. With picking off, this works on text inside the selected element, as before.
+- The ruler and picking can be on at the same time. Esc turns the ruler off and leaves picking on. Folding the panel into its pill turns both off, so the page responds to clicks again.
+
 ## 0.13.0
 
 - Fewer hints and markers in the panel:

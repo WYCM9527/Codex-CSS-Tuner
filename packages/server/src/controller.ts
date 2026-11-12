@@ -168,6 +168,8 @@ export class Controller implements Disposable {
   private pushTimer: NodeJS.Timeout | null = null;
   private disposables: Disposable[] = [];
   private helloCount = 0;
+  /** 用户开着自由选择：页面重新连上时桥接可能是新的，要重新打开 */
+  private pickWanted = false;
   private lastSelection: { path: string; line: number; column: number; index: number } | null = null;
   private selectionWaiters: Array<(s: SelectionView | null) => void> = [];
   private plans = new Map<string, Plan>();
@@ -541,10 +543,12 @@ export class Controller implements Disposable {
     for (const d of this.sites.get(site) ?? []) d.dispose();
     this.sites.delete(site);
     if (this.site !== site) return;
+    this.leave();
     this.site = null;
     this.session = null;
     this.page = null;
     this.helloCount = 0;
+    this.pickWanted = false;
     this.state.connection = 'idle';
     this.state.page = null;
     this.state.selection = null;
@@ -553,13 +557,23 @@ export class Controller implements Disposable {
     this.push();
   }
 
-  /** 当前页面换成这个站点上的 */
+  /** 当前页面换成这个站点上的：新页面连上（hello）时再按 pickWanted 打开自由选择 */
   private use(site: Site) {
     if (this.site === site) return;
+    this.leave();
     this.site = site;
     this.session = site.session;
     this.helloCount = 0;
+    this.state.pickOn = this.state.measureOn = false;
     this.onChannel(site.session.state);
+  }
+
+  /** 不再管当前页面：它还连着（在另一个标签页里、站点归了别的项目）的话关掉自由选择和标尺，免得它一直拦着页面上的点击 */
+  private leave() {
+    const s = this.session;
+    if (!s?.connected) return;
+    void s.call('setPick', { on: false }).catch(() => undefined);
+    void s.call('setMeasure', { on: false }).catch(() => undefined);
   }
 
   private onChannel(s: ChannelState) {
@@ -576,18 +590,19 @@ export class Controller implements Disposable {
     return [...this.sites.keys()];
   }
 
+  /** 自由选择：页面上点哪个选哪个，一直开到再点一次按钮；页面重新连上（刷新、跳转、另一个标签页接手）后接着开 */
   async setPick(on: boolean) {
     if (!this.session?.connected) {
       if (on) this.notify('warn', t('ext.pick.noPage'));
       return;
     }
     await this.session.call('setPick', { on });
+    this.pickWanted = on;
     this.state.pickOn = on;
-    if (on) this.state.measureOn = false;
     this.push();
   }
 
-  /** 标尺：和选取元素互斥，页面上 Esc 退出 */
+  /** 标尺：和自由选择可以同时开，页面上 Esc 关掉 */
   async setMeasure(on: boolean) {
     if (!this.session?.connected) {
       if (on) this.notify('warn', t('ext.pick.noPage'));
@@ -595,7 +610,6 @@ export class Controller implements Disposable {
     }
     await this.session.call('setMeasure', { on });
     this.state.measureOn = on;
-    if (on) this.state.pickOn = false;
     this.push();
   }
 
@@ -621,9 +635,11 @@ export class Controller implements Disposable {
         this.state.selection = null;
         this.assets.forget();
         await this.setPage(ev.page);
-        this.state.pickOn = false;
+        this.state.pickOn = this.pickWanted;
         this.state.measureOn = false;
         this.push();
+        // 后台服务重启前开着自由选择的旧页面，也要按这边的记录关掉
+        await this.session?.call('setPick', { on: this.pickWanted }).catch(() => undefined);
         await this.onHello(this.helloCount > 1);
         return;
       }
