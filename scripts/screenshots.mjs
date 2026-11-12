@@ -124,6 +124,8 @@ async function shoot({ out, lang, fields }) {
     await sleep(400);
     await mouse('mouseMoved', await card('pro'));
     await click(`/^(改动|Changes)/.test(b.textContent.trim())`);
+    // 面板滚到「间距」分区顶上：改过的内边距和圆角都在画面里
+    await js(`Array.prototype.find.call(${panel}.querySelectorAll('section.sec'), (s) => /^(间距|Spacing)/.test(s.querySelector('.sec-head').textContent.trim())).scrollIntoView({ block: 'start' })`);
     await sleep(1500);
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     const file = join(repo, 'plugins/css-tuner/assets', out);
