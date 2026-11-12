@@ -831,6 +831,20 @@ var __cssTunerBridge = (() => {
     )
   };
 
+  // ../protocol/src/classes.ts
+  function activeSegment(segs, has2) {
+    let best = 0;
+    let bestScore = -1;
+    segs.forEach((seg, i) => {
+      const score = seg.length ? seg.filter(has2).length / seg.length : 0;
+      if (score >= bestScore) {
+        best = i;
+        bestScore = score;
+      }
+    });
+    return best;
+  }
+
   // ../protocol/src/fonts.ts
   var GENERIC_FAMILIES = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "emoji", "fangsong"];
   var GENERIC = new Set(GENERIC_FAMILIES);
@@ -1213,6 +1227,23 @@ var __cssTunerBridge = (() => {
       return esc;
     });
   }
+  function ranges(indexes) {
+    const out2 = [];
+    for (let i = 0; i < indexes.length; i++) {
+      const from = indexes[i];
+      while (i + 1 < indexes.length && indexes[i + 1] === indexes[i] + 1) i++;
+      out2.push(from === indexes[i] ? `${from}` : `${from}-${indexes[i]}`);
+    }
+    return out2.join(",");
+  }
+  function indexesIn(text) {
+    const out2 = /* @__PURE__ */ new Set();
+    for (const part2 of text ? text.split(",") : []) {
+      const [from, to = from] = part2.split("-").map(Number);
+      for (let i = from; i <= to; i++) out2.add(i);
+    }
+    return out2;
+  }
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
   }
@@ -1323,35 +1354,35 @@ var __cssTunerBridge = (() => {
   }
   var clips = (v) => v === "hidden" || v === "clip";
   var scrolls = (v) => v === "auto" || v === "scroll";
-  function childClip(el, cs, r, clip2) {
-    if (el === document.documentElement || el === document.body) return clip2;
+  function childClip(el, cs, r, clip3) {
+    if (el === document.documentElement || el === document.body) return clip3;
     const ox = cs.overflowX;
     const oy = cs.overflowY;
-    if (ox === "visible" && oy === "visible") return clip2;
+    if (ox === "visible" && oy === "visible") return clip3;
     const n = (v) => parseFloat(v) || 0;
     const left = r.left + n(cs.borderLeftWidth);
     const right = r.right - n(cs.borderRightWidth);
     const top = r.top + n(cs.borderTopWidth);
     const bottom = r.bottom - n(cs.borderBottomWidth);
     return {
-      left: scrolls(ox) ? -Infinity : clips(ox) ? Math.max(clip2.left, left) : clip2.left,
-      right: scrolls(ox) ? Infinity : clips(ox) ? Math.min(clip2.right, right) : clip2.right,
-      top: scrolls(oy) ? -Infinity : clips(oy) ? Math.max(clip2.top, top) : clip2.top,
-      bottom: scrolls(oy) ? Infinity : clips(oy) ? Math.min(clip2.bottom, bottom) : clip2.bottom
+      left: scrolls(ox) ? -Infinity : clips(ox) ? Math.max(clip3.left, left) : clip3.left,
+      right: scrolls(ox) ? Infinity : clips(ox) ? Math.min(clip3.right, right) : clip3.right,
+      top: scrolls(oy) ? -Infinity : clips(oy) ? Math.max(clip3.top, top) : clip3.top,
+      bottom: scrolls(oy) ? Infinity : clips(oy) ? Math.min(clip3.bottom, bottom) : clip3.bottom
     };
   }
   function initialClip(root2) {
     const chain2 = [];
     for (let p = parentOf(root2); p && p !== document.documentElement; p = parentOf(p)) chain2.unshift(p);
-    let clip2 = OPEN;
+    let clip3 = OPEN;
     for (const p of chain2) {
       const cs = getComputedStyle(p);
-      if (cs.display !== "contents") clip2 = childClip(p, cs, p.getBoundingClientRect(), clip2);
+      if (cs.display !== "contents") clip3 = childClip(p, cs, p.getBoundingClientRect(), clip3);
     }
-    return clip2;
+    return clip3;
   }
-  function visible(cs, r, clip2) {
-    return r.width > 0 && r.height > 0 && cs.visibility === "visible" && r.right > clip2.left && r.left < clip2.right && r.bottom > clip2.top && r.top < clip2.bottom;
+  function visible(cs, r, clip3) {
+    return r.width > 0 && r.height > 0 && cs.visibility === "visible" && r.right > clip3.left && r.left < clip3.right && r.bottom > clip3.top && r.top < clip3.bottom;
   }
   function collect(root2, budgetMs) {
     const deadline = performance.now() + budgetMs;
@@ -1374,13 +1405,13 @@ var __cssTunerBridge = (() => {
         more = true;
         break;
       }
-      const [el, clip2] = stack.pop();
+      const [el, clip3] = stack.pop();
       if (SKIP.has(el.tagName) || isOwnNode(el)) continue;
       const cs = getComputedStyle(el);
       if (cs.display === "none") continue;
       const box = cs.display !== "contents";
       const r = el.getBoundingClientRect();
-      if (box && visible(cs, r, clip2)) {
+      if (box && visible(cs, r, clip3)) {
         if (el instanceof HTMLImageElement) {
           const f = imageHit(el);
           if (f) add2(f, f.url);
@@ -1392,7 +1423,7 @@ var __cssTunerBridge = (() => {
         if (!(el instanceof SVGElement)) for (const f of cssHits(el, cs)) add2(f, f.url);
       }
       if (el instanceof SVGElement || el instanceof HTMLVideoElement) continue;
-      const next = box ? childClip(el, cs, r, clip2) : clip2;
+      const next = box ? childClip(el, cs, r, clip3) : clip3;
       const kids2 = el.shadowRoot ? [...Array.from(el.shadowRoot.children), ...Array.from(el.children)] : Array.from(el.children);
       for (let i = kids2.length - 1; i >= 0; i--) stack.push([kids2[i], next]);
     }
@@ -3140,6 +3171,69 @@ ${fileName}`;
     }
     return spec;
   }
+  var specs = /* @__PURE__ */ new Map();
+  function specificityOf(sel) {
+    let s = specs.get(sel);
+    if (!s) {
+      if (specs.size > 2e4) specs.clear();
+      s = specificity(sel);
+      specs.set(sel, s);
+    }
+    return s;
+  }
+  var UNKNOWN = { cls: null, tag: null, never: false };
+  var subjects = /* @__PURE__ */ new Map();
+  function subjectOf(sel) {
+    let s = subjects.get(sel);
+    if (!s) {
+      if (subjects.size > 2e4) subjects.clear();
+      s = readSubject(sel);
+      subjects.set(sel, s);
+    }
+    return s;
+  }
+  function readSubject(sel) {
+    let cls = null;
+    let tag2 = null;
+    let never = false;
+    let start = true;
+    let i = 0;
+    while (i < sel.length) {
+      const ch = sel[i];
+      if (ch === ">" || ch === "+" || ch === "~" || /\s/.test(ch)) {
+        cls = null;
+        tag2 = null;
+        never = false;
+        start = true;
+        i++;
+        continue;
+      }
+      if (ch === "&" || ch === "|") return UNKNOWN;
+      if (ch === ".") {
+        const end = skipIdent(sel, i + 1);
+        if (end > i + 1) cls ??= unescapeIdent(sel.slice(i + 1, end));
+        i = Math.max(end, i + 1);
+      } else if (ch === "[") i = readGroup(sel, i, "[", "]")[1];
+      else if (ch === "(") i = readGroup(sel, i, "(", ")")[1];
+      else if (ch === ":") {
+        const from = sel[i + 1] === ":" ? i + 2 : i + 1;
+        const end = skipIdent(sel, from);
+        if (from === i + 2 || LEGACY_PSEUDO_ELEMENTS.has(sel.slice(from, end).toLowerCase())) never = true;
+        i = Math.max(end, from);
+      } else if (ch === "#") i = skipIdent(sel, i + 1);
+      else if (ch === "\\" || isIdentChar(ch)) {
+        const end = Math.max(skipIdent(sel, i), i + 1);
+        const name = sel.slice(i, end);
+        if (start) {
+          if (name.includes("\\")) return UNKNOWN;
+          tag2 = name.toLowerCase();
+        }
+        i = end;
+      } else i++;
+      start = false;
+    }
+    return { cls, tag: tag2, never };
+  }
   var DYNAMIC_PSEUDO = /:(?:hover|focus|focus-visible|focus-within|active|visited|target|checked|indeterminate|placeholder-shown|autofill|user-invalid|user-valid|open|popover-open)\b/g;
   function staticSelector(sel) {
     return sel.replace(DYNAMIC_PSEUDO, "");
@@ -3265,20 +3359,77 @@ ${fileName}`;
   }
   var INTERACTIVE = /:(hover|active|focus|focus-visible|focus-within)(?![\w-])/;
   function matchRules(el, idx) {
-    const out2 = [];
+    return matchAmong(el, idx.rules);
+  }
+  function testsOf(fr) {
+    return fr.tests ??= fr.branches.filter((b) => !INTERACTIVE.test(b) && !subjectOf(b).never);
+  }
+  function lookupOf(idx) {
+    if (idx.lookup) return idx.lookup;
+    const byClass = /* @__PURE__ */ new Map();
+    const byTag = /* @__PURE__ */ new Map();
+    const loose = [];
+    const exact = document.compatMode !== "BackCompat";
+    const put2 = (map, key2, fr) => {
+      const list = map.get(key2);
+      if (!list) map.set(key2, [fr]);
+      else if (list[list.length - 1] !== fr) list.push(fr);
+    };
     for (const fr of idx.rules) {
       if (!fr.active) continue;
+      const subjects2 = testsOf(fr).map(subjectOf);
+      if (!subjects2.length) continue;
+      if (!exact || subjects2.some((s) => s.cls === null && s.tag === null)) {
+        loose.push(fr);
+        continue;
+      }
+      for (const s of subjects2) {
+        if (s.cls !== null) put2(byClass, s.cls, fr);
+        else put2(byTag, s.tag, fr);
+      }
+    }
+    return idx.lookup = { byClass, byTag, loose };
+  }
+  function candidatesFor(el, idx) {
+    const { byClass, byTag, loose } = lookupOf(idx);
+    let rules = null;
+    const add2 = (list) => {
+      if (!list) return;
+      rules ??= loose.slice();
+      for (const fr of list) rules.push(fr);
+    };
+    add2(byTag.get(el.localName.toLowerCase()));
+    for (const cls of el.classList) add2(byClass.get(cls));
+    if (!rules) return loose;
+    rules.sort((a, b) => a.order - b.order);
+    return rules.filter((fr, i, all) => i === 0 || fr !== all[i - 1]);
+  }
+  function candidateCount(el, idx) {
+    return candidatesFor(el, idx).length;
+  }
+  function matchRulesQuick(el, idx, spend2) {
+    const rules = candidatesFor(el, idx);
+    if (spend2) {
+      let tests = 0;
+      for (const fr of rules) if (fr.active) tests += testsOf(fr).length;
+      spend2(tests);
+    }
+    return matchAmong(el, rules);
+  }
+  function matchAmong(el, rules) {
+    const out2 = [];
+    for (const fr of rules) {
+      if (!fr.active) continue;
       let best = null;
-      for (const branch of fr.branches) {
-        if (INTERACTIVE.test(branch)) continue;
+      for (const sel of testsOf(fr)) {
         let ok = false;
         try {
-          ok = el.matches(branch);
+          ok = el.matches(sel);
         } catch {
           ok = false;
         }
         if (ok) {
-          const s = specificity(branch);
+          const s = specificityOf(sel);
           if (!best || compareSpec(s, best) > 0) best = s;
         }
       }
@@ -3326,7 +3477,7 @@ ${fileName}`;
     }
     return best;
   }
-  function pickWinner(el, matched, prop, reader = plainReader) {
+  function pickWinner(el, matched, prop, reader = plainReader, inline = true) {
     let best = null;
     const consider = (w, key2) => {
       if (!best) {
@@ -3347,12 +3498,234 @@ ${fileName}`;
       const rank = d.important ? -m.fr.layerRank : m.fr.layerRank;
       consider({ decl: d, fr: m.fr, inline: false }, [d.important ? 1 : 0, 0, rank, m.spec[0], m.spec[1], m.spec[2], m.fr.order, d.index]);
     }
-    const inlineStyle = el.style;
+    const inlineStyle = inline ? el.style : null;
     if (inlineStyle && inlineStyle.length) {
       const d = readDecl({ style: inlineStyle }, prop, reader);
       if (d && d.value !== "") consider({ decl: d, fr: null, inline: true }, [d.important ? 1 : 0, 1, 0, 0, 0, 0, Infinity, d.index]);
     }
     return best ? best.w : null;
+  }
+
+  // src/links.ts
+  var UP = /* @__PURE__ */ Symbol("up");
+  var INHERITS = PROP_NAMES.map((p) => !!propMeta(p)?.inherited);
+  var TRACKED = /* @__PURE__ */ new Map();
+  PROP_NAMES.forEach((p, i) => {
+    for (const name of aliasesOf(p)) TRACKED.set(name, i);
+  });
+  var MAX_TESTS = 4e5;
+  var ELEMENT_COST = 8;
+  var SHAPE_COST = 300;
+  var STYLE_SHAPE_COST = 25;
+  var OverBudget = class extends Error {
+  };
+  function spend(scope, cost) {
+    if (cost > scope.budget) throw new OverBudget();
+    scope.budget -= cost;
+  }
+  function linkScope(idx, reader, inlineOf, matched = /* @__PURE__ */ new Map(), limited = false) {
+    return { idx, reader, inlineOf, matched, shapes: /* @__PURE__ */ new Map(), touched: /* @__PURE__ */ new Map(), nodes: /* @__PURE__ */ new Map(), interned: /* @__PURE__ */ new Map(), budget: limited ? MAX_TESTS : Infinity };
+  }
+  function matchedFor(el, scope) {
+    let m = scope.matched.get(el);
+    if (!m) {
+      m = matchRulesQuick(el, scope.idx, (tests) => spend(scope, tests + ELEMENT_COST));
+      scope.matched.set(el, m);
+    }
+    return m;
+  }
+  function matchedKey(matched) {
+    let key2 = "";
+    for (const m of matched) key2 += m.fr.branches.length > 1 ? `${m.fr.order}/${m.spec.join(".")},` : `${m.fr.order},`;
+    return key2;
+  }
+  function classify(w, i) {
+    if (!w) return INHERITS[i] ? UP : null;
+    const v = w.decl.value;
+    if (v === "inherit" || INHERITS[i] && v === "unset") return UP;
+    return w.inline ? `style=${v}${w.decl.important ? " !important" : ""}` : w.fr;
+  }
+  var scratch = null;
+  function touchedBy(text, scope) {
+    let t2 = scope.touched.get(text);
+    if (!t2) {
+      scratch ??= document.createElement("div").style;
+      scratch.cssText = text;
+      const set = /* @__PURE__ */ new Set();
+      for (let i = 0; i < scratch.length; i++) {
+        const at = TRACKED.get(scratch[i]);
+        if (at !== void 0) set.add(at);
+      }
+      t2 = [...set];
+      scope.touched.set(text, t2);
+    }
+    return t2;
+  }
+  function shapeOf(el, scope) {
+    const matched = matchedFor(el, scope);
+    const key2 = matchedKey(matched);
+    let base = scope.shapes.get(key2);
+    if (!base) {
+      spend(scope, SHAPE_COST);
+      const local = PROP_NAMES.map((prop, i) => classify(pickWinner(el, matched, prop, scope.reader, false), i));
+      base = { id: scope.shapes.size, local, up: local.includes(UP), matched };
+      scope.shapes.set(key2, base);
+    }
+    const text = scope.inlineOf(el);
+    const touched = text ? touchedBy(text, scope) : [];
+    if (!touched.length) return base;
+    const own2 = `${key2}
+${text}`;
+    let shape = scope.shapes.get(own2);
+    if (!shape) {
+      spend(scope, STYLE_SHAPE_COST);
+      const local = base.local.slice();
+      for (const i of touched) local[i] = classify(pickWinner(el, matched, PROP_NAMES[i], scope.reader), i);
+      shape = { id: scope.shapes.size, local, up: local.includes(UP), matched };
+      scope.shapes.set(own2, shape);
+    }
+    return shape;
+  }
+  function nodeOf(el, scope) {
+    const chain2 = [];
+    let parent = null;
+    for (let cur2 = el; cur2; cur2 = cur2.parentElement) {
+      const known2 = scope.nodes.get(cur2);
+      if (known2) {
+        parent = known2;
+        break;
+      }
+      const shape = shapeOf(cur2, scope);
+      chain2.push({ el: cur2, shape });
+      if (!shape.up) break;
+    }
+    for (let i = chain2.length - 1; i >= 0; i--) {
+      const { el: e, shape } = chain2[i];
+      const up = shape.up ? parent : null;
+      const key2 = `${shape.id}/${up ? up.id : ""}`;
+      let node = scope.interned.get(key2);
+      if (!node) {
+        node = { id: scope.interned.size, shape, parent: up, deciders: [] };
+        scope.interned.set(key2, node);
+      }
+      scope.nodes.set(e, node);
+      parent = node;
+    }
+    return parent;
+  }
+  function decide(node, i) {
+    let d = node.deciders[i];
+    if (d === void 0) {
+      const local = node.shape.local[i];
+      if (local === UP) {
+        const up = node.parent ? decide(node.parent, i) : null;
+        d = up && up.own ? { by: up.by, own: false } : up;
+      } else d = local === null ? null : { by: local, own: true };
+      node.deciders[i] = d;
+    }
+    return d;
+  }
+  function sameDecider(a, b) {
+    return a ? !!b && a.by === b.by && a.own === b.own : !b;
+  }
+  function linkedTo(el, peers2, props, scope) {
+    const at = props.map((p) => PROP_NAMES.indexOf(p)).filter((i) => i >= 0);
+    const mine = nodeOf(el, scope);
+    const same = /* @__PURE__ */ new Map([[mine, true]]);
+    return peers2.filter((peer) => {
+      if (peer === el) return true;
+      const node = nodeOf(peer, scope);
+      let ok = same.get(node);
+      if (ok === void 0) {
+        ok = at.every((i) => sameDecider(decide(mine, i), decide(node, i)));
+        same.set(node, ok);
+      }
+      return ok;
+    });
+  }
+  function clip2(s) {
+    if (s.length <= 96) return s;
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = (h << 5) + h + s.charCodeAt(i) | 0;
+    return `${s.slice(0, 64)}\u2026${(h >>> 0).toString(36)}`;
+  }
+  function signature(d) {
+    if (!d) return "none";
+    const up = d.own ? "" : "^";
+    if (typeof d.by === "string") return `${up}${clip2(d.by)}`.replace(/[|~]/g, "\xA6");
+    const { fullSelector, conditions, ordinal } = d.by;
+    return `${up}${clip2(`${fullSelector}${conditions.length ? ` {${conditions.join(" ")}}` : ""}`)}${ordinal ? `#${ordinal}` : ""}`.replace(/[|~]/g, "\xA6");
+  }
+  function groupByNode(el, peers2, scope) {
+    if (peers2.length < 2) return null;
+    let fresh = 0;
+    for (const peer of peers2) if (!scope.nodes.has(peer)) fresh++;
+    if (fresh * (candidateCount(el, scope.idx) + ELEMENT_COST) > scope.budget) return null;
+    try {
+      const mine = nodeOf(el, scope);
+      const sizes = /* @__PURE__ */ new Map();
+      for (const peer of peers2) {
+        const node = peer === el ? mine : nodeOf(peer, scope);
+        sizes.set(node, (sizes.get(node) ?? 0) + 1);
+      }
+      return { mine, sizes };
+    } catch (e) {
+      if (e instanceof OverBudget) return null;
+      throw e;
+    }
+  }
+  function linksAmong(mine, sizes, total, skip) {
+    const out2 = {};
+    const nodes = [...sizes.keys()];
+    const sets = /* @__PURE__ */ new Map();
+    PROP_NAMES.forEach((prop, i) => {
+      const d = decide(mine, i);
+      let n = 0;
+      let members = "";
+      const others = [];
+      nodes.forEach((node, k) => {
+        if (node !== mine && !sameDecider(d, decide(node, i))) {
+          others.push(node);
+          return;
+        }
+        n += sizes.get(node);
+        members += `${k},`;
+      });
+      if (n >= total || skip(i, others)) return;
+      let set = sets.get(members);
+      if (set === void 0) sets.set(members, set = sets.size + 1);
+      out2[prop] = { n, by: signature(d), set, ...d && !d.own ? { inherited: true } : {} };
+    });
+    return out2;
+  }
+  function linksOf(el, peers2, scope) {
+    const groups = groupByNode(el, peers2, scope);
+    if (!groups) return void 0;
+    return groups.sizes.size === 1 ? {} : linksAmong(groups.mine, groups.sizes, peers2.length, () => false);
+  }
+  function overrides(rule, node, i, scope) {
+    const local = node.shape.local[i];
+    if (local === UP || local === null) return true;
+    if (typeof local === "string") return false;
+    if (local === rule) return true;
+    const added = node.shape.matched.find((m) => m.fr === rule);
+    const now = node.shape.matched.find((m) => m.fr === local);
+    if (!added || !now || readDecl(local, PROP_NAMES[i], scope.reader)?.important) return false;
+    const a = [rule.layerRank, ...added.spec, rule.order];
+    const b = [local.layerRank, ...now.spec, local.order];
+    for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] > b[k];
+    return true;
+  }
+  function ruleLinksOf(el, peers2, rule, scope) {
+    const groups = groupByNode(el, peers2, scope);
+    if (!groups || groups.sizes.size === 1) return void 0;
+    const { mine, sizes } = groups;
+    const out2 = linksAmong(mine, sizes, peers2.length, (i, others) => {
+      const local = mine.shape.local[i];
+      if (typeof local === "string" || local !== UP && local !== null && !isTailwindSheet(local.topSheet)) return true;
+      return !others.some((node) => overrides(rule, node, i, scope));
+    });
+    return Object.keys(out2).length ? out2 : void 0;
   }
 
   // src/drop.ts
@@ -4053,6 +4426,7 @@ ${fileName}`;
   // src/preview.ts
   var entries3 = /* @__PURE__ */ new Map();
   var saved = /* @__PURE__ */ new Map();
+  var savedByStyle = /* @__PURE__ */ new Map();
   var probeHost = () => document.createElement("div");
   function keyOf2(h) {
     return h.kind === "inline" ? h.el : h.style;
@@ -4063,7 +4437,15 @@ ${fileName}`;
     const original = h.kind === "inline" ? h.el.getAttribute("style") : h.style.cssText;
     const probe2 = probeHost().style;
     probe2.cssText = original ?? "";
-    saved.set(k, { holder: h, original, probe: probe2 });
+    const s = { holder: h, original, probe: probe2 };
+    saved.set(k, s);
+    savedByStyle.set(styleOf(h), s);
+  }
+  function forget(k) {
+    const s = saved.get(k);
+    if (!s) return;
+    saved.delete(k);
+    savedByStyle.delete(styleOf(s.holder));
   }
   function styleOf(h) {
     return h.kind === "inline" ? h.el.style : h.style;
@@ -4079,22 +4461,26 @@ ${fileName}`;
     const s = saved.get(k);
     if (!s) return;
     if (s.holder.kind === "inline") {
-      if (s.original == null) s.holder.el.removeAttribute("style");
-      else s.holder.el.setAttribute("style", s.original);
+      if (s.original == null) {
+        void s.holder.el.getAttribute("style");
+        s.holder.el.removeAttribute("style");
+      } else s.holder.el.setAttribute("style", s.original);
     } else {
       s.holder.style.cssText = s.original ?? "";
     }
   }
   var originalReader = (style, prop) => {
-    for (const s of saved.values()) {
-      if (styleOf(s.holder) !== style) continue;
-      let index = -1;
-      for (let i = 0; i < s.probe.length; i++) if (s.probe[i] === prop) index = i;
-      if (index < 0 && !s.probe.getPropertyValue(prop)) return "absent";
-      return { value: s.probe.getPropertyValue(prop), priority: s.probe.getPropertyPriority(prop), ...index >= 0 ? { index } : {} };
-    }
-    return null;
+    const s = savedByStyle.get(style);
+    if (!s) return null;
+    let index = -1;
+    for (let i = 0; i < s.probe.length; i++) if (s.probe[i] === prop) index = i;
+    if (index < 0 && !s.probe.getPropertyValue(prop)) return "absent";
+    return { value: s.probe.getPropertyValue(prop), priority: s.probe.getPropertyPriority(prop), ...index >= 0 ? { index } : {} };
   };
+  function originalInline(el) {
+    const s = saved.get(el);
+    return s ? s.original : el.getAttribute("style");
+  }
   function walkPath(sheet, path) {
     let list;
     try {
@@ -4136,12 +4522,31 @@ ${fileName}`;
     );
     return hit ? hit.style : null;
   }
+  async function peersOf(target2, el) {
+    if (target2.among) {
+      let hits = [];
+      try {
+        hits = Array.from(document.querySelectorAll(staticSelector(target2.among))).filter((e) => !isOwnNode(e));
+      } catch {
+      }
+      return hits.includes(el) ? hits : [el];
+    }
+    if (!target2.sourceKey) return [el];
+    const els = await sameSourceElements(el, target2.depth ?? 0);
+    return target2.withClass ? els.filter((e) => e === el || e.classList.contains(target2.withClass)) : els;
+  }
+  function membersOf(target2, el, peers2) {
+    let els = peers2;
+    const { segs, seg } = target2;
+    if (segs && seg !== void 0) els = els.filter((e) => e === el || activeSegment(segs, (c) => e.classList.contains(c)) === seg);
+    if (target2.linked?.length && els.length > 1) els = linkedTo(el, els, target2.linked, linkScope(collectRules(isOwnSheet), originalReader, originalInline));
+    return els;
+  }
   async function holdersFor(target2) {
     if (target2.kind === "inline") {
       const el = elOf(target2.uid);
       if (!el) return [];
-      let els = target2.sourceKey ? await sameSourceElements(el, target2.depth ?? 0) : [el];
-      if (target2.withClass) els = els.filter((e) => e === el || e.classList.contains(target2.withClass));
+      const els = membersOf(target2, el, await peersOf(target2, el));
       return els.filter((e) => e instanceof HTMLElement || e instanceof SVGElement).map((e) => ({ kind: "inline", el: e }));
     }
     if (target2.kind === "rule") {
@@ -4150,18 +4555,25 @@ ${fileName}`;
     }
     return [];
   }
+  var holderIndex = /* @__PURE__ */ new WeakMap();
+  function holderAt(e, k) {
+    let at = holderIndex.get(e.holders);
+    if (!at) {
+      at = new Map(e.holders.map((h) => [keyOf2(h), h]));
+      holderIndex.set(e.holders, at);
+    }
+    return at.get(k);
+  }
   function reapply(k) {
     restore(k);
     let any = false;
     for (const e of entries3.values()) {
-      for (const h of e.holders) {
-        if (keyOf2(h) === k) {
-          write(h, h.kind === "inline" && e.per?.get(h.el) || e.decls);
-          any = true;
-        }
-      }
+      const h = holderAt(e, k);
+      if (!h) continue;
+      write(h, h.kind === "inline" && e.per?.get(h.el) || e.decls);
+      any = true;
     }
-    if (!any) saved.delete(k);
+    if (!any) forget(k);
   }
   var chain = Promise.resolve();
   function preview(id, target2, decls, text = "", prop = null) {
@@ -4174,7 +4586,7 @@ ${fileName}`;
     chain = run.catch(() => void 0);
     return run;
   }
-  var shapeOf = (parents) => parents.map((p) => p.isConnected ? movableKids(p).map(uidOf).join(",") : "-").join("|");
+  var shapeOf2 = (parents) => parents.map((p) => p.isConnected ? movableKids(p).map(uidOf).join(",") : "-").join("|");
   async function previewOrder(id, target2, hint) {
     const old = entries3.get(id);
     if (old) clearPreview(id);
@@ -4182,7 +4594,7 @@ ${fileName}`;
     if (!parents.length) return 0;
     const holders = [...decls.keys()].map((el) => ({ kind: "inline", el }));
     for (const h of holders) save(h);
-    entries3.set(id, { id, target: target2, decls: {}, holders, per: decls, parents, shape: shapeOf(parents) });
+    entries3.set(id, { id, target: target2, decls: {}, holders, per: decls, parents, shape: shapeOf2(parents) });
     for (const h of holders) reapply(keyOf2(h));
     return parents.length;
   }
@@ -4194,7 +4606,7 @@ ${fileName}`;
   function reapplyOrders() {
     const run = chain.then(async () => {
       for (const e of Array.from(entries3.values())) {
-        if (e.target.kind !== "order" || !e.parents || shapeOf(e.parents) === e.shape) continue;
+        if (e.target.kind !== "order" || !e.parents || shapeOf2(e.parents) === e.shape) continue;
         await previewOrder(e.id, e.target, e.parents.find((p) => p.isConnected));
       }
     });
@@ -4238,7 +4650,7 @@ ${fileName}`;
     for (const h of e.holders) {
       const k = keyOf2(h);
       if (h.kind === "rule" && !isLive(h.style)) {
-        saved.delete(k);
+        forget(k);
         continue;
       }
       reapply(k);
@@ -4257,6 +4669,11 @@ ${fileName}`;
     const e = entries3.get(id);
     if (!e) return false;
     return e.holders.some((h) => holderLive(h) && (h.kind === "rule" || !el || h.el === el));
+  }
+  function previewElements(id) {
+    const e = entries3.get(id);
+    if (!e || e.target.kind !== "inline") return null;
+    return e.holders.flatMap((h) => h.kind === "inline" && h.el.isConnected ? [h.el] : []);
   }
   function reattachRules() {
     for (const e of Array.from(entries3.values())) {
@@ -4291,7 +4708,7 @@ ${fileName}`;
   var holderLive = (h) => h.kind === "inline" ? h.el.isConnected : isLive(h.style);
   function prune() {
     for (const [k, s] of Array.from(saved.entries())) {
-      if (!holderLive(s.holder)) saved.delete(k);
+      if (!holderLive(s.holder)) forget(k);
     }
   }
 
@@ -4303,8 +4720,9 @@ ${fileName}`;
     const hold2 = (style) => {
       if (!saved2.has(style)) saved2.set(style, style.cssText);
     };
-    for (const prop of props) {
-      const w = pickWinner(el, matched, prop, originalReader);
+    const winners = props.map((prop) => pickWinner(el, matched, prop, originalReader));
+    for (const [i, prop] of props.entries()) {
+      const w = winners[i];
       const style = w ? w.inline ? inline : w.fr?.style : void 0;
       if (style) {
         hold2(style);
@@ -5233,6 +5651,40 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       via: w.decl.shorthand ?? w.decl.via
     };
   }
+  function hasTailwind() {
+    return Array.from(document.styleSheets).some((s) => !isOwnSheet(s) && isTailwindSheet(s));
+  }
+  var MAX_ADD_RULES = 6;
+  var MAX_RULE_PEERS = 3e3;
+  var FRAMEWORK_LAYERS = /* @__PURE__ */ new Set(["theme", "base", "properties"]);
+  function addLinks(el, matched, scope) {
+    const subject = (fr) => fr.fullSelector.split(/\s*[\s>+~]\s*/).pop() ?? "";
+    const own2 = (fr) => {
+      const last = subject(fr);
+      return Array.from(el.classList).some((c) => last.includes(`.${c}`)) || !!el.id && last.includes(`#${el.id}`);
+    };
+    const always = (fr) => fr.conditions.every((c) => c.startsWith("@layer"));
+    const rank = (fr) => (own2(fr) ? 0 : 2) + (always(fr) ? 0 : 1);
+    const generated = (fr) => {
+      if (!isTailwindSheet(fr.topSheet)) return false;
+      if (fr.layer !== null && FRAMEWORK_LAYERS.has(fr.layer.split(".")[0])) return true;
+      return (fr.layer === "utilities" || fr.layer === null) && !!utilityOf(fr.selector, el);
+    };
+    const candidates = matched.map((m, i) => ({ fr: m.fr, i })).reverse().filter(({ fr }) => !generated(fr)).map((c, at) => ({ ...c, at, rank: rank(c.fr) })).sort((a, b) => a.rank - b.rank || a.at - b.at).slice(0, MAX_ADD_RULES);
+    const out2 = {};
+    for (const { fr, i } of candidates) {
+      let hits;
+      try {
+        hits = Array.from(document.querySelectorAll(staticSelector(fr.fullSelector))).filter((e) => !isOwnNode(e));
+      } catch {
+        continue;
+      }
+      if (hits.length < 2 || hits.length > MAX_RULE_PEERS || !hits.includes(el)) continue;
+      const links = ruleLinksOf(el, hits, fr, scope);
+      if (links) out2[i] = links;
+    }
+    return Object.keys(out2).length ? out2 : void 0;
+  }
   function backdropOf(el) {
     const layers = [];
     for (let p = el.parentElement; p; p = p.parentElement) {
@@ -5246,7 +5698,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
   async function snapshot(el, idx = collectRules(isOwnSheet)) {
     countCache.clear();
     const matchedCache = /* @__PURE__ */ new Map();
-    const matchedFor = (e) => {
+    const matchedFor2 = (e) => {
       let m = matchedCache.get(e);
       if (!m) {
         m = matchRules(e, idx);
@@ -5254,7 +5706,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       }
       return m;
     };
-    const matched = matchedFor(el);
+    const matched = matchedFor2(el);
     const cs = getComputedStyle(el);
     const computed = {};
     const winners = {};
@@ -5263,7 +5715,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       let w = toWinner(el, pickWinner(el, matched, prop, originalReader), "rule", null);
       if (!w && propMeta(prop)?.inherited) {
         for (let p = el.parentElement; p && p !== document.documentElement.parentElement; p = p.parentElement) {
-          const pw = pickWinner(p, matchedFor(p), prop, originalReader);
+          const pw = pickWinner(p, matchedFor2(p), prop, originalReader);
           if (pw && pw.decl.value !== "inherit") {
             w = toWinner(el, pw, "inherited", p);
             break;
@@ -5288,7 +5740,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       const value = cs.getPropertyValue(name).trim();
       let w = null;
       for (let p = el; p && !w; p = p.parentElement) {
-        w = toWinner(el, pickWinner(p, matchedFor(p), name, originalReader), p === el ? "rule" : "inherited", p === el ? null : p);
+        w = toWinner(el, pickWinner(p, matchedFor2(p), name, originalReader), p === el ? "rule" : "inherited", p === el ? null : p);
       }
       computed[name] = value;
       winners[name] = w ? { ...w, value: w.value.trim() } : { value, important: false, origin: "initial", rule: null, inheritedFrom: null, via: null };
@@ -5307,6 +5759,9 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     for (let p = el; p && p !== document.body && p !== document.documentElement; p = p.parentElement) breadcrumb.unshift(crumb(p));
     const source = await sourceOf2(el);
     const peers2 = source ? await sameSourceElements(el) : [el];
+    const scope = linkScope(idx, originalReader, originalInline, matchedCache, true);
+    const links = peers2.length > 1 ? linksOf(el, peers2, scope) : void 0;
+    const ruleLinks = source && hasTailwind() ? void 0 : addLinks(el, matched, scope);
     const rect = el.getBoundingClientRect();
     return {
       uid: uidOf(el),
@@ -5322,6 +5777,8 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       sourceIndex: Math.max(0, peers2.indexOf(el)),
       callers: source ? await callersOf(el, peers2) : [],
       classCounts: Object.fromEntries(Array.from(el.classList, (c) => [c, peers2.filter((p) => p.classList.contains(c)).length])),
+      ...links ? { links } : {},
+      ...ruleLinks ? { ruleLinks } : {},
       computed,
       winners,
       vars,
@@ -5338,6 +5795,43 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
   }
 
   // src/verify.ts
+  var MAX_PEERS = 2e3;
+  var shows = (el, expected) => {
+    const cs = getComputedStyle(el);
+    return Object.entries(expected).every(([p, v]) => sameValue(p, cs.getPropertyValue(p).trim(), v));
+  };
+  async function peerBase(id, target2, expected) {
+    if (target2.kind !== "inline") return null;
+    const el = elOf(target2.uid);
+    const held2 = previewElements(id);
+    if (!el || !held2?.includes(el)) return null;
+    const peers2 = await peersOf(target2, el);
+    if (peers2.length < 2 || peers2.length > MAX_PEERS) return null;
+    const at = new Map(peers2.map((p, i) => [p, i]));
+    const members = held2.map((h) => at.get(h) ?? -1).sort((a, b) => a - b);
+    if (members[0] < 0) return null;
+    const linked = new Set(linkedTo(el, held2, Object.keys(expected), linkScope(collectRules(isOwnSheet), originalReader, originalInline)));
+    if (!held2.every((h) => linked.has(h) && shows(h, expected))) return null;
+    const mine = new Set(members);
+    const same = peers2.flatMap((p, i) => !mine.has(i) && shows(p, expected) ? [i] : []);
+    return { total: peers2.length, members: ranges(members), same: ranges(same) };
+  }
+  async function peersNow(target2, el, expected, base) {
+    if (target2.kind !== "inline") return void 0;
+    const peers2 = await peersOf(target2, el);
+    if (peers2.length !== base.total) return void 0;
+    const members = indexesIn(base.members);
+    const same = indexesIn(base.same);
+    let under = 0;
+    let over = 0;
+    beneath(() => {
+      peers2.forEach((p, i) => {
+        if (members.has(i)) under += shows(p, expected) ? 0 : 1;
+        else if (!same.has(i)) over += shows(p, expected) ? 1 : 0;
+      });
+    });
+    return { members: members.size, under, over };
+  }
   async function live(uid, refind) {
     const known2 = elOf(uid);
     return known2?.isConnected ? known2 : refind();
@@ -5389,7 +5883,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
     if (ok) clearPreview(id);
     return { ok, actual: { text: actual ?? "" }, attached: ok || textAttached(id), found: !!el };
   }
-  async function probeStyle(id, target2, expected, refind) {
+  async function probeStyle(id, target2, expected, refind, base) {
     const props = Object.keys(expected);
     const el = await live(target2.uid, refind);
     if (!el) return { ok: false, actual: {}, attached: previewAttached(id), found: false };
@@ -5398,14 +5892,16 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
       return Object.fromEntries(props.map((p) => [p, cs.getPropertyValue(p).trim()]));
     });
     const ok = Object.entries(expected).every(([p, v]) => sameValue(p, actual[p] ?? "", v));
-    if (ok) clearPreview(id);
-    return { ok, actual, attached: ok || previewAttached(id, target2.kind === "inline" ? el : null), found: true };
+    const peers2 = ok && base ? await peersNow(target2, el, expected, base) : void 0;
+    const done = ok && !(peers2 && (peers2.under || peers2.over));
+    if (done) clearPreview(id);
+    return { ok, actual, attached: done || previewAttached(id, target2.kind === "inline" ? el : null), found: true, ...peers2 ? { peers: peers2 } : {} };
   }
-  function probe(id, target2, expected, refind) {
+  function probe(id, target2, expected, refind, base) {
     if (target2.kind === "text") return probeText(id, target2, expected.text ?? "", refind);
     if (target2.kind === "order") return probeOrder(id, target2, expected.order ?? "", refind);
     if (target2.kind === "props") return probeProp(id, target2, expected, refind);
-    return probeStyle(id, target2, expected, refind);
+    return probeStyle(id, target2, expected, refind, base);
   }
 
   // src/index.ts
@@ -5807,7 +6303,8 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
         setHover(el, true);
         return !!el;
       },
-      probe: ({ id, target: target2, expected, source }) => probe(id, target2, expected, () => source ? findBySource(source.path, source.line, source.column, source.index) : this.refind()),
+      probe: ({ id, target: target2, expected, source, peers: peers2 }) => probe(id, target2, expected, () => source ? findBySource(source.path, source.line, source.column, source.index) : this.refind(), peers2),
+      peerBase: ({ id, target: target2, expected }) => peerBase(id, target2, expected),
       reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
       assets: async () => this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false },
       assetData: ({ id, as }) => assetData(id, as),

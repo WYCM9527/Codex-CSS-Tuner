@@ -31,7 +31,8 @@ When the user's message is a CSS Tuner prompt, has a CSS Tuner annotation, or me
    - Keep the project's conventions (Tailwind scale tokens instead of arbitrary values when the instructions give a token, existing CSS files and variables).
    - When the instructions say the spot couldn't be located, search for the element using the page path, text and labels given.
    - If a change would affect other places on the page (shared component, shared class), do what the instructions say; ask the user when it's unclear.
-3. Call `verify`. It waits for hot reload and checks each change on the live page. Changes that match are marked applied and their previews are removed; for the rest it reports what the page shows now. Fix what didn't match and call `verify` again.
+   - When the instructions say a change applies to only some of the elements the same code renders (for example 2 of the 3 cards), change only those and leave the rest as they are. If nothing in the code tells them apart, add a condition.
+3. Call `verify`. It waits for hot reload and checks each change on the live page. Changes that match are marked applied and their previews are removed; for the rest it reports what the page shows now. Fix what didn't match and call `verify` again. When the same code renders several elements, `verify` also checks that the ones that should change did and the others didn't: a note saying only some of them changed, or that more changed than should have, means the selected element is right but the others aren't yet, so keep fixing.
 4. Report in the user's language: what you changed (file and what), and which changes matched. Keep it short.
 
 Reverts work the same way: the instructions ask you to restore the original values.

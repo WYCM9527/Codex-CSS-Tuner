@@ -132,6 +132,8 @@ export const en = {
   'apply.allDone': 'Codex is done: every change you handed off has been checked.',
   'apply.still': 'The code changed, but the page now shows {actual}',
   'apply.unchecked': "The code changed, but this one can't be checked on the page. Please take a look yourself",
+  'apply.partial.under': 'The selected element is updated, but only {got} of the {want} elements that should change with it did',
+  'apply.partial.over': 'The selected element is updated, but {got} elements changed where only {want} should have',
   // —— 交给 Codex 的提示词 ——
   'handoff.intro': 'On {url}, change the following {n} {n|item|items}:',
   'handoff.revert.intro': 'On {url}, change the following {n} {n|item|items} back:',
@@ -142,6 +144,16 @@ export const en = {
   'handoff.element': '{i}. Element `{label}`{text}{loc}{same}',
   'handoff.elementText': ' "{text}"',
   'handoff.sameSource': ', and changing this code affects {n} places on the page',
+  'handoff.partial':
+    '   - This code renders {total} elements on the page. Apply the above to only {n} of them: the {n|one|ones} whose current value is the original value shown above{index}. Leave the rest unchanged, and add a condition in the code if nothing there tells them apart',
+  'handoff.partial.segment':
+    '   - This code renders {total} elements on the page. Apply the above to only {n} of them: the {n|one|ones} whose classes come from the `{segment}` string{index}. The same class is also written in another branch; leave it alone there',
+  'handoff.partial.both':
+    '   - This code renders {total} elements on the page. Apply the above to only {n} of them: the {n|one|ones} whose classes come from the `{segment}` string and whose current value is the original value shown above{index}. Leave the rest unchanged, and add a condition in the code if nothing there tells them apart',
+  'handoff.partial.rule':
+    '   - This rule matches {total} elements on the page. Apply the above to only {n} of them: the {n|one|ones} whose current value is the original value shown above. Leave the rest unchanged; if needed, write a more specific rule for the {n|one|ones} that {n|changes|change}',
+  'handoff.partial.index': ' (the selected element is number {i} in page order)',
+  'handoff.partial.inherited': "   - The original value above is inherited from an outer element; the element doesn't set it itself",
   'handoff.change': '   - {props}: {from} → {to}',
   'handoff.localFont': "   - {font} is installed on this computer; the page doesn't load it",
   'handoff.text': '   - Text: {from} → {to}',
@@ -195,6 +207,7 @@ export const en = {
   'panel.measure.off': 'Ruler: measure the distance between the hovered element and the selection (without the ruler, hold Alt while hovering on the page)',
   'panel.pageWidth': "Page width: {width}px. While the panel is docked, the page is laid out in the space next to it; drag the panel's edge to change it.",
   'panel.sameSource': 'The same code makes {n} elements like this on the page, so a change shows up on all of them.',
+  'panel.sameSource.some': 'The same code makes {n} elements like this on the page. When you change a property, only the ones that get that property from the same place change with it.',
   'panel.scope': 'Applies to',
   'panel.scope.instance': 'This one',
   'panel.scope.instance.title': 'Change only the one you picked; other places that use the same component stay as they are',

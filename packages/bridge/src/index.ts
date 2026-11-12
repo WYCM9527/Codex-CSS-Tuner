@@ -16,7 +16,7 @@ import { snapshot } from './snapshot';
 import { findBySource, sameSourceElements, sourceOf, warmSources, whenHydrated } from './source';
 import { hasTextPreviews, reapplyTexts, textNodesOf } from './text';
 import { elOf, isOwnNode, loadSheetSources, sleep, uidOf } from './util';
-import { probe } from './verify';
+import { peerBase, probe } from './verify';
 
 /** 本地服务在 bridge.js 末尾写进来的启动参数 */
 export interface BootConfig {
@@ -475,8 +475,9 @@ class Bridge {
       setHover(el, true);
       return !!el;
     },
-    probe: ({ id, target, expected, source }) =>
-      probe(id, target, expected, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind())),
+    probe: ({ id, target, expected, source, peers }) =>
+      probe(id, target, expected, () => (source ? findBySource(source.path, source.line, source.column, source.index) : this.refind()), peers),
+    peerBase: ({ id, target, expected }) => peerBase(id, target, expected),
     reloadSheets: ({ hrefs }) => reloadSheets(hrefs),
     assets: async () => (this.selected && this.selected.isConnected ? listAssets(this.selected) : { items: [], count: 0, more: false }),
     assetData: ({ id, as }) => assetData(id, as),
